@@ -32,31 +32,6 @@ test("fit and preview requests preserve independent source units and mm nudges",
   } finally { fetchMock.mock.restore(); }
 });
 
-test("Fit in assembly previews ask for purpose=fit, which reserves no check, with each file's units", async () => {
-  const calls: URL[] = [];
-  const fetchMock = mock.method(globalThis, "fetch", async (url: unknown) => {
-    calls.push(new URL(String(url), "http://localhost"));
-    return new Response(new Blob(["fit shell"]));
-  });
-  try {
-    const part = new File(["part"], "part.stl");
-    const ctx = new File(["assembly"], "assembly.step");
-    for (const [file, units] of [[part, "inch"], [ctx, "mm"]] as const) {
-      const preview = await fetchPreviewMesh(file, { forFit: true, units });
-      assert.ok(preview);
-      preview.revoke();
-      assert.equal(calls.at(-1)!.searchParams.get("purpose"), "fit");
-      assert.equal(calls.at(-1)!.searchParams.get("units"), units);
-    }
-    // An ordinary preview of the same file is its own request (it holds a check slot on the server).
-    const plain = await fetchPreviewMesh(part, { units: "inch" });
-    assert.ok(plain);
-    plain.revoke();
-    assert.equal(calls.at(-1)!.searchParams.get("purpose"), null);
-    assert.equal(calls.length, 3);
-  } finally { fetchMock.mock.restore(); }
-});
-
 test("preview preserves allowance exhaustion while ordinary failures remain retryable", async () => {
   const file = new File(["test"], "part.stl");
   const fetchMock = mock.method(globalThis, "fetch", async () =>

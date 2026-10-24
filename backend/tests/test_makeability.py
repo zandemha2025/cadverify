@@ -5,8 +5,6 @@ invariants (§2), gap-analysis ordering, and the environment gate are covered.
 
 from __future__ import annotations
 
-from dataclasses import replace
-
 import pytest
 
 from src.costing.makeability import (
@@ -19,7 +17,6 @@ from src.costing.makeability import (
     gap_analysis,
     environment_gate,
     part_req_from_drivers,
-    dfm_failures_from_score,
     TOLERANCE_IT_MAP,
     STANDARD_IT,
 )
@@ -400,67 +397,15 @@ def test_secondary_op_required_present_soft_pass():
     assert "stress_relief" in fr.resource_hint["secondary_ops"]
 
 
-def _eos():
-    return MachineCap(process="dmls", name="EOS", max_workpiece_kg=50,
-                      hourly_rate_usd=180, materials=("Ti6Al4V", "titanium"),
-                      capabilities={"x": 400, "y": 400, "z": 400})
-
-
-def _ti_print(sec=("stress_relief",)):
-    return part(process="dmls", material_name="Ti6Al4V", material_class="titanium",
-                bbox=(50, 100, 200), sec=sec)
-
-
-def test_a_machines_own_op_never_declared_is_assumed_done_in_house_and_said():
-    # Stress relief is part of running a metal printer: the shop that owns one is
-    # assumed to do it until Your shop says it's sent out, and the fit says so.
-    fr = fit_machine(_ti_print(), _eos(), ShopCaps(ops={}))
-    assert fr.passes, fr.failures
-    assert fr.resource_hint["secondary_ops"] == ("stress_relief",)
-    assert fr.resource_hint["assumed_in_house"] == ("stress_relief",)
-    assert "Assumes your shop does its own stress relief; change this in Your shop" in fr.resource_hint["notes"]
-    # A binder jetter's sintering, the same rule.
-    dm = MachineCap(process="binder_jetting", name="Shop System", materials=("17-4 PH SS",),
-                    capabilities={"x": 350, "y": 220, "z": 200})
-    green = part(process="binder_jetting", material_name="17-4 PH SS", material_class="stainless",
-                 bbox=(30, 40, 50), sec=("sinter",))
-    bj = fit_machine(green, dm, ShopCaps(ops={}))
-    assert bj.passes and bj.resource_hint["assumed_in_house"] == ("sinter",)
-    assert "Assumes your shop does its own sintering; change this in Your shop" in bj.resource_hint["notes"]
-
-
-def test_a_machines_own_op_declared_in_house_is_not_an_assumption():
-    fr = fit_machine(_ti_print(), _eos(), ShopCaps(ops={"stress_relief": True}))
-    assert fr.passes and fr.resource_hint["secondary_ops"] == ("stress_relief",)
-    assert "assumed_in_house" not in fr.resource_hint and "notes" not in fr.resource_hint
-
-
-def test_a_machines_own_op_declared_sent_out_is_made_here_and_bought_outside():
-    fr = fit_machine(_ti_print(), _eos(), ShopCaps(ops={"stress_relief": False}))
-    assert fr.passes, fr.failures
-    assert fr.resource_hint["sent_out"] == ("stress_relief",)
-    assert "assumed_in_house" not in fr.resource_hint
-
-
-def test_a_required_op_the_buyer_asks_for_stays_unknown_when_never_declared():
-    # HIP comes from a declared pressure-critical duty, not from the machine:
-    # never declared is "can't confirm", not assumed.
-    fr = fit_machine(_ti_print(sec=("stress_relief", "hip")), _eos(), ShopCaps(ops={}))
-    sf = [f for f in fr.failures if f.gate == "secondary_op"]
-    assert not fr.passes and [(f.axis, f.have) for f in sf] == [("hip", None)]
-    assert "HIP" in sf[0].human and "not declared whether you do it in-house" in sf[0].human
-
-
-def test_secondary_op_declared_false_is_absent_not_a_pass():
-    # validate_shop_ops accepts booleans; ``false`` must never read as in-house.
-    fr = fit_machine(_ti_print(sec=("stress_relief", "hip")), _eos(),
-                     ShopCaps(ops={"hip": False}))
-    sf = [f for f in fr.failures if f.gate == "secondary_op"]
-    assert not fr.passes and sf and sf[0].have is False
-    assert sf[0].human == "needs HIP (hot isostatic pressing); not done in-house"
-    tight = fit_machine(part(it=6), mill(it=9), ShopCaps(ops={"grinding": False}))
-    tf = [f for f in tight.failures if f.gate == "tolerance"]
-    assert not tight.passes and tf and tf[0].have == 9
+def test_secondary_op_required_absent_hard_fail():
+    m = MachineCap(process="dmls", name="EOS", max_workpiece_kg=50,
+                   hourly_rate_usd=180, materials=("Ti6Al4V", "titanium"),
+                   capabilities={"x": 400, "y": 400, "z": 400})
+    fr = fit_machine(part(process="dmls", material_name="Ti6Al4V",
+                          material_class="titanium", bbox=(50, 100, 200),
+                          sec=("stress_relief",)), m, ShopCaps(ops={}))
+    sf = [f for f in fr.failures if f.gate == "secondary_op"][0]
+    assert not fr.passes and "stress_relief" in sf.human and sf.have is not None
 
 
 def test_secondary_op_hip_size_limited():
@@ -715,45 +660,15 @@ def test_verdict_makeable_not_on_owned_with_gap():
 
 
 def test_verdict_not_on_owned_when_required_op_absent():
-    # owns the DMLS machine, but the HIP its declared duty needs is declared absent
-    p = _ti_print(sec=("stress_relief", "hip"))
-    v = verify_part({"dmls": p}, [_eos()], ShopCaps(ops={"hip": False}))
+    # owns the DMLS machine, but the mandated stress-relief op is not in-house
+    m = MachineCap(process="dmls", name="EOS", max_workpiece_kg=50,
+                   hourly_rate_usd=180, materials=("Ti6Al4V", "titanium"),
+                   capabilities={"x": 400, "y": 400, "z": 400})
+    p = part(process="dmls", material_name="Ti6Al4V", material_class="titanium",
+             bbox=(50, 100, 200), sec=("stress_relief",), it=STANDARD_IT)
+    v = verify_part({"dmls": p}, [m], ShopCaps(ops={}))
     assert v.verdict == "makeable_not_on_owned"
     assert any(g.gate == "secondary_op" for g in v.gap)
-
-
-def test_verdict_in_house_when_the_machines_own_op_was_never_declared():
-    # Round 7: the owned metal printer that fits makes the part; its stress relief
-    # is assumed done in-house and said, not "can't confirm".
-    v = verify_part({"dmls": _ti_print()}, [_eos()], ShopCaps(ops={}))
-    assert v.verdict == "makeable_with_secondary_op" and v.best_machine == "EOS"
-    route = v.per_route["dmls"]
-    assert route["verdict"] == "makeable_with_secondary_op" and route["failures"] == ()
-    assert route["resource"]["assumed_in_house"] == ("stress_relief",)
-
-
-def test_verdict_unknown_when_a_buyer_op_was_never_declared():
-    v = verify_part({"dmls": _ti_print(sec=("stress_relief", "hip"))}, [_eos()], ShopCaps(ops={}))
-    assert v.verdict == "unknown"
-    f = v.per_route["dmls"]["failures"][0]
-    assert f.gate == "secondary_op" and f.axis == "hip" and f.have is None
-    assert "not declared whether you do it in-house" in f.human
-
-
-def test_an_unconfirmed_owned_route_outranks_outside_only():
-    # Audit W1: an owned resin printer that fits but declares no materials, next
-    # to routes the shop owns nothing for, is "can't confirm", not "outside only".
-    m = MachineCap(process="dlp", name="Carbon M2", max_workpiece_kg=None,
-                   hourly_rate_usd=None, materials=(),
-                   capabilities={"x": 189, "y": 118, "z": 326})
-    routes = {"dlp": part(process="dlp", material_name="Standard Resin", material_class="polymer",
-                          bbox=(20, 20, 20), it=STANDARD_IT),
-              "sls": part(process="sls", material_name="PA12 (Nylon 12)", material_class="polymer",
-                          bbox=(20, 20, 20), it=STANDARD_IT)}
-    v = verify_part(routes, [m])
-    assert v.per_route["sls"]["verdict"] == "makeable_outsource_only"
-    assert v.per_route["dlp"]["verdict"] == "unknown"
-    assert v.verdict == "unknown"
 
 
 def test_verdict_makeable_outsource_only():
@@ -814,105 +729,6 @@ def test_verdict_picks_cheapest_passing_machine():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ROUTE DFM GATE — a route whose own DFM verdict is fail is never makeable
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-def _thin_wall_score(process="cnc_3axis"):
-    from src.analysis.models import Issue, ProcessScore, ProcessType, Severity
-
-    pt = ProcessType(process)
-    return ProcessScore(process=pt, score=0.0, verdict="fail", issues=[
-        Issue(code="THIN_WALL", severity=Severity.ERROR, process=pt,
-              message=f"24 faces (100.0%) below 0.8mm min wall for {process}. "
-                      "Thinnest: 0.5mm.",
-              measured_value=0.5, required_value=0.8, measurement_unit="mm"),
-        Issue(code="SHARP_CORNER", severity=Severity.WARNING, process=pt,
-              message="advisory only"),
-    ])
-
-
-def _dfm_blocked(process="cnc_3axis", **kw):
-    return replace(part(process=process, **kw),
-                   dfm_failures=dfm_failures_from_score(_thin_wall_score(process)))
-
-
-def test_dfm_failures_carry_only_error_blockers_as_hard_failures():
-    (f,) = dfm_failures_from_score(_thin_wall_score())
-    assert (f.gate, f.axis, f.need, f.have) == ("dfm", "THIN_WALL", 0.8, 0.5)
-    assert f.human.startswith("24 faces (100.0%) below 0.8mm min wall")
-    assert f.have is not None  # a hard design blocker, never an "unknown"
-
-
-def test_dfm_failures_empty_unless_route_verdict_is_fail():
-    from src.analysis.models import ProcessScore, ProcessType
-
-    assert dfm_failures_from_score(None) == ()
-    issues = ProcessScore(ProcessType.CNC_3AXIS, 0.7, "issues")
-    assert dfm_failures_from_score(issues) == ()
-    # a fail verdict without a readable ERROR issue still blocks, categorically
-    (f,) = dfm_failures_from_score(ProcessScore(ProcessType.CNC_3AXIS, 0.0, "fail"))
-    assert (f.gate, f.need, f.have) == ("dfm", "pass", "fail")
-    assert "cnc_3axis" in f.human
-
-
-def test_part_req_carries_route_dfm_failures():
-    d = FakeDrivers((20, 40, 60))
-    mat = FakeMaterial("6061-T6 Aluminum", 2.7)
-    blocked = part_req_from_drivers("cnc_3axis", d, mat, "standard",
-                                    process_score=_thin_wall_score())
-    assert [f.gate for f in blocked.dfm_failures] == ["dfm"]
-    assert part_req_from_drivers("cnc_3axis", d, mat, "standard").dfm_failures == ()
-
-
-def test_verdict_dfm_fail_overrides_a_passing_owned_machine():
-    assert fit_machine(part(), mill()).passes  # the machine itself fits the part
-    v = verify_part({"cnc_3axis": _dfm_blocked()}, [mill()])
-    assert v.verdict == "not_makeable"
-    assert v.best_machine is None and v.resource is None
-    assert v.gap[0].gate == "dfm" and "0.8mm min wall" in v.gap[0].human
-    assert len(v.gap) == 1  # the fitting mill adds no acquisition gap
-    route = v.per_route["cnc_3axis"]
-    assert route["verdict"] == "not_makeable"
-    assert route["best_machine"] == "Haas VF-2"  # closest owned machine
-    assert [f.gate for f in route["failures"]] == ["dfm"]
-    assert "resource" not in route  # no marginal-rate hint on a blocked route
-
-
-def test_verdict_dfm_fail_on_unowned_route_is_not_outsource_only():
-    v = verify_part({"cnc_5axis": _dfm_blocked("cnc_5axis")}, [mill()])
-    assert v.verdict == "not_makeable"
-    route = v.per_route["cnc_5axis"]
-    assert route["verdict"] == "not_makeable"
-    assert route["machines_evaluated"] == 0 and route["best_machine"] is None
-    assert route["failures"][0].gate == "dfm"
-
-
-def test_verdict_reflects_best_dfm_ready_route():
-    # a DFM-ready unowned route outranks a DFM-blocked route on a fitting mill
-    v = verify_part({"cnc_3axis": _dfm_blocked(), "dmls": part(process="dmls")},
-                    [mill()])
-    assert v.verdict == "makeable_outsource_only"
-    assert v.per_route["cnc_3axis"]["verdict"] == "not_makeable"
-    assert v.per_route["dmls"]["verdict"] == "makeable_outsource_only"
-    # and a DFM-ready route that fits an owned machine is still in-house
-    v = verify_part({"cnc_3axis": part(), "cnc_5axis": _dfm_blocked("cnc_5axis")},
-                    [mill()])
-    assert v.verdict == "makeable_in_house" and v.best_machine == "Haas VF-2"
-    assert v.per_route["cnc_5axis"]["verdict"] == "not_makeable"
-
-
-def test_verdict_dfm_blocked_route_keeps_its_machine_gap_behind_the_blocker():
-    small = mill(x=50, y=50, z=50)
-    v = verify_part({"cnc_3axis": _dfm_blocked()}, [small])
-    assert v.verdict == "not_makeable"
-    assert v.gap[0].gate == "dfm"
-    assert "envelope" in [f.gate for f in v.gap[1:]]
-    gates = [f.gate for f in v.per_route["cnc_3axis"]["failures"]]
-    assert gates[0] == "dfm" and "envelope" in gates
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 # HONESTY INVARIANTS (spec §2)
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -947,7 +763,7 @@ def test_honesty_gap_is_quantified():
     v = verify_part({"cnc_3axis": part(bbox=(100, 200, 600))}, [m])
     g = v.gap[0]
     assert g.need == 600 and g.have == pytest.approx(305 * 3**.5)
-    assert g.axis == "diameter_mm" and "too big for your" in g.human and "diagonal" in g.human
+    assert g.axis == "diameter_mm" and "not a machine specification" in g.human
 
 
 def test_env_exclusion_cites_property():
@@ -957,91 +773,3 @@ def test_env_exclusion_cites_property():
     # exclusion must carry the standard + the offending property, not a naked drop
     assert exclusions[0].gate == "environment"
     assert "nace_mr0175" in exclusions[0].have
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# NOZZLE gate — a filament printer can't lay a wall thinner than its nozzle
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-def printer(nozzle=None, **cap):
-    caps = {"x": 256, "y": 256, "z": 256, **cap}
-    if nozzle is not None:
-        caps["nozzle_dia_mm"] = nozzle
-    return MachineCap(process="fdm", name="X1C", max_workpiece_kg=5.0,
-                      hourly_rate_usd=8.0, materials=("PLA", "polymer"),
-                      capabilities=caps)
-
-
-def fdm_part(wall=None, precision=0.0):
-    return replace(part(process="fdm", bbox=(20, 40, 60), mass=0.05,
-                        material_name="PLA", material_class="polymer"),
-                   min_wall_mm=wall, geometry_precision_mm=precision)
-
-
-def _nozzle(fr):
-    return [f for f in fr.failures if f.axis == "nozzle_dia_mm"]
-
-
-def test_nozzle_wider_than_thinnest_measured_wall_fails_with_cited_reason():
-    fr = fit_machine(fdm_part(wall=0.45), printer(nozzle=0.6))
-    (f,) = _nozzle(fr)
-    assert not fr.passes
-    assert (f.gate, f.need, f.have) == ("min_feature", 0.45, 0.6)
-    assert "nozzle 0.60mm is wider than the thinnest wall 0.45mm" in f.human
-    assert "measured by the DFM wall-thickness check" in f.human
-
-
-def test_nozzle_at_or_under_the_thinnest_wall_passes():
-    assert fit_machine(fdm_part(wall=0.45), printer(nozzle=0.4)).passes
-    assert fit_machine(fdm_part(wall=0.4), printer(nozzle=0.4)).passes
-
-
-def test_nozzle_gate_needs_a_declared_nozzle_and_a_measured_wall():
-    # No thin wall measured (the DFM check found none below its limit) → no claim.
-    assert fit_machine(fdm_part(wall=None), printer(nozzle=1.0)).passes
-    # No nozzle declared → the gate does not engage (display-only otherwise).
-    assert fit_machine(fdm_part(wall=0.3), printer()).passes
-
-
-def test_nozzle_gate_within_source_uncertainty_is_unknown_not_a_failure():
-    fr = fit_machine(fdm_part(wall=0.38, precision=0.05), printer(nozzle=0.4))
-    (f,) = _nozzle(fr)
-    assert f.have is None and "uncertainty" in f.human
-
-
-def test_nozzle_gate_only_reads_filament_routes():
-    resin = MachineCap(process="sla", name="Form 4", max_workpiece_kg=5.0,
-                       hourly_rate_usd=12.0, materials=("polymer",),
-                       capabilities={"x": 200, "y": 125, "z": 210, "nozzle_dia_mm": 0.4})
-    p = replace(fdm_part(wall=0.2), process="sla")
-    assert _nozzle(fit_machine(p, resin)) == []
-
-
-def test_thinnest_wall_comes_from_the_route_dfm_measurement():
-    from src.analysis.models import Issue, ProcessScore, ProcessType, Severity
-    from src.costing.makeability import thinnest_measured_wall
-
-    pt = ProcessType.FDM
-    score = ProcessScore(process=pt, score=0.6, verdict="issues", issues=[
-        Issue(code="THIN_WALL", severity=Severity.WARNING, process=pt,
-              message="thin", measured_value=0.62, required_value=0.8),
-        Issue(code="THIN_WALL", severity=Severity.WARNING, process=pt,
-              message="thinner (rule pack)", measured_value=0.5, required_value=1.0),
-        Issue(code="SHARP_CORNER", severity=Severity.WARNING, process=pt,
-              message="not a wall", measured_value=0.1),
-    ])
-    assert thinnest_measured_wall(score) == 0.5
-    assert thinnest_measured_wall(None) is None
-    assert thinnest_measured_wall(ProcessScore(process=pt, score=1.0, verdict="pass")) is None
-    req = part_req_from_drivers("fdm", FakeDrivers((20, 40, 60), nominal_wall_mm=3.0),
-                                FakeMaterial("PLA", 1.24), "standard", process_score=score)
-    # The measured minimum, not the 2·V/A nominal wall.
-    assert (req.min_wall_mm, req.min_feature_mm) == (0.5, 3.0)
-
-
-def test_nozzle_failure_makes_an_owned_printer_a_gap_not_in_house():
-    v = verify_part({"fdm": fdm_part(wall=0.45)}, [printer(nozzle=0.6)])
-    assert v.verdict == "makeable_not_on_owned"
-    assert any(g.axis == "nozzle_dia_mm" for g in v.gap)
-    assert verify_part({"fdm": fdm_part(wall=0.45)}, [printer(nozzle=0.4)]).verdict == "makeable_in_house"

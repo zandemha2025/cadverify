@@ -1,26 +1,16 @@
 import type { Metadata } from "next";
 import { DocumentPage } from "@/components/site/document-page";
 import { PilotForm } from "../company/pilot-form";
-import { getPlans } from "@/lib/plans";
-import { SIGNUP_HREF } from "@/lib/site/navigation";
 
 export const metadata: Metadata = {
-  title: "Pilot — ScaleCAD",
+  title: "Pilot — ScaleCad",
   description: "Qualify with 25 representative parts, then scope a $7,500, 4–6 week evaluation of up to 500 parts against your plant’s equipment and actuals.",
   alternates: { canonical: "/pilot" },
 };
 
 export default async function PilotPage({ searchParams }: { searchParams: Promise<{ workflow?: string }> }) {
-  const [{ workflow }, plans] = await Promise.all([searchParams, getPlans()]);
-  const catalog = plans.free.catalog_parts;
+  const { workflow } = await searchParams;
   return <DocumentPage label="Pilot" title="Find out which work belongs on your floor." intro="Start with a free, team-assisted 25-part qualification. If the fit is right, agree on a measured pilot before committing." sections={[
-    {
-      id: "self-serve",
-      title: `Or run ${catalog} parts yourself, free.`,
-      body: `With a work email, check up to ${catalog} parts at once (files, a folder or a ZIP, with an optional parts list of quantities and materials). Each one is sorted against the machines you declare: make in-house, buy outside, needs a new machine, or can't be made as drawn, with machine hours and material first. No call needed.`,
-      href: SIGNUP_HREF,
-      link: `Run ${catalog} parts free`,
-    },
     {
       id: "inputs",
       title: "Start with representative inputs.",

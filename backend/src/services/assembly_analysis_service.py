@@ -80,19 +80,16 @@ def _max_interference_pairs() -> int:
 
 
 def _analyze_workers() -> int:
-    """Thread-pool width for the per-design analyses (ASSEMBLY_ANALYZE_WORKERS,
-    default 1). The engine is mostly Python between short numpy calls, so threads
-    contend for the GIL instead of overlapping: the 30-body asm-30 took 24.5 s on
-    one thread, 31 s on two and 45 s on four (59 s of CPU); the 18-part AS1 11 s
-    and 15 s. One thread is also what the compute budget counts: an assembly
-    analysis holds one compute slot."""
+    """Bounded thread-pool width for the per-part cost loop. The cost engine is
+    numpy-heavy (releases the GIL), so a small pool genuinely overlaps the parts;
+    cost is per-part CPU, so we cap independently of core count."""
     try:
         env = os.getenv("ASSEMBLY_ANALYZE_WORKERS")
         if env:
             return max(1, int(env))
     except ValueError:
         pass
-    return 1
+    return max(1, min(4, (os.cpu_count() or 2)))
 
 
 # Surfaced verbatim in every analysis response so a hardcore engineer sees the
@@ -543,7 +540,7 @@ def analyze_one_part(
                 from src.analysis.fastener_standards import identify_standard_fastener
 
                 identity = identify_standard_fastener(
-                    part, cots["kind"], features=features  # classify_cots_fastener always sets kind
+                    part, cots.get("kind"), features=features
                 )
                 if identity is not None:
                     cots["identity"] = identity
@@ -619,7 +616,7 @@ def _nearest_vertex_gap(mesh_a, mesh_b) -> Optional[float]:
     closest distance, which at ~6 s/pair would blow the budget); at assembly-scale
     tessellation density it reliably separates 'touching' from 'clears'."""
     try:
-        from scipy.spatial import cKDTree  # pyright: ignore[reportAttributeAccessIssue]  # scipy's stubs omit its compiled cKDTree export
+        from scipy.spatial import cKDTree
 
         tree = cKDTree(np.asarray(mesh_b.vertices, dtype=float))
         d, _ = tree.query(np.asarray(mesh_a.vertices, dtype=float), k=1)

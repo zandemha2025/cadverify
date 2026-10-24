@@ -2,13 +2,11 @@ import { grantLocalPaidAccess } from "./local-admin-api-key.mjs";
 import { createRequire } from "node:module";
 import { createHash, randomBytes } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { configuredClientIp } from "./run-scoped-client-ip.mjs";
-import { checkPartContextRead, isPartContextRead } from "./part-context-validation.mjs";
 
 const require = createRequire(new URL("../../frontend/package.json", import.meta.url));
 const pw = require("playwright-core");
@@ -41,19 +39,15 @@ const pinnedCube = {
   estimates: 48,
   makeNowProcess: "fdm",
   // Tooling must beat the cheapest eligible make route (MJF), not only FDM.
-  // MJF's touch labor now learns past the first lot (d57f9e5f) and each plate is
-  // set up once (57ca3fc4), so its price falls with quantity: on the record's
-  // own quantity model (c6b7b408) MJF is $2.6320 and molding $2.6322 at 5,513,
-  // molding cheaper from 5,514. (It was 4,591/4,592 against a flat $3.48.)
-  crossoverQty: 5513,
+  // Independently checked at 4,591/4,592 in crossover-routes-regression.json.
+  crossoverQty: 4592,
   recommendation: {
     1: ["fdm", 30.0],
-    // labor 2.8321 + machine 0.6125 + material 0.1811 + one plate's setup 0.175
-    100: ["mjf", 3.8],
-    1000: ["mjf", 3.13],
-    2000: ["mjf", 2.92],
-    5000: ["mjf", 2.66],
-    10000: ["mjf", 2.48],
+    100: ["mjf", 3.62],
+    1000: ["mjf", 3.48],
+    2000: ["mjf", 3.48],
+    5000: ["mjf", 3.48],
+    10000: ["mjf", 3.48],
   },
 };
 
@@ -123,26 +117,18 @@ const batchCsvHeaders = [
   "analysis_url",
   "error",
 ];
-// The supplier's line per part (dbd669b0): what it quotes from, none of our cost or review state.
 const rfqLineItemHeaders = [
-  "line",
-  "part",
-  "part_number",
-  "description",
-  "material",
-  "quantity",
-  "yearly_volume",
-  "process",
-  "size",
-  "cad_file",
-  "part_specs",
-  "supplier_must_hold",
+  "decision_id",
+  "filename",
+  "approval_status",
+  "is_stale",
+  "unvalidated_confidence",
+  "make_now_process",
+  "crossover_qty",
+  "manifest_part_id",
+  "program",
+  "raw_cad_included",
 ];
-// Processes in plain words in the cost-report PDF (4480d253).
-const processWords = {
-  fdm: "Filament printing (FDM/FFF)",
-  mjf: "Nylon powder printing (MJF)",
-};
 const costDriverHeaders = [
   "process",
   "material",
@@ -273,17 +259,6 @@ function parseCsv(text, label) {
     return Object.fromEntries(headers.map((header, column) => [header, values[column]]));
   });
   return { headers, records };
-}
-
-function pdfText(bytes, name) {
-  const file = path.join(outputRoot, name);
-  mkdirSync(outputRoot, { recursive: true });
-  writeFileSync(file, bytes);
-  try {
-    return execFileSync("pdftotext", [file, "-"], { encoding: "utf8" }).replace(/\s+/g, " ");
-  } catch (error) {
-    throw new Error(`pdftotext is required for semantic PDF validation: ${error instanceof Error ? error.message : String(error)}`);
-  }
 }
 
 function zipText(entries, name) {
@@ -478,7 +453,6 @@ async function main() {
   const page = await context.newPage();
   const steps = [];
   const consoleErrors = [];
-  const expectedConsoleErrors = [];
   const requestFailures = [];
   const pendingSuccessAborts = [];
   const successfulAbortableResponses = new Map();
@@ -487,7 +461,7 @@ async function main() {
 
   page.on("console", (message) => {
     if (message.type() === "error" && !/favicon\.ico|ResizeObserver loop limit exceeded/i.test(message.text())) {
-      consoleErrors.push({ url: page.url(), sourceUrl: message.location().url, text: message.text() });
+      consoleErrors.push({ url: page.url(), text: message.text() });
     }
   });
   page.on("pageerror", (error) => consoleErrors.push({ url: page.url(), text: error.message }));
@@ -557,7 +531,7 @@ async function main() {
       await page.goto("/signup", { waitUntil: "domcontentloaded", timeout: 30_000 });
       await page.getByLabel("Full name", { exact: true }).fill("ScaleCad QA User");
       await page.getByLabel("Email").fill(email);
-      await page.getByLabel("Password", { exact: true }).fill(password);
+      await page.getByLabel("Password").fill(password);
       await page.getByRole("button", { name: /^Create account$/ }).click();
       await page.waitForURL((url) => url.pathname === "/verify", { timeout: 20_000 });
       await page.getByText("MAKE THE ESTIMATES YOURS").waitFor({ timeout: 12_000 });
@@ -585,12 +559,6 @@ async function main() {
         (response) => isProxyResponse(response, "POST", "/validate/cost"),
         { timeout: cadUploadTimeoutMs }
       );
-      // The run reads the part's stored context before costing (c485111a).
-      const contextResponsePromise = page.waitForResponse(
-        (response) => isPartContextRead(response, pinnedCube.sha256),
-        { timeout: cadUploadTimeoutMs }
-      );
-      const consoleStart = consoleErrors.length;
       await page.locator('input[type="file"][accept*=".stl"]').first().setInputFiles(cubePath);
       const costResponse = await costResponsePromise;
       assert(costResponse.ok(), `cost response returned HTTP ${costResponse.status()}`);
@@ -609,9 +577,6 @@ async function main() {
       assert(/watertight true/i.test(text), "live Verify UI did not show watertight true");
       assert(text.includes(pinnedCube.sha256), "live Verify UI did not show the exact source SHA-256");
       const liveScreenshot = await shot("verified-step-result");
-      // A new account has declared nothing about cube.step: the verified 404
-      // "no declared context for part" and its one console error are expected.
-      await checkPartContextRead(await contextResponsePromise, { consoleErrors, expectedConsoleErrors, consoleStart });
 
       await page.goto("/cost-decisions", { waitUntil: "domcontentloaded", timeout: 30_000 });
       await page.getByRole("heading", { name: "Cost history" }).waitFor({ timeout: 12_000 });
@@ -838,10 +803,6 @@ async function main() {
       const rfqDetail = (await detailResponse.json()).package;
       assertJsonEqual(rfqDetail, rfqPackage, "reopened RFQ package detail");
       await page.getByText(/1 decisions/i).waitFor({ timeout: 12_000 });
-      // The buyer is told ScaleCAD doesn't send it and whether the CAD is in it.
-      await page.getByText(/^Not sent by ScaleCAD: download the ZIP and send it yourself\./).waitFor({ timeout: 12_000 });
-      const rawCadCard = page.getByText("Raw CAD", { exact: true }).locator("xpath=../..");
-      assert((await rawCadCard.innerText()).replace(/\s+/g, " ").trim() === "Raw CAD No", "RFQ detail does not say the raw CAD is not included");
       const detailRow = page.getByRole("row").filter({ hasText: "cube.step" }).first();
       await detailRow.waitFor({ timeout: 12_000 });
       const detailRowText = (await detailRow.innerText()).toLowerCase();
@@ -868,149 +829,86 @@ async function main() {
       const zipBytes = await readFile(zipPath);
       const entries = unzipSync(new Uint8Array(zipBytes));
       const filenames = Object.keys(entries).sort();
-      // dbd669b0: the ZIP is the supplier's request for quote: per part its name,
-      // material, quantity, size and the CAD when asked for; who asks and the buyer's
-      // note. Our cost, the records' review state and the buyer's warnings stay in
-      // ScaleCAD (the cost goes only when the buyer adds it to a package).
-      const requiredRootFiles = ["line-items.csv", "package_manifest.json", "supplier-brief.md", "supplier-brief.pdf"];
-      assertJsonEqual(filenames, requiredRootFiles, "RFQ ZIP file list");
+      const requiredRootFiles = [
+        "package_manifest.json",
+        "line-items.csv",
+        "supplier-brief.md",
+        "cost-decisions.json",
+      ];
+      requiredRootFiles.forEach((name) => assert(entries[name], `RFQ ZIP is missing required file ${name}`));
 
       const manifest = zipJson(entries, "package_manifest.json");
+      assert(manifest.id === rfqDetail.id, "RFQ manifest package id differs from the reopened package");
       assert(manifest.title === rfqTitle, "RFQ manifest title differs from the reopened package");
-      assert(manifest.supplier === rfqSupplier, "RFQ manifest supplier differs from the UI input");
-      assert(manifest.requested_by?.email === email, "RFQ manifest lost who asks for the quote");
-      assert(manifest.includes_cost_estimate === false, "RFQ manifest carries our cost estimate though the buyer did not add it");
-      assertJsonEqual([...manifest.files].sort(), filenames, "RFQ manifest file list");
-      assert(Array.isArray(manifest.parts) && manifest.parts.length === 1, "RFQ manifest did not list exactly one part");
-      const [manifestPart] = manifest.parts;
-      const packagedItem = rfqDetail.items[0];
-      assert(packagedItem.decision.id === durableCostDetail.id, "RFQ package item links a different decision");
-      assert(packagedItem.request?.name === "cube.step" && manifestPart.name === packagedItem.request.name, `RFQ manifest part was ${manifestPart.name}`);
-      assert(manifestPart.line === 1, "RFQ manifest part is not line 1");
-      assert(manifestPart.material === packagedItem.request.material, "RFQ manifest material differs from the package request");
-      // No quantity was given (the buyer sees the quantity_missing warning; the supplier is asked without one).
-      assert(manifestPart.quantity === null && packagedItem.request.quantity === null, "RFQ manifest invented a quantity");
-      assert(rfqDetail.warnings.some((warning) => warning.code === "quantity_missing"), "the buyer was not told the quantity is missing");
-      // Raw CAD was not asked for: none in the package, and both copies say so.
-      assert(rfqDetail.raw_cad_included === false && packagedItem.raw_cad?.included === false, "RFQ package claims raw CAD that was not asked for");
-      assert(manifestPart.cad_file === null, "RFQ manifest names a CAD file that was not included");
+      assert(manifest.supplier_name === rfqSupplier, "RFQ manifest supplier differs from the UI input");
+      assert(manifest.item_count === 1, `RFQ manifest item_count was ${manifest.item_count}`);
+      assert(manifest.live_supplier_send === false, "RFQ manifest incorrectly claims a live supplier send");
+      requiredRootFiles.forEach((name) => assert(manifest.included_files.includes(name), `RFQ manifest omitted included file ${name}`));
+      assertJsonEqual(manifest.warnings, rfqDetail.warnings, "RFQ manifest warnings");
+      assert(manifest.metadata?.note === rfqNote, "RFQ manifest lost the buyer note");
+      assert(manifest.metadata?.contract === "should_cost_evidence_not_supplier_quote", "RFQ manifest lost the evidence-only contract");
+
+      const packagedItems = zipJson(entries, "cost-decisions.json");
+      assert(Array.isArray(packagedItems) && packagedItems.length === 1, "RFQ cost-decisions.json did not contain one item");
+      const packagedItem = packagedItems[0];
+      assertJsonEqual(packagedItem, rfqDetail.items[0], "RFQ packaged decision envelope");
+      assert(packagedItem.decision.id === durableCostDetail.id, "RFQ packaged decision id differs from the durable record");
+      assert(packagedItem.decision.filename === durableCostDetail.filename, "RFQ packaged filename differs from the durable record");
+      assertJsonEqual(packagedItem.cost_decision, durableCostDetail.result, "RFQ packaged cost decision content");
 
       const lineItems = parseCsv(zipText(entries, "line-items.csv"), "RFQ line-items.csv");
       assertHeaders(lineItems.headers, rfqLineItemHeaders, "RFQ line-items.csv");
       assert(lineItems.records.length === 1, `RFQ line-items.csv contained ${lineItems.records.length} rows`);
       const lineItem = lineItems.records[0];
-      assert(lineItem.line === "1" && lineItem.part === "cube.step", "RFQ line item names a different part");
-      assert(lineItem.material === packagedItem.request.material, "RFQ line item material drifted");
-      assert(lineItem.quantity === "" && lineItem.cad_file === "", "RFQ line item invented a quantity or a CAD file");
-      const sizeLabel = `${durableCostDetail.result.geometry.bbox_mm.map((value) => Number(value.toFixed(1))).join(" × ")} mm`;
-      assert(lineItem.size === sizeLabel, `RFQ line item size was ${lineItem.size}, expected ${sizeLabel}`);
+      assert(lineItem.decision_id === durableCostDetail.id, "RFQ line item links a different decision id");
+      assert(lineItem.filename === durableCostDetail.filename, "RFQ line item links a different filename");
+      assert(lineItem.approval_status === rfqDetail.items[0].decision.approval_status, "RFQ line item approval status drifted");
+      assert(lineItem.is_stale.toLowerCase() === String(Boolean(rfqDetail.items[0].decision.is_stale)), "RFQ line item stale flag drifted");
+      assert(
+        lineItem.unvalidated_confidence.toLowerCase() === String(Boolean(rfqDetail.items[0].decision.unvalidated_confidence)),
+        "RFQ line item confidence flag drifted"
+      );
+      assert(lineItem.make_now_process === durableCostDetail.make_now_process, "RFQ line item make-now process drifted");
+      if (durableCostDetail.crossover_qty == null) {
+        assert(lineItem.crossover_qty === "", "RFQ line item invented a crossover quantity");
+      } else {
+        assert(
+          approxEqual(Number(lineItem.crossover_qty), Number(durableCostDetail.crossover_qty), 0.000001),
+          `RFQ line item crossover ${lineItem.crossover_qty} differs from ${durableCostDetail.crossover_qty}`
+        );
+      }
+      assert(lineItem.raw_cad_included.toLowerCase() === "false", "RFQ line item unexpectedly claimed raw CAD");
 
       const supplierBrief = zipText(entries, "supplier-brief.md");
       assert(supplierBrief.includes(`# ${rfqTitle}`), "supplier brief lost the package title");
-      assert(supplierBrief.includes("Request for quote."), "supplier brief does not say it is a request for quote");
-      assert(supplierBrief.includes(`- Supplier: ${rfqSupplier}`), "supplier brief lost the supplier");
-      assert(supplierBrief.includes(email), "supplier brief lost who asks for the quote");
-      assert(supplierBrief.includes("- Parts: 1"), "supplier brief lost its part count");
+      assert(supplierBrief.includes(`Supplier target: ${rfqSupplier}`), "supplier brief lost the supplier target");
+      assert(supplierBrief.includes("Decisions included: 1"), "supplier brief lost its decision count");
+      assert(supplierBrief.includes("Live supplier send: no"), "supplier brief lost the no-live-send boundary");
       assert(supplierBrief.includes(rfqNote), "supplier brief lost the buyer note");
-      assert(supplierBrief.includes("### 1. cube.step"), "supplier brief lost the part");
-      assert(supplierBrief.includes(`- Size: ${sizeLabel}`), "supplier brief lost the part's measured size");
-      assert(supplierBrief.includes("- CAD: not in this package"), "supplier brief does not say the CAD is not included");
-
-      const pdfBytes = entries["supplier-brief.pdf"];
-      assert(pdfBytes.length > 1_000, `RFQ supplier brief PDF was only ${pdfBytes.length} bytes`);
-      assert(strFromU8(pdfBytes.slice(0, 5)).startsWith("%PDF-"), "RFQ supplier brief is not a PDF");
-      const briefPdfText = pdfText(pdfBytes, `training-guide-supplier-brief-${runId}.pdf`);
-      for (const expected of [rfqTitle, "Request for quote", rfqSupplier, rfqNote, "cube.step", "not in this package"]) {
-        assert(briefPdfText.includes(expected), `RFQ supplier brief PDF omitted ${JSON.stringify(expected)}`);
-      }
-
-      // Nothing of ours leaves: no price, no review state, no buyer warning.
-      const supplierText = [supplierBrief, briefPdfText, zipText(entries, "line-items.csv"), zipText(entries, "package_manifest.json")].join("\n");
-      for (const recommendation of Object.values(durableCostDetail.result.decision.recommendation)) {
-        assert(!supplierText.includes(`$${recommendation.unit_cost_usd.toFixed(2)}`), `the supplier's copy shows our price $${recommendation.unit_cost_usd.toFixed(2)}`);
-      }
-      assert(!/should-cost|crossover|unit cost/i.test(supplierText), "the supplier's copy carries our cost wording");
-      assert(!supplierText.includes(packagedItem.decision.approval_status), "the supplier's copy carries the record's review state");
+      assert(/not a supplier quote/i.test(supplierBrief), "supplier brief lost the evidence-only warning");
       for (const warning of rfqDetail.warnings) {
-        assert(!supplierText.includes(warning.code) && !supplierText.includes(warning.message), `the supplier's copy carries the buyer's warning ${warning.code}`);
+        assert(supplierBrief.includes(warning.code), `supplier brief omitted warning ${warning.code}`);
       }
 
-      rfqArchiveEvidence = {
-        id: rfqDetail.id,
-        route: `/rfq-packages/${rfqDetail.id}`,
-        decisionId: durableCostDetail.id,
-        detailRefreshExact: true,
-        zip: {
-          path: zipPath,
-          bytes: file.size,
-          sha256: sha256(zipBytes),
-          files: filenames,
-          requiredRootFiles,
-        },
-        manifest: {
-          parts: manifest.parts.length,
-          includesCostEstimate: manifest.includes_cost_estimate,
-          cadFile: manifestPart.cad_file,
-        },
-        package: {
-          liveSupplierSend: rfqDetail.live_supplier_send,
-          rawCadIncluded: rfqDetail.raw_cad_included,
-          warningCodes: rfqDetail.warnings.map((warning) => warning.code),
-          contract: rfqDetail.metadata?.contract,
-        },
-        lineItem,
-        supplierCopyHasNoCost: true,
-        screenshot: await shot("rfq-package-detail-refreshed"),
-      };
-      return rfqArchiveEvidence;
-    });
+      const decisionJsonFiles = filenames.filter((name) => /decisions\/[^/]+\/cost-decision\.json$/.test(name));
+      assert(decisionJsonFiles.length === 1, `RFQ ZIP contained ${decisionJsonFiles.length} per-decision JSON files`);
+      const decisionPrefix = decisionJsonFiles[0].replace(/cost-decision\.json$/, "");
+      const pdfFile = `${decisionPrefix}should-cost-report.pdf`;
+      const requiredDecisionFiles = [
+        `${decisionPrefix}cost-decision.json`,
+        `${decisionPrefix}cost-drivers.csv`,
+        pdfFile,
+        `${decisionPrefix}raw-cad-unavailable.txt`,
+      ];
+      requiredDecisionFiles.forEach((name) => assert(entries[name], `RFQ ZIP is missing required decision file ${name}`));
+      assertJsonEqual(zipJson(entries, `${decisionPrefix}cost-decision.json`), durableCostDetail.result, "per-decision cost-decision.json");
 
-    await step("the decision's own exports carry its cost: PDF, JSON and CSV", async () => {
-      // The cost the supplier no longer gets (dbd669b0) is the buyer's own record:
-      // the decision page's PDF report, JSON and CSV of cost inputs.
-      await page.goto(`/cost-decisions/${durableCostDetail.id}`, { waitUntil: "domcontentloaded", timeout: 30_000 });
-      await page.getByRole("button", { name: /Download PDF/i }).waitFor({ timeout: 20_000 });
-      const saveDownload = async (name, target) => {
-        const downloadPromise = page.waitForEvent("download", { timeout: 60_000 });
-        await page.getByRole("button", { name }).click();
-        const download = await downloadPromise;
-        const saved = path.join(outputRoot, target);
-        await download.saveAs(saved);
-        return readFile(saved);
-      };
-
-      const pdfBytes = await saveDownload(/Download PDF/i, `training-guide-should-cost-${runId}.pdf`);
-      assert(pdfBytes.length > 1_000, `should-cost PDF was only ${pdfBytes.length} bytes`);
-      assert(strFromU8(pdfBytes.slice(0, 5)).startsWith("%PDF-"), "should-cost report is not a PDF");
-      const normalizedPdf = pdfText(pdfBytes, `training-guide-should-cost-text-${runId}.pdf`);
-      for (const expected of [
-        "Should-Cost & Make-vs-Buy Report",
-        durableCostDetail.filename,
-        String(durableCostDetail.result.geometry.volume_cm3),
-        String(durableCostDetail.result.geometry.surface_area_cm2),
-        // Processes in plain words (4480d253).
-        `Make now: ${processWords[pinnedCube.makeNowProcess]}`,
-        `Crossover quantity: ≈ ${pinnedCube.crossoverQty}.0 units`,
-        "Assumption-based should-cost",
-        "not a quote",
-      ]) {
-        assert(normalizedPdf.includes(expected), `should-cost PDF text omitted ${JSON.stringify(expected)}`);
-      }
-      for (const [quantity, [process, unitCost]] of Object.entries(pinnedCube.recommendation)) {
-        assert(normalizedPdf.includes(String(quantity)), `should-cost PDF omitted quantity ${quantity}`);
-        assert(normalizedPdf.includes(processWords[process]), `should-cost PDF omitted process ${processWords[process]}`);
-        assert(normalizedPdf.includes(`$${unitCost.toFixed(2)}/unit`), `should-cost PDF omitted $${unitCost.toFixed(2)}/unit`);
-      }
-
-      const exported = JSON.parse(strFromU8(await saveDownload(/^JSON$/, `training-guide-cost-${runId}.json`)));
-      assertDurableCostEqual(liveCostReport, exported);
-      assert(exported.governance?.approval_status === durableCostDetail.approval_status, "JSON export lost the decision's review state");
-
-      const costInputs = parseCsv(strFromU8(await saveDownload(/^CSV$/, `training-guide-cost-${runId}.csv`)), "cost inputs CSV");
-      for (const header of ["record_id", "part", ...costDriverHeaders.filter((h) => h !== "line_items"), "line", "line_usd"]) {
-        assert(costInputs.headers.includes(header), `cost inputs CSV is missing column ${header}`);
-      }
-      assert(costInputs.records.every((row) => row.record_id === durableCostDetail.id && row.part === durableCostDetail.filename), "cost inputs CSV names another record");
+      const drivers = parseCsv(zipText(entries, `${decisionPrefix}cost-drivers.csv`), "RFQ cost-drivers.csv");
+      assertHeaders(drivers.headers, costDriverHeaders, "RFQ cost-drivers.csv");
+      assert(
+        drivers.records.length === pinnedCube.estimates && drivers.records.length === durableCostDetail.result.estimates.length,
+        `RFQ cost-drivers.csv had ${drivers.records.length} rows; expected ${pinnedCube.estimates}`
+      );
       const governanceColumns = [
         "approval_status",
         "approved_by_user_id",
@@ -1023,35 +921,94 @@ async function main() {
         "disposition_updated_by_user_id",
       ];
       for (const estimate of durableCostDetail.result.estimates) {
-        const rows = costInputs.records.filter(
-          (record) => record.process === estimate.process && record.material === estimate.material && Number(record.quantity) === estimate.quantity
+        const row = drivers.records.find(
+          (record) => record.process === estimate.process && Number(record.quantity) === estimate.quantity
         );
-        assert(rows.length > 0, `cost inputs CSV is missing ${estimate.process} qty ${estimate.quantity}`);
-        const row = rows[0];
-        assert(approxEqual(Number(row.unit_cost_usd), estimate.unit_cost_usd, 0.001), `CSV unit cost drifted for ${estimate.process} qty ${estimate.quantity}`);
-        assert(row.confidence_label === estimate.confidence.label, `CSV confidence label drifted for ${estimate.process} qty ${estimate.quantity}`);
-        assert(row.confidence_validated.toLowerCase() === String(Boolean(estimate.confidence.validated)), `CSV validation flag drifted for ${estimate.process} qty ${estimate.quantity}`);
-        assert(row.dfm_ready.toLowerCase() === String(Boolean(estimate.dfm_ready)), `CSV DFM flag drifted for ${estimate.process} qty ${estimate.quantity}`);
+        assert(row, `RFQ cost-drivers.csv is missing ${estimate.process} qty ${estimate.quantity}`);
+        assert(approxEqual(Number(row.unit_cost_usd), estimate.unit_cost_usd, 0.001), `RFQ driver unit cost drifted for ${estimate.process} qty ${estimate.quantity}`);
+        assert(row.confidence_label === estimate.confidence.label, `RFQ driver confidence label drifted for ${estimate.process} qty ${estimate.quantity}`);
+        assert(row.confidence_validated.toLowerCase() === String(Boolean(estimate.confidence.validated)), `RFQ driver validation flag drifted for ${estimate.process} qty ${estimate.quantity}`);
+        assert(row.dfm_ready.toLowerCase() === String(Boolean(estimate.dfm_ready)), `RFQ driver DFM flag drifted for ${estimate.process} qty ${estimate.quantity}`);
         assertJsonEqual(
           row.disposition_basis ? JSON.parse(row.disposition_basis) : null,
           durableCostDetail.disposition_basis ?? null,
-          `CSV sourcing basis for ${estimate.process} qty ${estimate.quantity}`,
+          `RFQ driver sourcing basis for ${estimate.process} qty ${estimate.quantity}`,
         );
         for (const field of governanceColumns) {
-          assert(row[field] === String(durableCostDetail[field] ?? ""), `CSV governance ${field} drifted for ${estimate.process} qty ${estimate.quantity}`);
+          assert(
+            row[field] === String(durableCostDetail[field] ?? ""),
+            `RFQ driver governance ${field} drifted for ${estimate.process} qty ${estimate.quantity}`,
+          );
         }
-        // The lines foot to the unit cost to the cent (bef4a28f).
-        const footed = rows.reduce((sum, line) => sum + Number(line.line_usd), 0);
-        assert(approxEqual(footed, estimate.unit_cost_usd, 0.005), `CSV lines for ${estimate.process} qty ${estimate.quantity} add up to ${footed.toFixed(2)}, not ${estimate.unit_cost_usd}`);
+        for (const [key, value] of Object.entries(estimate.line_items || {})) {
+          assert(row.line_items.includes(`${key}=${value}`), `RFQ driver row omitted line item ${key}=${value}`);
+        }
       }
 
-      return {
-        pdf: { mode: "pdf-semantic", bytes: pdfBytes.length, sha256: sha256(pdfBytes), textChecks: 8 + Object.keys(pinnedCube.recommendation).length * 3 },
-        jsonDurableFieldsExact: true,
-        csvRows: costInputs.records.length,
-        csvEstimatesFooted: durableCostDetail.result.estimates.length,
-        screenshot: await shot("cost-decision-exports"),
+      const pdfBytes = entries[pdfFile];
+      assert(pdfBytes.length > 1_000, `RFQ should-cost PDF was only ${pdfBytes.length} bytes`);
+      assert(strFromU8(pdfBytes.slice(0, 5)).startsWith("%PDF-"), "RFQ should-cost report is not a PDF");
+      const extractedPdf = path.join(outputRoot, `training-guide-should-cost-${runId}.pdf`);
+      await writeFile(extractedPdf, pdfBytes);
+      let pdfText;
+      try {
+        pdfText = execFileSync("pdftotext", [extractedPdf, "-"], { encoding: "utf8" });
+      } catch (error) {
+        throw new Error(`pdftotext is required for semantic RFQ validation: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      const normalizedPdf = pdfText.replace(/\s+/g, " ");
+      for (const expected of [
+        "Should-Cost & Make-vs-Buy Report",
+        durableCostDetail.filename,
+        String(durableCostDetail.result.geometry.volume_cm3),
+        String(durableCostDetail.result.geometry.surface_area_cm2),
+        `Make now: ${pinnedCube.makeNowProcess}`,
+        `Crossover quantity: ≈ ${pinnedCube.crossoverQty}.0 units`,
+        "Assumption-based should-cost",
+        "not a quote",
+      ]) {
+        assert(normalizedPdf.includes(expected), `RFQ PDF text omitted ${JSON.stringify(expected)}`);
+      }
+      for (const [quantity, [process, unitCost]] of Object.entries(pinnedCube.recommendation)) {
+        assert(normalizedPdf.includes(String(quantity)), `RFQ PDF omitted quantity ${quantity}`);
+        assert(normalizedPdf.includes(process), `RFQ PDF omitted process ${process}`);
+        assert(normalizedPdf.includes(`$${unitCost.toFixed(2)}/unit`), `RFQ PDF omitted $${unitCost.toFixed(2)}/unit`);
+      }
+      const pdfEvidence = { mode: "pdf-semantic", bytes: pdfBytes.length, sha256: sha256(pdfBytes), textChecks: 8 + Object.keys(pinnedCube.recommendation).length * 3 };
+      const rawCadBoundary = zipText(entries, `${decisionPrefix}raw-cad-unavailable.txt`);
+      assert(/not included/i.test(rawCadBoundary), "RFQ raw-CAD boundary did not explain that CAD was not included");
+
+      assert(packagedItem.part_context, "RFQ package omitted the verified part context");
+      const contextFile = `${decisionPrefix}part-context.json`;
+      assert(entries[contextFile], "RFQ decision has context but the ZIP omitted part-context.json");
+      assertJsonEqual(zipJson(entries, contextFile), packagedItem.part_context, "RFQ part context");
+
+      rfqArchiveEvidence = {
+        id: rfqDetail.id,
+        route: `/rfq-packages/${rfqDetail.id}`,
+        decisionId: durableCostDetail.id,
+        detailRefreshExact: true,
+        zip: {
+          path: zipPath,
+          bytes: file.size,
+          sha256: sha256(zipBytes),
+          files: filenames,
+          requiredRootFiles,
+          requiredDecisionFiles,
+        },
+        manifest: {
+          itemCount: manifest.item_count,
+          warningCodes: manifest.warnings.map((warning) => warning.code),
+          liveSupplierSend: manifest.live_supplier_send,
+          contract: manifest.metadata.contract,
+        },
+        lineItem,
+        driverRows: drivers.records.length,
+        pdf: pdfEvidence,
+        partContextIncluded: Boolean(packagedItem.part_context),
+        screenshot: await shot("rfq-package-detail-refreshed"),
       };
+      return rfqArchiveEvidence;
     });
   } catch (error) {
     fatalError = error instanceof Error ? error.message : String(error);
@@ -1078,7 +1035,6 @@ async function main() {
     failed,
     fatalError,
     consoleErrors,
-    expectedConsoleErrors,
     requestFailures,
     expectedRequestAborts,
     screenshots,

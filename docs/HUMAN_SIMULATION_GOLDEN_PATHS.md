@@ -124,7 +124,7 @@ downloaded bytes, response header, and the bytes handed to Verify.
 | WORK-05 | Approve, reopen, then stale a decision | Visible `Unreviewed → Approved → Unreviewed`; governed-rate publication marks prior decision `Stale` with `Re-cost before relying on this record.` | browser |
 | WORK-06 | Compare A/B | Aligned quantities; delta = B − A to $0.01; percent to 0.1%, null when either source value is absent | browser |
 | WORK-07 | Export PDF/JSON/CSV, create share, revoke share | Downloads equal saved evidence; share is read-only and redacts internal IDs/hashes; revoked URL is unavailable | browser |
-| WORK-08 | Build and download RFQ package | The ZIP is a request for quote: each part's material, quantity, specs and kept CAD, who asks and the reply-by date; no cost, crossover or review state unless "Include our cost estimate" was on; the buyer's warnings stay in ScaleCAD | browser |
+| WORK-08 | Build and download RFQ package | Counts for approved, stale, unvalidated, and raw-CAD items match selected decisions; warnings survive ZIP/PDF | browser |
 | WORK-09 | Integration dry run then import | Counts and SHA-256 displayed; dry-run changes nothing; import creates only declared rows; retry is idempotent | browser |
 | WORK-10 | History → analysis detail | Filename, type, time, verdict, geometry, findings, and decision links equal persisted analysis | browser |
 | WORK-11 | Reconstruction success and failure | Progress reaches a real mesh or returns to an actionable upload state; no fake preview | browser |

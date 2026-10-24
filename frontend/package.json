@@ -76,7 +76,6 @@
     "postcss": "^8.5.25",
     "@next/eslint-plugin-next": {
       "fast-glob": "npm:tinyglobby@0.2.15"
-    },
-    "zod": "^4.6.7"
+    }
   }
 }

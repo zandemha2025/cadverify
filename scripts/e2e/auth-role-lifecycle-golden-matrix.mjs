@@ -490,7 +490,7 @@ asyncio.run(main())
     const person = this.seedData.people[key];
     const actor = await this.newContext(`${key}-invitee`);
     await actor.page.goto(appPath(inviteLink), { waitUntil: "domcontentloaded", timeout: 30_000 });
-    // Opening the link changes nothing: the page names the invite and asks the invited account to log in.
+    await actor.page.getByText("Log in as the invited account.", { exact: true }).waitFor();
     await actor.page.getByRole("link", { name: "Log in to accept" }).click();
     await actor.page.waitForURL((url) => url.pathname === "/login", { timeout: 10_000 });
     await actor.page.getByLabel("Email").fill(person.email);
@@ -506,12 +506,6 @@ asyncio.run(main())
     await actor.page.waitForURL((url) => url.pathname === "/orgs/accept", { timeout: 20_000 });
     Object.assign(actor, person, { key });
     this.identities[key] = actor;
-    return actor;
-  }
-
-  async openInviteSignedOut(key, inviteLink) {
-    const actor = await this.newContext(`${key}-invitee`);
-    await actor.page.goto(appPath(inviteLink), { waitUntil: "domcontentloaded", timeout: 30_000 });
     return actor;
   }
 
@@ -538,10 +532,9 @@ asyncio.run(main())
 
     const acceptedLink = await this.createInvite(owner, this.seedData.people.accepted.email);
     const accepted = await this.loginFromInvite("accepted", acceptedLink);
-    // Nothing is accepted until the invited person presses Accept.
-    await accepted.page.getByRole("button", { name: "Accept invite" }).click();
-    await accepted.page.getByText(/^You joined /).waitFor({ timeout: 20_000 });
-    this.equal(id, "accepted invite visible role", cleanText(await accepted.page.locator("body").innerText()).includes("Role: Member."), true);
+    await accepted.page.getByText("Invitation accepted.", { exact: true }).waitFor({ timeout: 20_000 });
+    await accepted.page.getByText("You joined the organization as member.", { exact: true }).waitFor();
+    this.equal(id, "accepted invite visible role", cleanText(await accepted.page.locator("body").innerText()).includes("as member"), true);
     const acceptedOrgs = await this.browserJson(accepted, "/api/proxy/orgs");
     this.equal(id, "accepted account organization status", acceptedOrgs.status, 200);
     this.equal(id, "accepted account active organization", acceptedOrgs.body?.active_org_id, this.seedData.orgs.A.id);
@@ -552,9 +545,9 @@ asyncio.run(main())
     await owner.page.reload({ waitUntil: "domcontentloaded" });
     const expiredRow = owner.page.getByRole("row").filter({ hasText: this.seedData.people.expired.email });
     await expiredRow.getByText("expired", { exact: true }).waitFor({ timeout: 15_000 });
-    const expired = await this.openInviteSignedOut("expired", expiredLink);
-    await expired.page.getByText("This invite can’t be used", { exact: true }).waitFor({ timeout: 20_000 });
-    await expired.page.getByText(/^This invite has expired\./).waitFor();
+    const expired = await this.loginFromInvite("expired", expiredLink);
+    await expired.page.getByText("Invite not accepted.", { exact: true }).waitFor({ timeout: 20_000 });
+    await expired.page.getByText("This invite has expired.", { exact: true }).waitFor();
 
     const revokedLink = await this.createInvite(owner, this.seedData.people.revoked.email);
     let revokedRow = owner.page.getByRole("row").filter({ hasText: this.seedData.people.revoked.email });
@@ -564,13 +557,13 @@ asyncio.run(main())
     await owner.page.waitForTimeout(500);
     revokedRow = owner.page.getByRole("row").filter({ hasText: this.seedData.people.revoked.email });
     await revokedRow.getByText("revoked", { exact: true }).waitFor({ timeout: 15_000 });
-    const revoked = await this.openInviteSignedOut("revoked", revokedLink);
-    await revoked.page.getByText("This invite can’t be used", { exact: true }).waitFor({ timeout: 20_000 });
-    await revoked.page.getByText(/^This invite has been revoked\./).waitFor();
+    const revoked = await this.loginFromInvite("revoked", revokedLink);
+    await revoked.page.getByText("Invite not accepted.", { exact: true }).waitFor({ timeout: 20_000 });
+    await revoked.page.getByText("This invite has been revoked.", { exact: true }).waitFor();
 
     await accepted.page.goto(appPath(acceptedLink), { waitUntil: "domcontentloaded" });
-    await accepted.page.getByText("This invite can’t be used", { exact: true }).waitFor({ timeout: 20_000 });
-    await accepted.page.getByText(/^This invite has already been used\./).waitFor();
+    await accepted.page.getByText("Invite not accepted.", { exact: true }).waitFor({ timeout: 20_000 });
+    await accepted.page.getByText("This invite has already been used.", { exact: true }).waitFor();
 
     const state = await this.db("snapshot");
     this.equal(id, "accepted invite durable status", state.invites.accepted?.status, "accepted");
@@ -594,9 +587,9 @@ asyncio.run(main())
       observed: {
         url: owner.page.url(),
         visible: [
-          "The invite page named the invite and accepted only on Accept: You joined the organization, Role: Member.",
+          "Invitation accepted. You joined the organization as member.",
           "The admin invitation table visibly retained accepted, expired, and revoked states after reload.",
-          "Expired, revoked, and reused links each rendered This invite can’t be used with the exact bounded reason.",
+          "Expired, revoked, and reused links each rendered Invite not accepted with the exact bounded reason.",
         ],
         persisted: state,
         numeric: {

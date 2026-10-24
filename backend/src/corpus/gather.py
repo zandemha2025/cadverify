@@ -35,7 +35,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
-from typing import Iterable, Optional, cast
+from typing import Iterable, Optional
 from urllib.parse import quote
 
 import requests
@@ -159,13 +159,9 @@ def normalize_to_stl(raw: bytes, fmt: str) -> Optional[bytes]:
             loaded = trimesh.load(io.BytesIO(raw), file_type=fmt, force="mesh")
             if isinstance(loaded, trimesh.Scene):
                 loaded = trimesh.util.concatenate(loaded.dump())
-            # force="mesh" (or a scene's meshes concatenated) gives a Trimesh;
-            # trimesh types both as Geometry.
-            mesh = cast(Optional[trimesh.Trimesh], loaded)
-            if mesh is None or len(mesh.faces) == 0:
+            if loaded is None or len(loaded.faces) == 0:
                 return None
-            # A file_type="stl" export with no file_obj returns the binary STL bytes.
-            return cast(bytes, mesh.export(file_type="stl"))
+            return loaded.export(file_type="stl")
         except Exception as exc:  # pragma: no cover - source-dependent
             glog(f"normalize: trimesh failed on {fmt} ({exc}); skipped")
             return None
@@ -208,11 +204,7 @@ def add_part(
 
     # Load the normalized bytes for geometry (so the summary matches stored file).
     try:
-        # force="mesh" hands back a Trimesh; trimesh types load() as Geometry.
-        mesh = cast(
-            trimesh.Trimesh,
-            trimesh.load(io.BytesIO(stl_bytes), file_type="stl", force="mesh"),
-        )
+        mesh = trimesh.load(io.BytesIO(stl_bytes), file_type="stl", force="mesh")
     except Exception as exc:
         glog(f"drop: trimesh load failed for {filename} ({exc})")
         return None

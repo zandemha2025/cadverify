@@ -18,7 +18,6 @@ import copy
 import csv
 import importlib
 import io
-import json
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
@@ -398,24 +397,7 @@ def test_detail_owner_ok(client, real_result_json):
     assert body["user_disposition"] is None
 
 
-def _member_may_sign_off(monkeypatch):
-    """The mocked session has no membership row; state the org's sign-off rule."""
-    from src.services import signoff_service
-
-    async def _role(*_a, **_k):
-        return "member"
-
-    monkeypatch.setattr(signoff_service, "get_role", _role)
-    monkeypatch.setattr(signoff_service, "org_role_of", _role)
-
-    async def _names(*_a, **_k):
-        return {}
-
-    monkeypatch.setattr(signoff_service, "names_for", _names)
-
-
-def test_approve_and_reopen_cost_decision(client, real_result_json, monkeypatch):
-    _member_may_sign_off(monkeypatch)
+def test_approve_and_reopen_cost_decision(client, real_result_json):
     cl, app = client
     dec = _make_decision("01APPROVE000000000000000A", real_result_json, user_id=42)
     _override(app, _session_returning(scalar_one=dec), user_id=42)
@@ -442,9 +424,8 @@ def test_approve_and_reopen_cost_decision(client, real_result_json, monkeypatch)
 
 
 def test_approval_note_boundary_is_exact_and_overflow_is_rejected(
-    client, real_result_json, monkeypatch
+    client, real_result_json
 ):
-    _member_may_sign_off(monkeypatch)
     cl, app = client
     dec = _make_decision("01APPROVELIMIT000000000000A", real_result_json, user_id=42)
     _override(app, _session_returning(scalar_one=dec), user_id=42)
@@ -520,37 +501,6 @@ def test_four_way_disposition_persists_withdraws_and_preserves_engine_artifact(
     assert withdrawn.json()["user_disposition_label"] is None
     assert withdrawn.json()["disposition_note"] is None
     assert dec.result_json == original_artifact
-
-
-def test_keep_buying_from_our_supplier_records_the_quantity_and_todays_price(client, real_result_json, monkeypatch):
-    """op-08: the outcome the pilot tester couldn't record. A buy outcome, no route of ScaleCAD's."""
-    from types import SimpleNamespace
-
-    from src.services import part_context_service as pcs
-
-    cl, app = client
-    dec = _make_decision("01DISPSUPPLIER00000000000A", copy.deepcopy(real_result_json), user_id=42)
-    dec.org_id = "org_supplier"
-    _override(app, _session_returning(scalar_one=dec), user_id=42)
-
-    async def ctx(_session, _org, _key):
-        return SimpleNamespace(buy_price={"usd_each": 8.66, "source": "parts_list"}, annual_volume=200)
-
-    monkeypatch.setattr(pcs, "get_context", ctx)
-    url = f"/api/v1/cost-decisions/{dec.ulid}/disposition"
-    r = cl.put(url, json={"disposition": "supplier", "quantity": 200, "note": "Supplier holds the anodize line"})
-    assert r.status_code == 200, r.text
-    body = r.json()
-    assert body["user_disposition"] == "supplier"
-    assert body["user_disposition_label"] == "Keep buying from our supplier"
-    assert body["disposition_basis"] == {"supplier": True, "quantity": 200, "usd_each": 8.66,
-                                         "price_source": "parts_list"}
-    # Without a quantity: the part's yearly quantity. A process of ScaleCAD's isn't one.
-    dec.user_disposition = None
-    dec.disposition_basis = None
-    assert cl.put(url, json={"disposition": "supplier"}).json()["disposition_basis"]["quantity"] == 200
-    assert cl.put(url, json={"disposition": "supplier", "process": "cnc_3axis"}).status_code == 400
-    assert dec.result_json == real_result_json
 
 
 def test_disposition_binds_exact_quantity_and_checks_its_owned_route(client, real_result_json):
@@ -747,117 +697,11 @@ def test_disposition_contract_is_documented_in_openapi(client):
         "outside",
         "acquire",
         "redesign",
-        "supplier",
     ]
     note_schema = next(
         item for item in schema["properties"]["note"]["anyOf"] if item.get("type") == "string"
     )
     assert note_schema["maxLength"] == 1000
-
-
-def _route_choice_decision(real_result_json, ulid):
-    report = copy.deepcopy(real_result_json)
-    rec = report["decision"]["recommendation"]["50"]
-    chosen = next(
-        e for e in report["estimates"]
-        if e["quantity"] == 50 and e["dfm_ready"] and e["dfm_verdict"] != "fail"
-        and not e["dfm_blockers"] and e["process"] != rec["process"]
-    )
-    blocked = next(e for e in report["estimates"] if e["quantity"] == 50 and e["dfm_verdict"] == "fail")
-    report["verification"] = {"verdict": "makeable_in_house", "per_route": {
-        chosen["process"]: {"verdict": "makeable_in_house"},
-        rec["process"]: {"verdict": "makeable_outsource_only"},
-    }}
-    return report, rec, chosen, blocked, _make_decision(ulid, report)
-
-
-def test_disposition_records_the_route_the_user_chose(client, real_result_json):
-    cl, app = client
-    report, rec, chosen, _blocked, dec = _route_choice_decision(real_result_json, "01DISPROUTECHOSEN000000000A")
-    session = _session_returning(scalar_one=dec)
-    _override(app, session)
-    url = f"/api/v1/cost-decisions/{dec.ulid}/disposition"
-    original = copy.deepcopy(report)
-    basis = {"process": chosen["process"], "material": chosen["material"], "quantity": 50}
-
-    saved = cl.put(url, json={"disposition": "outside", "quantity": 50, "process": chosen["process"],
-                              "material": chosen["material"], "note": "Second source"})
-    assert saved.status_code == 200, saved.text
-    assert saved.json()["disposition_basis"] == basis
-    assert dec.disposition_basis == basis
-    # The material may be omitted when the process is costed in one material only.
-    by_process = cl.put(url, json={"disposition": "outside", "quantity": 50, "process": chosen["process"],
-                                   "note": "Second source"})
-    assert by_process.status_code == 200 and by_process.json()["disposition_basis"] == basis
-    # A note-only edit keeps the chosen route instead of snapping back to the cheapest.
-    edited = cl.put(url, json={"disposition": "outside", "note": "Updated"})
-    assert edited.status_code == 200 and edited.json()["disposition_basis"] == basis
-    # Changing the outcome keeps the route and checks it: this route fits a machine you own.
-    inhouse = cl.put(url, json={"disposition": "inhouse", "note": "Updated"})
-    assert inhouse.status_code == 200, inhouse.text
-    assert inhouse.json()["disposition_basis"] == basis
-    # The cheapest route has no owned machine, so it can't be recorded in-house.
-    refused = cl.put(url, json={"disposition": "inhouse", "quantity": 50, "process": rec["process"]})
-    assert refused.status_code == 409, refused.text
-    assert dec.disposition_basis == basis
-    # The original body (quantity only) still records the engine's recommendation.
-    legacy = cl.put(url, json={"disposition": "outside", "quantity": 50})
-    assert legacy.status_code == 200
-    assert legacy.json()["disposition_basis"] == {"process": rec["process"], "material": rec["material"], "quantity": 50}
-    assert dec.result_json == original
-
-
-def test_chosen_route_must_be_an_estimate_of_this_decision(client, real_result_json):
-    cl, app = client
-    report, _rec, chosen, _blocked, dec = _route_choice_decision(real_result_json, "01DISPROUTEUNKNOWN00000000A")
-    _override(app, _session_returning(scalar_one=dec))
-    url = f"/api/v1/cost-decisions/{dec.ulid}/disposition"
-
-    for body in (
-        {"disposition": "outside", "quantity": 50, "process": "laser_magic"},
-        {"disposition": "outside", "quantity": 100, "process": chosen["process"]},
-        {"disposition": "outside", "quantity": 50, "process": chosen["process"], "material": "Unobtainium"},
-    ):
-        r = cl.put(url, json=body)
-        assert r.status_code == 409, (body, r.text)
-    assert cl.put(url, json={"disposition": "outside", "quantity": 50, "material": chosen["material"]}).status_code == 400
-    assert cl.put(url, json={"disposition": "outside", "quantity": 50, "process": ""}).status_code == 422
-    assert cl.put(url, json={"disposition": "outside", "quantity": 50, "process": "x" * 65}).status_code == 422
-    assert dec.user_disposition is None
-
-    # The same process costed in two materials needs the material named.
-    twin = copy.deepcopy(chosen)
-    twin["material"] = chosen["material"] + " (alt)"
-    report["estimates"].append(twin)
-    ambiguous = cl.put(url, json={"disposition": "outside", "quantity": 50, "process": chosen["process"]})
-    assert ambiguous.status_code == 409
-    named = cl.put(url, json={"disposition": "outside", "quantity": 50, "process": chosen["process"],
-                              "material": twin["material"]})
-    assert named.status_code == 200, named.text
-    assert named.json()["disposition_basis"]["material"] == twin["material"]
-
-
-def test_chosen_route_respects_dfm_and_service_conditions(client, real_result_json):
-    cl, app = client
-    _report, _rec, chosen, blocked, dec = _route_choice_decision(real_result_json, "01DISPROUTERULES000000000A")
-    _override(app, _session_returning(scalar_one=dec))
-    url = f"/api/v1/cost-decisions/{dec.ulid}/disposition"
-    route = {"quantity": 50, "process": blocked["process"], "material": blocked["material"]}
-
-    outside = cl.put(url, json={"disposition": "outside", **route})
-    assert outside.status_code == 409 and "as drawn" in outside.json()["message"]
-    inhouse = cl.put(url, json={"disposition": "inhouse", **route})
-    assert inhouse.status_code == 409
-    redesign = cl.put(url, json={"disposition": "redesign", "note": "Add draft", **route})
-    assert redesign.status_code == 200, redesign.text
-    assert redesign.json()["disposition_basis"] == {"process": blocked["process"], "material": blocked["material"], "quantity": 50}
-
-    chosen["environment_excluded"] = True  # the record's own estimate, ruled out by the conditions
-    for disposition in ("outside", "acquire", "redesign"):
-        r = cl.put(url, json={"disposition": disposition, "quantity": 50, "process": chosen["process"]})
-        assert r.status_code == 409, (disposition, r.text)
-        assert "service conditions" in r.json()["message"]
-    assert dec.user_disposition == "redesign"
 
 
 @pytest.mark.asyncio
@@ -1058,8 +902,7 @@ def test_pdf_endpoint_contract(client, real_result_json, monkeypatch):
     r = cl.get("/api/v1/cost-decisions/01PDF0000000000000000000A/pdf")
     assert r.status_code == 200
     assert r.headers["content-type"] == "application/pdf"
-    # ce-14: unique per record (the last 6 of its id), never one name for every record of a part
-    assert "cube-00000A-cost-report.pdf" in r.headers["content-disposition"]
+    assert "cube-cost-report.pdf" in r.headers["content-disposition"]
     assert r.content.startswith(b"%PDF")
 
 
@@ -1152,21 +995,10 @@ def test_share_create_and_revoke(client, real_result_json):
     assert body["share_short_id"]
     assert dec.is_public is True
 
-    # 30 days unless the sharer picks longer (2026-10-21 product decision).
-    assert body["share_status"] == "active" and body["share_expires_at"]
-    assert dec.share_created_by == 42
-
     r2 = cl.delete("/api/v1/cost-decisions/01SHARE00000000000000000A/share")
     assert r2.status_code == 200
     assert dec.is_public is False
-    # Switched off, not forgotten: the short id stays so the public page says so.
-    assert dec.share_revoked_at is not None
-    assert dec.share_short_id == body["share_short_id"]
-    gone = cl.get(body["share_url"])
-    assert gone.status_code == 410
-    # The app's error handler serves a coded detail as the body itself.
-    assert gone.json()["code"] == "share_switched_off"
-    assert set(gone.json()) == {"code", "message", "ended_at"}
+    assert dec.share_short_id is None
 
 
 def test_public_share_sanitized_no_owner_leak(client, real_result_json):
@@ -1179,78 +1011,17 @@ def test_public_share_sanitized_no_owner_leak(client, real_result_json):
     )
     _override(app, _session_returning(scalar_one=dec))
 
-    # By default a link carries none of our cost (buyer-12).
     r = cl.get("/s/cost/shortpub1234")
     assert r.status_code == 200
     assert r.headers.get("x-robots-tag") == "noindex"
-    assert "cost" not in r.json() and r.json()["includes_cost_estimate"] is False
-    # With "Include our cost estimate" on: the decision, preserved and honest.
-    dec.share_options = {"include_cost": True}
-    r = cl.get("/s/cost/shortpub1234")
-    outer = r.json()
-    body = outer["cost"]
-    for leaked in ("user_id", "api_key_id", "mesh_hash", "params_hash", "share_short_id", "id", "ulid", "email"):
-        assert leaked not in outer, f"public share leaked {leaked}"
+    body = r.json()
+    # Decision content preserved + honest
     assert body["decision"]["make_now_process"]
     assert body["estimates"]
     assert body["estimates"][0]["confidence"]["validated"] is False
     # ZERO owner/user PII leaks
     for leaked in ("user_id", "api_key_id", "mesh_hash", "params_hash", "share_short_id", "id", "ulid", "email"):
         assert leaked not in body, f"public share leaked {leaked}"
-
-
-def test_public_share_hides_shop_inputs(client, real_result_json):
-    cl, app = client
-    rj = copy.deepcopy(real_result_json)
-    owned = rj["estimates"][0]
-    outside = next(e for e in rj["estimates"] if e["process"] != owned["process"])
-    # A route priced on the sharer's own machine.
-    owned["drivers"] += [
-        {"name": "machine_cost", "unit": "$", "value": 1.43, "provenance": "USER",
-         "source": "0.0258 hr × $85/hr (fitted machine 'Haas VF-2', its OWN declared rate)"},
-        {"name": "owned_in_house", "unit": "×", "value": 0.65, "provenance": "USER",
-         "source": "machine 'Haas VF-2' OWNED in-house: MARGINAL rate $55.25/hr"},
-    ]
-    owned["owned_in_house"] = True
-    # An outside route with a rate the sharer typed and a tolerance they declared.
-    outside["drivers"] += [
-        {"name": "machine_cost", "unit": "$", "value": 2.71, "provenance": "USER",
-         "source": "0.0319 hr × $85/hr × region-labor ×1"},
-        {"name": "tolerance_class", "unit": "×", "value": 1.2, "provenance": "USER",
-         "source": "declared tolerance 'precision'"},
-    ]
-    outside["lead_time"]["capacity"] = {
-        "n_machines": 3, "machine_hours_per_day": 20.0, "provenance": "USER",
-        "basis": "capacity-bound: 3 machines × 20 hr/day"}
-    rj["assumptions"] += [
-        {"name": "margin", "unit": "frac", "value": 0.3, "provenance": "SHOP",
-         "source": "markup on cost [shop: Acme Machining]"},
-        {"name": "labor_rate_note", "unit": "$/hr", "value": 35.0, "provenance": "DEFAULT",
-         "source": "loaded shop-floor labor [shop: Acme Machining]"},
-    ]
-    dec = _make_decision("01PUB0000000000000000000B", rj, share_short_id="shortpub5678", is_public=True)
-    dec.share_options = {"include_cost": True}
-    _override(app, _session_returning(scalar_one=dec))
-
-    outer = cl.get("/s/cost/shortpub5678").json()
-    body = outer["cost"]
-    text = json.dumps(outer)
-    for private in ("Haas VF-2", "$85/hr", "$55.25/hr", "Acme Machining", "20 hr/day"):
-        assert private not in text, f"public share leaked {private}"
-    # The route priced on the sharer's machine isn't in the copy, at any quantity.
-    assert all(e["process"] != owned["process"] for e in body["estimates"])
-    row = next(e for e in body["estimates"]
-               if e["process"] == outside["process"] and e["quantity"] == outside["quantity"])
-    drivers = {d["name"]: d for d in row["drivers"] if d.get("provenance") == "USER"}
-    assert drivers["machine_cost"]["value"] == 2.71  # the cost line itself stays
-    assert drivers["machine_cost"]["source"] == "Set by the sender's shop. Not shown outside it."
-    assert drivers["tolerance_class"]["source"] == "declared tolerance 'precision'"
-    assert row["lead_time"]["capacity"]["n_machines"] is None
-    margin = next(a for a in body["assumptions"] if a["name"] == "margin" and a["provenance"] == "SHOP")
-    assert margin["value"] is None and margin["provenance"] == "SHOP"
-    assert all("owned_in_house" not in e for e in body["estimates"])
-    # The owner's stored record is untouched.
-    assert "Haas VF-2" in json.dumps(dec.result_json)
 
 
 def test_public_share_not_found_is_404(client):

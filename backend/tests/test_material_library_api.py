@@ -34,13 +34,11 @@ def _build_app():
     from fastapi import FastAPI
 
     from src.api.material_library import router as material_library_router
-    from src.api.governance import router as governance_router
     from src.auth.rate_limit import limiter
 
     app = FastAPI()
     app.state.limiter = limiter
     app.include_router(material_library_router, prefix="/api/v1/material-library")
-    app.include_router(governance_router, prefix="/api/v1/governance")
     return app
 
 
@@ -50,21 +48,6 @@ def _act_as(app, user_id: int) -> None:
     app.dependency_overrides[require_api_key] = lambda: AuthedUser(
         user_id=user_id, api_key_id=0, key_prefix="session", role="analyst"
     )
-
-
-async def _publish(c, vid: int) -> dict:
-    """Publish through review, the only way in (C2): a direct publish is refused,
-    then the org's only admin proposes and approves it (self-approved)."""
-    r = await c.post(f"/api/v1/material-library/{vid}/publish", json={})
-    assert r.status_code == 403, r.text
-    assert r.json()["detail"]["code"] == "review_required"
-    r = await c.post("/api/v1/governance/change-requests",
-                     json={"asset_type": "material_catalog", "target_version_id": vid})
-    assert r.status_code == 200, r.text
-    r = await c.post(f"/api/v1/governance/change-requests/{r.json()['id']}/approve")
-    assert r.status_code == 200, r.text
-    assert r.json()["change_request"]["self_approved"] is True
-    return r.json()["published_version"]
 
 
 @_requires_pg
@@ -157,9 +140,10 @@ async def test_material_library_lifecycle_isolation_and_honesty(monkeypatch):
         )
         assert r.status_code == 400
 
-        published = await _publish(c, v1_id)
-        assert published["status"] == "published"
-        assert published["effective_from"] is not None
+        r = await c.post(f"/api/v1/material-library/{v1_id}/publish", json={})
+        assert r.status_code == 200, r.text
+        assert r.json()["status"] == "published"
+        assert r.json()["effective_from"] is not None
 
         # now the engine overlays it
         r = await c.get("/api/v1/material-library/effective")
@@ -175,7 +159,8 @@ async def test_material_library_lifecycle_isolation_and_honesty(monkeypatch):
         )
         v2_id = r.json()["id"]
         assert r.json()["version"] == 2
-        await _publish(c, v2_id)
+        r = await c.post(f"/api/v1/material-library/{v2_id}/publish", json={})
+        assert r.status_code == 200, r.text
 
         r = await c.get("/api/v1/material-library")
         versions = {v["version"]: v for v in r.json()["versions"]}

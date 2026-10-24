@@ -1,10 +1,8 @@
 """Governed rate-library API (W4 libraries, slice 1).
 
 The management + read surface for the versioned, effective-dated rate-card asset
-that replaces the hardcoded ``RATE_CARD_V0`` dict. Org admins draft → edit a
-card, propose it for review, and an admin's approval PUBLISHES it with an
-effective date (``governance.py``; the direct ``/{id}/publish`` here refuses with
-403 ``review_required``, C2); the costing engine then reads the version
+that replaces the hardcoded ``RATE_CARD_V0`` dict. Org admins draft → edit →
+PUBLISH a card with an effective date; the costing engine then reads the version
 in effect at estimate time as its base DEFAULT table (gated by
 ``RATE_LIBRARY_ENABLED`` + a published card for the caller's org).
 
@@ -38,7 +36,7 @@ from src.auth.rbac import (
 )
 from src.auth.require_api_key import AuthedUser
 from src.db.engine import get_db_session
-from src.services import governance_service
+from src.services import cost_decision_service
 from src.services import rate_library_service as svc
 
 logger = logging.getLogger("cadverify.rate_library")
@@ -121,40 +119,6 @@ async def effective_rate_card(
     }
 
 
-@router.get("/spec-defaults")
-@limiter.limit("120/hour;1000/day")
-async def spec_defaults(
-    request: Request,
-    response: Response,
-    user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
-):
-    """The typical prices and lead days for finishes, heat treatment and
-    inspection (each with where it comes from), and the org's own values from
-    the card in effect. A governed card's ``spec_ops`` overrides them per field."""
-    from src.costing.part_specs import FINISHES, HEAT_TREATMENTS, INSPECTIONS, OP_LABELS, SPEC_OPS_V0
-
-    org_id = await resolve_org(session, user.user_id)
-    payload = await svc.resolve_rate_table_for_org(session, org_id) if org_id and svc.rate_library_enabled() else None
-    in_effect = (payload or {}).get("spec_ops") or {}
-
-    def group(op: str) -> str:
-        return ("finish" if op in FINISHES else "heat" if op in HEAT_TREATMENTS
-                else "inspection" if op in INSPECTIONS else "finish")
-
-    return {
-        "ops": [
-            {"op": op, "label": OP_LABELS[op], "group": group(op), "kind": p["kind"],
-             "typical": {k: v for k, v in p.items() if k not in ("kind", "source")},
-             "source": p["source"],
-             "yours": {k: v for k, v in (in_effect.get(op) or {}).items()}}
-            for op, p in SPEC_OPS_V0.items()
-        ],
-        "using_governed": payload is not None,
-        "provenance": "default",
-    }
-
-
 @router.get("/{version_id}")
 @limiter.limit("120/hour;1000/day")
 async def get_rate_card(
@@ -168,14 +132,7 @@ async def get_rate_card(
     row = await svc.get_version(session, org_id, version_id) if org_id else None
     if row is None:
         raise HTTPException(status_code=404, detail="version not found")
-    out = svc.serialize_version(row, include_payload=True)
-    # What this version changes against the card in effect now (the typical v0
-    # table when none is published): every leaf, labor, overhead, margin, each
-    # machine rate and material price, so a reviewer sees all of it (ce-13).
-    effective = await svc.resolve_rate_table_for_org(session, org_id)
-    out["changes"] = svc.changes_against(effective, row.payload)
-    out["changes_against"] = "in_effect" if effective is not None else "typical_v0"
-    return out
+    return svc.serialize_version(row, include_payload=True)
 
 
 @router.post("")
@@ -215,9 +172,6 @@ async def update_rate_card_draft(
     session: AsyncSession = Depends(get_db_session),
 ):
     org_id = await _write_org(ctx, session)
-    await governance_service.refuse_edit_under_review(
-        session, org_id, governance_service.ASSET_RATE_CARD, version_id
-    )
     try:
         row = await svc.update_draft(
             session,
@@ -226,7 +180,6 @@ async def update_rate_card_draft(
             name=body.name,
             change_note=body.change_note,
             payload=body.payload,
-            edited_by=ctx.user_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -307,18 +260,23 @@ async def publish_rate_card(
     ctx: OrgAuthContext = Depends(require_org_role(OrgRole.admin)),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Refused: a version is published only by approving its change request
-    (``POST /api/v1/governance/change-requests`` then ``.../{id}/approve``), as
-    on the screens (C2). 404 when the version isn't in the caller's org, 409
-    when it is no longer a draft, otherwise 403 ``review_required``."""
     org_id = await _write_org(ctx, session)
-    row = await svc.get_version(session, org_id, version_id)
-    if row is None:
-        raise HTTPException(status_code=404, detail="version not found")
-    if row.status == "published":
-        raise HTTPException(status_code=409, detail="version already published")
-    if row.status != "draft":
-        raise HTTPException(status_code=409, detail="only draft versions can be published")
-    raise await governance_service.review_required_refusal(
-        session, org_id, governance_service.ASSET_RATE_CARD, version_id, ctx.user_id
+    row = await svc.publish_version(
+        session, org_id, version_id, effective_from=body.effective_from
     )
+    await cost_decision_service.mark_org_decisions_stale(
+        session,
+        org_id,
+        reason=f"rate_library_published:v{row.version}",
+        stale_at=row.effective_from,
+    )
+    from src.services.audit_service import emit_event
+
+    await emit_event(
+        session, ctx.user_id, "library.version_published", "rate_card",
+        str(row.id),
+        {"org_id": org_id, "library": "rate", "version": row.version},
+        org_id=org_id,
+    )
+    await session.commit()
+    return svc.serialize_version(row, include_payload=True)

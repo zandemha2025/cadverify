@@ -55,8 +55,8 @@ def _run_engine(path: str, *, source_units: str = "mm"):
     dec_issue = decimation_issue(ctx)
     if dec_issue is not None:
         universal.append(dec_issue)
-    scores = [score_process(an.analyze(ctx), geometry, p)
-              for p in pbase._REGISTRY if (an := get_analyzer(p))]
+    scores = [score_process(get_analyzer(p).analyze(ctx), geometry, p)
+              for p in pbase._REGISTRY if get_analyzer(p)]
     result = AnalysisResult(
         filename=os.path.basename(path), file_type="stl", geometry=geometry,
         segments=ctx.segments, universal_issues=universal, process_scores=scores)

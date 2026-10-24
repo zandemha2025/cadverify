@@ -6,8 +6,6 @@ to filter tiny noise groups and wrap the result in Feature objects.
 
 from __future__ import annotations
 
-from typing import cast
-
 import numpy as np
 import trimesh
 
@@ -52,12 +50,12 @@ def detect_flats(
         if area / total_area < min_area_ratio:
             continue
 
-        centroid = cast("tuple[float, float, float]", tuple(float(v) for v in centroids_all[indices].mean(axis=0)))
+        centroid = tuple(float(v) for v in centroids_all[indices].mean(axis=0))
         # Use the area-weighted average normal as the facet's axis.
         face_a = np.asarray(mesh.area_faces[indices], dtype=np.float64)
         weighted = (normals[indices] * face_a[:, None]).sum(axis=0)
         norm = np.linalg.norm(weighted)
-        axis = cast("tuple[float, float, float]", tuple(float(v) for v in (weighted / norm))) if norm > 0 else None
+        axis = tuple(float(v) for v in (weighted / norm)) if norm > 0 else None
 
         features.append(
             Feature(

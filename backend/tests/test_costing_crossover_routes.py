@@ -23,9 +23,8 @@ def test_tooling_must_beat_every_eligible_make_route(numerical):
     assert decision.recommendation[50]["process"] == "mjf"
     assert decision.crossover_qty == pytest.approx(950, abs=1)
     assert "fdm stays cheapest" not in decision.note
-    assert "nylon powder printing (MJF)" in decision.note.split("Cheapest way to make it as drawn, by quantity: ", 1)[1]
-    assert "needs a redesign" in decision.note
-    assert "mjf" not in decision.note and "injection_molding" not in decision.note  # no engine ids
+    assert "qty 50: mjf" in decision.note
+    assert "requires redesign" in decision.note
 
     # An environment exclusion or failed DFM removes the cheaper make route.
     excluded = make_vs_buy(estimates, quantities, {}, excluded_pv={"mjf"}, **options)
@@ -57,7 +56,7 @@ def test_no_crossover_does_not_claim_one_route_wins_every_quantity():
     decision = make_vs_buy(estimates, quantities, {}, unit_cost_fn=cost)
     assert decision.crossover_qty is None
     assert "cheapest at every quantity" not in decision.note
-    assert "1: filament printing (FDM/FFF); 50: nylon powder printing (MJF)" in decision.note
+    assert "qty 1: fdm" in decision.note and "qty 50: mjf" in decision.note
 
 
 @pytest.mark.parametrize("make_pv,tool_pv", [

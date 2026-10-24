@@ -5,7 +5,7 @@ import logging
 import os
 
 from fastapi import HTTPException
-from src.parsers.stl_parser import ascii_stl_facet_count, binary_stl_triangle_count
+from src.parsers.stl_parser import binary_stl_triangle_count
 
 logger = logging.getLogger("cadverify.upload_validation")
 
@@ -24,15 +24,7 @@ def _positive_env_int(name: str, default: int) -> int:
 
 
 def _max_triangles() -> int:
-    """Read MAX_TRIANGLES lazily so tests can override via monkeypatch.
-
-    A big file checked on the worker carries its own (src.config.check_limits).
-    """
-    from src.config import check_limits
-
-    larger = check_limits.current()
-    if larger is not None:
-        return larger.max_triangles
+    """Read MAX_TRIANGLES lazily so tests can override via monkeypatch."""
     return _positive_env_int("MAX_TRIANGLES", 2_000_000)
 
 
@@ -131,14 +123,10 @@ def enforce_stl_triangle_count_cap(
     status_code: int = 400,
     subject: str = "Mesh",
 ) -> None:
-    """Reject an STL whose triangle count exceeds a cap, before it is parsed.
-
-    A binary STL declares its count in the header; any other STL is read by
-    trimesh's ASCII reader, so its facets are counted from the text first.
-    """
+    """Reject exact-length binary STL files whose declared count exceeds a cap."""
     triangle_count = binary_stl_triangle_count(data)
     if triangle_count is None:
-        triangle_count = ascii_stl_facet_count(data)
+        return
     cap = _max_triangles() if limit is None else max(1, limit)
     if triangle_count > cap:
         logger.info(

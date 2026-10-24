@@ -9,11 +9,10 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field, is_dataclass
 from math import prod
-from typing import TYPE_CHECKING, Optional, cast
+from typing import Optional
 
 from src.analysis.models import ProcessType
 from src.analysis.features.base import turning_dimensions
-from src.analysis.process_names import process_label, process_phrase
 from src.costing.makeability import environment_gate
 from src.profiles.database import get_materials_for_process
 from src.costing.rates import (
@@ -23,9 +22,6 @@ from src.costing.rates import (
     build_rate_card,
     process_family,
 )
-
-if TYPE_CHECKING:
-    from _typeshed import DataclassInstance
 
 PT = ProcessType
 
@@ -108,8 +104,6 @@ def is_rotational(geometry, mesh=None, features=None):
         cross_dia = 0.5 * (c1 + c2)
         if best is None or roundness > best[0]:
             best = (roundness, axis_len, cross_dia)
-    if best is None:  # three candidates: the first always sets it
-        raise RuntimeError("no turning axis candidate")
     roundness, axis_len, cross_dia = best
     measured = turning_dimensions(mesh, features) if mesh is not None else None
     if measured is not None:
@@ -153,7 +147,7 @@ _DED_FEEDSTOCK_PROCS = (PT.DMLS, PT.SLM, PT.EBM, PT.BINDER_JET)
 
 def _material_props(material) -> dict:
     if is_dataclass(material):
-        return asdict(cast("DataclassInstance", material))
+        return asdict(material)
     return {
         "name": getattr(material, "name", str(material)),
         "density": getattr(material, "density", None),
@@ -190,32 +184,11 @@ def _item_env_valid(item: dict, env: dict | None) -> bool:
     )
 
 
-def _named_grade(mats: list, material_class: str, prefer: Optional[str]):
-    """``(exact, allowed)`` for a route given the grade a parts list names.
-
-    ``exact``: the route's materials that are that grade (any form). ``allowed``:
-    whether the route may still be priced in another grade of the class when it
-    has none (metals yes, plastics no; ``material_grades.substitutes_allowed``).
-    No grade named: ``([], True)``, the class rule unchanged.
-    """
-    if not prefer:
-        return [], True
-    from src.costing.material_grades import same_grade, substitutes_allowed
-
-    exact = [m for m in mats if same_grade(m.name, prefer)]
-    return exact, substitutes_allowed(material_class)
-
-
 def select_material(process: ProcessType, material_class: str, rates: RateCard,
-                    env: dict | None = None, prefer: Optional[str] = None):
+                    env: dict | None = None):
     """Cheapest material compatible with (process, material_class) — the sane
     default pick. No positional materials[0]; no superalloy on a polymer part.
     Returns a MaterialProfile or None (process not eligible for this class).
-
-    ``prefer``: a grade a parts list names ("4140", "Delrin"). The route is
-    priced in that grade when it runs it; a metal route that doesn't is priced
-    in the cheapest grade of the same metal (the estimate names it), a plastic
-    route that doesn't isn't priced (None).
     """
     mats = [
         m for m in get_materials_for_process(process)
@@ -234,58 +207,23 @@ def select_material(process: ProcessType, material_class: str, rates: RateCard,
                     mats.append(m)
     if not mats:
         return None
-    exact, allowed = _named_grade(mats, material_class, prefer)
-    if exact:
-        mats = exact
-    elif not allowed:
-        return None
     mats = _env_preferred_materials(process, mats, env)
     return min(mats, key=lambda m: m.cost_per_kg)
 
 
-def _sheet_stock(material_class: str) -> tuple[list, list]:
-    """(every priced sheet stock, the ones in ``material_class``)."""
+def select_sheet_material(material_class: str, rates: RateCard,
+                          env: dict | None = None):
+    """Sheet metal is inherently metal. Prefer the requested class when it is a
+    sheet family; otherwise fall back to the cheapest sheet stock (by blank cost
+    = density × $/kg) as a clearly-stated default. Returns a MaterialProfile."""
     mats = [m for m in get_materials_for_process(PT.SHEET_METAL)
             if m.density and m.cost_per_kg]
-    return mats, [m for m in mats if MATERIAL_FAMILY.get(m.name) == material_class]
-
-
-def select_sheet_material(material_class: str, rates: RateCard,
-                          env: dict | None = None, prefer: Optional[str] = None):
-    """Sheet stock for the sheet-metal route, cheapest blank (density × $/kg).
-
-    A metal class is priced in its own sheet stock. When none is on file
-    (titanium, nickel), there is no sheet-metal price in that class:
-    ``sheet_stock_gap`` says so; it is never priced as another metal (a titanium
-    plate was priced as 5052 aluminum). Sheet metal is never plastic, so the
-    plastic class (the default when no material is given) is priced in the
-    cheapest sheet stock and the estimate names that metal.
-    Returns a MaterialProfile or None."""
-    mats, in_class = _sheet_stock(material_class)
     if not mats:
         return None
-    exact, allowed = _named_grade(in_class, material_class, prefer)
-    if exact:
-        pool = exact
-    elif prefer and not allowed:
-        return None  # a named plastic is never priced as sheet metal
-    elif in_class:
-        pool = in_class
-    elif material_class == "polymer":
-        pool = mats
-    else:
-        return None
+    in_class = [m for m in mats if MATERIAL_FAMILY.get(m.name) == material_class]
+    pool = in_class if in_class else mats
     pool = _env_preferred_materials(PT.SHEET_METAL, pool, env)
     return min(pool, key=lambda m: m.density * m.cost_per_kg)
-
-
-def sheet_stock_gap(material_class: str) -> Optional[str]:
-    """The plain reason a sheet part isn't priced as sheet metal in this class."""
-    mats, in_class = _sheet_stock(material_class)
-    if in_class or material_class == "polymer" or not mats:
-        return None
-    return (f"No {material_class} sheet stock is on file, so this part isn't priced as "
-            f"sheet metal in {material_class}.")
 
 
 def _routing_sane(process: ProcessType, material_class: str, drivers) -> bool:
@@ -303,8 +241,7 @@ def _routing_sane(process: ProcessType, material_class: str, drivers) -> bool:
 
 
 def eligible_processes(result, drivers, material_class: str, rates: RateCard,
-                       strict_dfm: bool = False, env: dict | None = None,
-                       prefer: Optional[str] = None):
+                       strict_dfm: bool = False, env: dict | None = None):
     """Return the costable shortlist as a list of dicts:
 
         {process, material, score(ProcessScore)}
@@ -339,10 +276,10 @@ def eligible_processes(result, drivers, material_class: str, rates: RateCard,
                 # sheet metal is always a metal; pick metal stock regardless of the
                 # (polymer) default class so the flat-panel route yields a real $.
                 mat = select_sheet_material(material_class, rates,
-                                            env=env_for_materials, prefer=prefer)
+                                            env=env_for_materials)
             else:
                 mat = select_material(process, material_class, rates,
-                                      env=env_for_materials, prefer=prefer)
+                                      env=env_for_materials)
             if mat is None:
                 continue
             if strict_dfm and (ps.verdict == "fail" or ps.score <= 0):
@@ -364,18 +301,7 @@ def eligible_processes(result, drivers, material_class: str, rates: RateCard,
         and _item_env_valid(item, env)
         for item in legacy
     )
-    if has_env_valid_make:
-        return legacy
-    # Re-ranked against the environment: a route whose class pick the environment
-    # rules out (Mild Steel in sour service) is priced in a grade it allows, and says
-    # which grade it replaced, so the exclusion is still cited (estimate.py).
-    legacy_by_proc = {item["process"]: item for item in legacy}
-    ranked = build(env)
-    for item in ranked:
-        old = legacy_by_proc.get(item["process"])
-        if old is not None and old["material"].name != item["material"].name and not _item_env_valid(old, env):
-            item["env_replaced"] = old["material"]
-    return ranked
+    return legacy if has_env_valid_make else build(env)
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -438,10 +364,11 @@ def _avoid_dfm_failed_headline(rec: "RoutingRecommendation", dfm_failed,
     demoted = rec.process
     new_alts = ([demoted] if demoted in available else []) + [
         a for a in rec.alternatives if a != replacement]
-    reason = ("can't make it as drawn" if demoted in failed
-              else "isn't available in the declared material or service conditions")
-    note = (f" {process_label(demoted)}, which the shape suggests, {reason}; "
-            f"{process_phrase(replacement)} can. Check its findings and price before choosing it.")
+    reason = ("fails the engine's DFM as modeled" if demoted in failed
+              else "is not eligible under the declared material and route constraints")
+    note = (f" The {demoted} geometry suggestion {reason}. "
+            f"The eligible DFM-ready alternative is {replacement}; "
+            "review the process findings and costed options before selecting it.")
     return RoutingRecommendation(
         archetype=rec.archetype,
         process=replacement,
@@ -506,8 +433,7 @@ def _classify_archetype(drivers, material_class: str = "polymer") -> RoutingReco
     if drivers.sheet_like:
         d = drivers.sheet_blank_mm or d
         bends = drivers.bend_count
-        op = ("a flat laser or punch blank" if bends == 0
-              else f"a blank and {bends} press-brake bend{'s' if bends != 1 else ''}")
+        op = "flat laser/punch blank" if bends == 0 else f"blank + {bends} press-brake bend(s)"
         return RoutingRecommendation(
             archetype="sheet_panel",
             process=PT.SHEET_METAL.value,
@@ -515,12 +441,12 @@ def _classify_archetype(drivers, material_class: str = "polymer") -> RoutingReco
             material_hint=(material_class if material_class in SHEET_METAL_CLASSES else "aluminum"),
             confidence=0.85,
             reasoning=(
-                (f"A flat sheet: constant {gauge:g} mm thick over a {d[1]:.0f} × {d[2]:.0f} mm "
-                 f"blank ({aspect:.0f} times wider than thick). " if bends == 0 else
-                 f"A bent sheet: constant {gauge:g} mm thick, a {d[1]:.0f} × {d[2]:.0f} mm flat "
-                 f"blank bent {'once' if bends == 1 else f'{bends} times'} along parallel lines. ")
-                + f"Cut it from sheet: {op}, {drivers.outline_perimeter_mm:.0f} mm of cutting. "
-                f"Printing it suits prototypes, not production."),
+                f"Constant {gauge:g}mm gauge over a {d[1]:.0f}×{d[2]:.0f}mm planar "
+                f"blank (parallel sheet faces, planar aspect "
+                f"{aspect:.0f}:1) → a flat sheet, not a printed/cut solid. Route to "
+                f"sheet-metal / stamping: {op}, {drivers.outline_perimeter_mm:.0f}mm cut "
+                f"length. Powder-bed/MJF here is a prototyping fallback, not the "
+                f"production route."),
             alternatives=[PT.CNC_3AXIS.value, PT.MJF.value],
         )
 
@@ -533,9 +459,10 @@ def _classify_archetype(drivers, material_class: str = "polymer") -> RoutingReco
             material_hint=(material_class if material_class != "polymer" else "aluminum"),
             confidence=0.8,
             reasoning=(
-                f"A round part, {drivers.rot_axis_len_mm:.0f} mm long and "
-                f"Ø{drivers.rot_cross_dia_mm:.0f} mm: turn it on a lathe or mill-turn. "
-                f"A round metal part is rarely printed at production volume."),
+                f"Axisymmetric cross-section (round, turnable): axis "
+                f"{drivers.rot_axis_len_mm:.0f}mm × Ø{drivers.rot_cross_dia_mm:.0f}mm "
+                f"→ CNC turning / mill-turn. A round metal part is rarely powder-bed "
+                f"printed at production volume."),
             alternatives=[PT.CNC_5AXIS.value, PT.MJF.value],
         )
 
@@ -555,10 +482,10 @@ def _classify_archetype(drivers, material_class: str = "polymer") -> RoutingReco
                 material_hint="polymer",
                 confidence=0.6,
                 reasoning=(
-                    f"Thin walls (about {wall:.1f} mm; the part fills {solidity*100:.0f}% of "
-                    f"its enclosing box, {d[0]:.0f} mm deep): a shell, cover or bracket, not "
-                    f"a flat sheet. In volume that is injection molding; for prototypes, "
-                    f"nylon powder printing."),
+                    f"Thin-wall hollow shell (~{wall:.1f}mm wall, {solidity*100:.0f}% of "
+                    f"bbox filled, {d[0]:.0f}mm depth) — a cover/enclosure with draft, "
+                    f"not a flat sheet. At volume this is injection molding; at proto "
+                    f"volume, MJF/SLS."),
                 alternatives=[PT.MJF.value, PT.SLS.value],
             )
         return RoutingRecommendation(
@@ -566,9 +493,8 @@ def _classify_archetype(drivers, material_class: str = "polymer") -> RoutingReco
             process=PT.DMLS.value, eval_family="additive", material_hint=material_class,
             confidence=0.5,
             reasoning=(
-                f"Thin walls in metal (about {wall:.1f} mm; the part fills "
-                f"{solidity*100:.0f}% of its enclosing box): bent sheet, machining or "
-                f"metal printing, depending on the shape and quantity."),
+                f"Thin-wall hollow shell (~{wall:.1f}mm wall, {solidity*100:.0f}% filled) "
+                f"in a metal class — sheet-fab or AM depending on intent."),
             alternatives=[PT.SHEET_METAL.value, PT.CNC_3AXIS.value],
         )
 
@@ -579,29 +505,24 @@ def _classify_archetype(drivers, material_class: str = "polymer") -> RoutingReco
             process=PT.CNC_3AXIS.value, eval_family="subtractive",
             material_hint=material_class, confidence=0.7,
             reasoning=(
-                f"A slender bar ({d[2]:.0f} mm long, {d[1]:.0f} × {d[0]:.0f} mm across): "
-                f"cut from bar stock and mill it on a 3-axis machine. Confirm the setups "
-                f"and tool reach; some features may need 5-axis."),
+                f"Slender prismatic bar ({d[2]:.0f}mm long × {d[1]:.0f}×{d[0]:.0f}mm "
+                f"enclosing cross-section): bar stock and 3-axis milling are a "
+                f"starting route. Confirm setups and tool clearance; features may "
+                f"require multi-axis machining."),
             alternatives=[PT.CNC_5AXIS.value],
         )
 
     # 5) PRISMATIC BLOCK (compact, machinable from billet) --------------------
-    # Plastic too: a solid block of plastic is milled from plastic stock as
-    # readily as metal (M22: a 100%-filled plastic cube read as "no prismatic
-    # signature"); printing stays the alternative.
-    if solidity >= 0.5 - 1e-9 and d[2] <= 4 * d[0] + 5 * tol:
-        plastic = material_class == "polymer"
+    if solidity >= 0.5 - 1e-9 and d[2] <= 4 * d[0] + 5 * tol and material_class != "polymer":
         return RoutingRecommendation(
             archetype="prismatic_block",
             process=PT.CNC_3AXIS.value, eval_family="subtractive",
             material_hint=material_class, confidence=0.6,
             reasoning=(
-                f"A compact solid block (it fills {solidity*100:.0f}% of its enclosing box, "
-                f"{block_aspect:.1f}:1): mill it from {'plastic' if plastic else 'metal'} "
-                f"stock on a 3-axis or 5-axis machine"
-                + (", or print it." if plastic else ".")),
-            alternatives=([PT.CNC_5AXIS.value, PT.MJF.value, PT.SLS.value] if plastic
-                          else [PT.CNC_5AXIS.value]),
+                f"Compact prismatic solid ({solidity*100:.0f}% of bbox filled, "
+                f"{block_aspect:.1f}:1 aspect) in metal → machine from billet "
+                f"(CNC 3-/5-axis)."),
+            alternatives=[PT.CNC_5AXIS.value],
         )
 
     # 6) BULK / FREEFORM default ---------------------------------------------
@@ -611,10 +532,9 @@ def _classify_archetype(drivers, material_class: str = "polymer") -> RoutingReco
         eval_family="additive" if material_class == "polymer" else "subtractive",
         material_hint=material_class, confidence=0.4,
         reasoning=(
-            f"A general solid (it fills {solidity*100:.0f}% of its enclosing box, walls "
-            f"about {wall:.1f} mm): not a sheet, a round part or a compact block. "
-            + ("Print it in nylon powder for a plastic part." if material_class == "polymer"
-               else "Machine it for a metal part.")),
+            f"General solid ({solidity*100:.0f}% of bbox filled, ~{wall:.1f}mm mean "
+            f"wall) with no dominant sheet/rotational/prismatic signature → "
+            f"{'additive (MJF/SLS) for a polymer prototype' if material_class=='polymer' else 'CNC machining for a metal part'}."),
         alternatives=([PT.SLS.value, PT.CNC_3AXIS.value] if material_class == "polymer"
                       else [PT.CNC_5AXIS.value, PT.DMLS.value]),
     )

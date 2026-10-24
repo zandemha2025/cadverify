@@ -1,12 +1,11 @@
 """arq-based implementation of the JobQueue protocol."""
 from __future__ import annotations
 
-import json
 import logging
 import os
 import inspect
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import Optional
 
 from arq.connections import ArqRedis, RedisSettings, create_pool
 from sqlalchemy import select
@@ -27,36 +26,7 @@ _JOB_TYPE_TO_TASK: dict[str, str] = {
     "sam3d": "run_sam3d_job",
     "reconstruction": "run_reconstruction_job",
     "design_generation": "run_design_generation_job",
-    "stored_check": "run_stored_check",
 }
-
-
-# Jobs a person waits for: a design, a big file's check, a kept part's job (both
-# run as run_stored_check). arq starts the queued jobs that are due in score
-# order (their enqueue time), so these are queued with a score an hour in the
-# past: ahead of every batch or catalog item queued since, behind none of them.
-INTERACTIVE_JOB_TYPES = frozenset({"design_generation", "stored_check"})
-INTERACTIVE_LEAD = timedelta(hours=1)
-
-
-def interactive_enqueue_kwargs() -> dict[str, Any]:
-    """``enqueue_job`` keywords that put a job a person waits for ahead of queued batch items."""
-    return {"_defer_until": datetime.now(timezone.utc) - INTERACTIVE_LEAD}
-
-
-def job_serializer(payload: Any) -> bytes:
-    """Encode an arq job or result record as JSON.
-
-    Jobs carry ids (job ulids, delivery ids), so JSON holds every payload; the
-    worker never unpickles bytes it reads from Redis. Result values that are not
-    JSON types (a datetime in a task's summary) are stored as their text.
-    """
-    return json.dumps(payload, separators=(",", ":"), default=str).encode("utf-8")
-
-
-def job_deserializer(raw: bytes) -> Any:
-    """Decode a JSON arq record; anything else (a pickle) raises."""
-    return json.loads(raw)
 
 
 async def get_arq_pool() -> ArqRedis:
@@ -64,11 +34,7 @@ async def get_arq_pool() -> ArqRedis:
     global _pool
     if _pool is None:
         redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
-        _pool = await create_pool(
-            RedisSettings.from_dsn(redis_url),
-            job_serializer=job_serializer,
-            job_deserializer=job_deserializer,
-        )
+        _pool = await create_pool(RedisSettings.from_dsn(redis_url))
     return _pool
 
 
@@ -156,7 +122,6 @@ class ArqJobQueue(JobQueue):
             task_name,
             idempotency_key,
             _job_id=arq_job_id,
-            **(interactive_enqueue_kwargs() if job_type in INTERACTIVE_JOB_TYPES else {}),
         )
         logger.info(
             "%s job type=%s task=%s key=%s arq_id=%s",
@@ -210,10 +175,12 @@ class ArqJobQueue(JobQueue):
             job.result_json = {"error": "cancelled"}
             await session.commit()
 
-        # The cancel is the row marked failed. There is no arq call to make here:
-        # ArqRedis has no abort_job (the call that stood here always raised and was
-        # swallowed), and arq aborts only through Job.abort on a worker started
-        # with allow_abort_jobs, which ours is not.
+        # Best-effort abort in arq
+        try:
+            await self._pool.abort_job(job_id)
+        except Exception:
+            logger.debug("arq abort_job failed for %s (may already be dequeued)", job_id)
+
         logger.info("Cancelled job %s", job_id)
         return True
 
@@ -238,7 +205,7 @@ async def reconcile_queued_jobs(ctx: dict) -> dict[str, int]:
                 select(Job.ulid, Job.job_type)
                 .where(
                     Job.status == "queued",
-                    Job.job_type.in_(("sam3d", "reconstruction", "stored_check")),
+                    Job.job_type.in_(("sam3d", "reconstruction")),
                     Job.created_at <= cutoff,
                 )
                 .order_by(Job.created_at.asc())

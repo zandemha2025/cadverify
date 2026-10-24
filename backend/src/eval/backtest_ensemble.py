@@ -83,13 +83,12 @@ def _spread_summary(bands: Sequence) -> dict:
         mid = n // 2
         return xs[mid] if n % 2 else 0.5 * (xs[mid - 1] + xs[mid])
 
-    median_hw = _median(half_widths)  # None exactly when half_widths is empty
     return {
         "n_bands": len(bands),
         "median_disagreement_cov": _median(covs),
         "max_disagreement_cov": (covs[-1] if covs else None),
         "median_p10_p90_halfwidth_pct": (
-            round(100.0 * median_hw, 1) if median_hw is not None else None),
+            round(100.0 * _median(half_widths), 1) if half_widths else None),
         "label": "assumption-ensemble spread — NOT a validated accuracy claim",
     }
 
@@ -139,11 +138,9 @@ def backtest(records: Sequence,
         from src.costing.groundtruth import EngineCostCache
         cache = EngineCostCache()
 
-        def _cached_baseline(rec):
+        def baseline_provider(rec):  # type: ignore[misc]
             pred = cache.baseline(rec)
             return (pred.baseline_usd, pred.ok)
-
-        baseline_provider = _cached_baseline
 
     abs_errs = []
     skipped = []

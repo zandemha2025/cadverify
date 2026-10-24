@@ -2,8 +2,7 @@ name: PP (Polypropylene)
 aliases: [PP, Polypropylene]
 alloy_designation: null
 standards: [ASTM D4101, ISO 1133, UL 94 HB]
-# Priced rows are PP (Molded) and PP (MJF) in profiles/database.py; this file keeps the name and data (src.profiles.identity).
-processes: []
+processes: [injection_molding, mjf]
 mechanical:
   density_g_cm3: 0.9
   tensile_mpa: 35

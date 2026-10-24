@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 _PYRENDER_AVAILABLE = False
 _FACE_ID_RENDERING_AVAILABLE = False
 try:
-    import pyrender  # noqa: F401  # pyright: ignore[reportMissingImports]  # optional render extra, not installed in CI
+    import pyrender  # noqa: F401
 
     _PYRENDER_AVAILABLE = True
 except ImportError:
@@ -151,7 +151,7 @@ def _render_single_view(
 ) -> ViewRender | None:
     """Render one view.  Returns None on any rendering failure."""
     try:
-        import pyrender  # pyright: ignore[reportMissingImports]  # optional render extra; guarded at module level
+        import pyrender  # local import — already guarded at module level
 
         # Build pyrender scene
         scene = pyrender.Scene()

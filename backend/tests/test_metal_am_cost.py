@@ -24,7 +24,6 @@ Physics recap (every constant is a DEFAULT assumption, un-validated):
 from __future__ import annotations
 
 import math
-import pytest
 
 from src.analysis.models import ProcessType as PT
 from src.profiles.models import MaterialProfile
@@ -130,7 +129,7 @@ def test_each_metal_am_process_positive_finite_cost_with_drivers():
         assert est.dfm_verdict != "validated", p.name
         # the estimate honestly caveats its un-validated assumptions somewhere
         all_src = " ".join(dr.source for dr in est.drivers)
-        assert "not confirmed by a shop" in all_src, p.name
+        assert "not shop-validated" in all_src or "assumption" in all_src, p.name
 
 
 def test_metal_am_families_carry_honesty_literal_in_drivers():
@@ -142,7 +141,7 @@ def test_metal_am_families_carry_honesty_literal_in_drivers():
     for p in METAL_AM_PROCESSES:
         est = cost_breakdown(p, d, mat, "titanium", 100, rc, "US")
         sources = " ".join(dr.source for dr in est.drivers)
-        assert "typical value, not confirmed by a shop" in sources, (
+        assert "assumption, not shop-validated" in sources, (
             f"{p.name}: no driver carries the honesty caveat")
 
 
@@ -164,7 +163,7 @@ def test_powder_bed_has_metal_only_post_processing():
         assert sup is not None and sup.value > 0, p.name
         # the un-bundled part-specific ops are honestly caveated
         sr = _driver(est, "stress_relief_cost")
-        assert "not included" in sr.source and "HIP" in sr.source, p.name
+        assert "NOT bundled" in sr.source and "HIP" in sr.source, p.name
 
 
 def test_binder_jet_has_sinter_and_ded_has_finish_machining():
@@ -222,32 +221,27 @@ def test_binder_jet_material_reflects_green_oversize_cube():
 
 def test_ded_machine_scales_with_deposited_mass_over_rate():
     """DED/WAAM cycle time = deposited mass ÷ deposition_rate. WAAM deposits 3× faster
-    than DED (3.0 vs 1.0 kg/hr). Since ce-07 the deposit carries machining stock on every
-    face (DED 2 mm, WAAM 3 mm) when that beats the near-net allowance on the volume:
-    30 cm³ + 74 cm² × 0.2 cm = 44.8 cm³ (DED), + 74 × 0.3 = 52.2 cm³ (WAAM), × 4.43 g/cm³."""
+    than DED (3.0 vs 1.0 kg/hr) for identical feedstock ⇒ WAAM cycle = DED cycle ÷ 3."""
     rc, d, mat = build_rate_card(), _drivers(), _ti()
     ded = cost_breakdown(PT.DED, d, mat, "titanium", 100, rc, "US")
     waam = cost_breakdown(PT.WAAM, d, mat, "titanium", 100, rc, "US")
     cyc_ded = _driver(ded, "cycle_time").value
     cyc_waam = _driver(waam, "cycle_time").value
     assert cyc_ded > cyc_waam
-    assert cyc_ded == pytest.approx(44.8 * 4.43 / 1000 / 1.0, abs=1e-4)
-    assert cyc_waam == pytest.approx(52.2 * 4.43 / 1000 / 3.0, abs=1e-4)
+    # rate ratio 3.0/1.0 => DED cycle ~ 3× WAAM cycle (same feedstock_mult)
+    assert abs(cyc_ded / cyc_waam - 3.0) < 0.05
 
 
 def test_ded_waam_carry_the_widest_band():
-    """DED/WAAM are the most geometry/shop-specific ⇒ the widest line band of the six. (The
-    price's band rolls up from its lines since ce-02, so it is the family's line band that
-    is widest; the deposition line carries it.)"""
+    """DED/WAAM are the most geometry/shop-specific ⇒ the widest error band of the six."""
     rc, d, mat = build_rate_card(), _drivers(), _ti()
-    bands = {p: rc.band_pct(p) for p in METAL_AM_PROCESSES}
+    bands = {p: cost_breakdown(p, d, mat, "titanium", 100, rc, "US").est_error_band_pct
+             for p in METAL_AM_PROCESSES}
     ded_band = bands[PT.DED]
     assert bands[PT.WAAM] == ded_band
     for p in (PT.DMLS, PT.SLM, PT.EBM, PT.BINDER_JET):
         assert ded_band >= bands[p], f"DED band {ded_band} should be widest vs {p.name}"
     assert ded_band > bands[PT.DMLS]
-    ded = cost_breakdown(PT.DED, d, mat, "titanium", 100, rc, "US")
-    assert next(x for x in ded.drivers if x.name == "machine_cost").error_band_pct == ded_band
 
 
 def test_powder_price_not_silently_inflated():
@@ -257,10 +251,9 @@ def test_powder_price_not_silently_inflated():
     rc, d, mat = build_rate_card(), _drivers(), _ti()
     est = cost_breakdown(PT.DMLS, d, mat, "titanium", 100, rc, "US")
     md = _driver(est, "material_cost")
-    # material = net×(1+support)×$/kg×(1+scrap): the $/kg is exactly the DB value,
-    # and no adjustment is applied or claimed
+    # material = net×(1+support)×$/kg×(1+scrap): the $/kg is exactly the DB value
     assert f"${mat.cost_per_kg:g}/kg" in md.source
-    assert "powder price adjustment" not in md.source
+    assert "not silently inflated" in md.source
 
 
 # ── BYTE-IDENTITY REGRESSION of the existing 15 costed processes ─────────────
@@ -272,19 +265,16 @@ _POLY = dict(name="PA12 (Nylon 12)", density=1.01, cost_per_kg=60.0)
 
 # process -> (material spec, material_class, expected unit_cost, expected line_items)
 GOLDEN = {
-    # FDM updated for the shared 300 x 300 x 350 mm build size (src/profiles/envelopes.py):
-    # the plate holds more parts, so per-build setup and the Z climb spread further.
-    # 100 parts at 30 a plate pay 100/30 setups, not 4 (M14: no partial-plate step)
-    PT.FDM: (_POLY, "polymer", 24.6749,
-             {"amortized_fixed": 0.2917, "material": 1.9998, "machine": 15.2667, "labor": 7.1167}),
-    PT.SLA: (_POLY, "polymer", 56.8927,
-             {"amortized_fixed": 1.5, "material": 1.9998, "machine": 47.1429, "labor": 6.25}),
-    PT.DLP: (_POLY, "polymer", 14.0439,
-             {"amortized_fixed": 0.6176, "material": 1.9998, "machine": 5.7647, "labor": 5.6618}),
+    PT.FDM: (_POLY, "polymer", 25.0123,
+             {"amortized_fixed": 0.4375, "material": 1.9998, "machine": 15.4, "labor": 7.175}),
+    PT.SLA: (_POLY, "polymer", 56.9677,
+             {"amortized_fixed": 1.575, "material": 1.9998, "machine": 47.1429, "labor": 6.25}),
+    PT.DLP: (_POLY, "polymer", 14.0563,
+             {"amortized_fixed": 0.63, "material": 1.9998, "machine": 5.7647, "labor": 5.6618}),
     PT.SLS: (_POLY, "polymer", 9.2043,
              {"amortized_fixed": 0.175, "material": 1.9998, "machine": 4.1096, "labor": 2.9199}),
-    PT.MJF: (_POLY, "polymer", 9.0952,
-             {"amortized_fixed": 0.2035, "material": 1.9998, "machine": 3.8884, "labor": 3.0035}),
+    PT.MJF: (_POLY, "polymer", 9.2417,
+             {"amortized_fixed": 0.35, "material": 1.9998, "machine": 3.8884, "labor": 3.0035}),
     PT.CNC_3AXIS: (_ALU, "aluminum", 30.2797,
                    {"amortized_fixed": 0.2625, "material": 0.7484, "machine": 9.375,
                     "labor": 17.5, "nre": 0.7, "inspection": 1.225, "consumables": 0.4688}),
@@ -296,28 +286,23 @@ GOLDEN = {
                      {"amortized_fixed": 0.175, "material": 0.5927, "machine": 6.0125,
                       "labor": 10.5, "nre": 0.35, "inspection": 1.015, "consumables": 0.3006}),
     PT.INJECTION_MOLDING: (_POLY, "polymer", 65.3252,
-                           {"amortized_fixed": 0.0, "material": 1.8725, "machine": 1.7027,
-                            "labor": 1.75, "tooling": 60.0}),
+                           {"amortized_fixed": 60.0, "material": 1.8725, "machine": 1.7027,
+                            "labor": 1.75}),
     PT.DIE_CASTING: (_ALU, "aluminum", 97.5729,
-                     {"amortized_fixed": 0.0, "material": 0.6674, "machine": 3.4055,
-                      "labor": 3.5, "tooling": 90.0}),
+                     {"amortized_fixed": 90.0, "material": 0.6674, "machine": 3.4055,
+                      "labor": 3.5}),
     PT.SHEET_METAL: (_ALU, "aluminum", 5.7466,
                      {"amortized_fixed": 0.14, "material": 0.6804, "machine": 1.4262,
                       "labor": 3.5}),
     PT.FORGING: (_ALU, "aluminum", 139.0068,
-                 {"amortized_fixed": 1.05, "material": 0.8505, "machine": 10.1063, "labor": 7.0,
-                  "tooling": 120.0}),
-    # Castings updated (round 14): a mould or tree is shared by the castings it holds
-    # (42 of this part a sand mould, 8 a tree) and fettling follows the casting's size.
-    PT.INVESTMENT_CASTING: (_ALU, "aluminum", 61.4413,
-                            {"amortized_fixed": 0.525, "material": 0.9526, "machine": 4.2809,
-                             "labor": 1.6828, "tooling": 54.0}),
-    PT.SAND_CASTING: (_ALU, "aluminum", 23.1658,
-                      {"amortized_fixed": 0.35, "material": 1.0303, "machine": 0.1734, "labor": 0.6121,
-                       "tooling": 21.0}),
-    # One setup for the order (de-19): 100 parts on a 50-part lot paid two setups before.
-    PT.WIRE_EDM: (_ALU, "aluminum", 22.9955,
-                  {"amortized_fixed": 0.2625, "material": 0.7413, "machine": 16.45, "labor": 3.5,
+                 {"amortized_fixed": 121.05, "material": 0.8505, "machine": 10.1063, "labor": 7.0}),
+    PT.INVESTMENT_CASTING: (_ALU, "aluminum", 74.4835,
+                            {"amortized_fixed": 54.525, "material": 0.9526, "machine": 6.7559,
+                             "labor": 12.25}),
+    PT.SAND_CASTING: (_ALU, "aluminum", 46.6775,
+                      {"amortized_fixed": 21.35, "material": 1.0303, "machine": 3.2972, "labor": 21.0}),
+    PT.WIRE_EDM: (_ALU, "aluminum", 23.258,
+                  {"amortized_fixed": 0.525, "material": 0.7413, "machine": 16.45, "labor": 3.5,
                    "consumables": 2.0417}),
 }
 

@@ -2,9 +2,6 @@ import { isIP } from "node:net";
 
 export type AuthProxyClientIpSource = "auto" | "fly" | "nginx" | "cloudfront" | "render";
 
-/** What these helpers read from a request: its headers (a Request, or next/headers in a server page). */
-export type IncomingHeaders = { headers: { get(name: string): string | null } };
-
 function validIp(raw: string | null): string | null {
   const candidate = (raw || "").trim();
   return isIP(candidate) ? candidate : null;
@@ -44,7 +41,7 @@ export function cloudFrontViewerIp(raw: string | null): string | null {
  * browser-supplied header for a different proxy can never win.
  */
 export function requestClientIp(
-  req: IncomingHeaders,
+  req: Pick<Request, "headers">,
   source: string = "auto",
 ): string | null {
   switch (source.trim().toLowerCase() as AuthProxyClientIpSource) {
@@ -69,12 +66,4 @@ export function requestClientIp(
     default:
       return null;
   }
-}
-
-/** The browser's User-Agent, forwarded on auth requests so a sign-in's audit
- *  row names the person's browser rather than this server's fetch client.
- *  Informational only (never authority); at most 500 characters. */
-export function requestUserAgent(req: IncomingHeaders): Record<string, string> {
-  const ua = (req.headers.get("user-agent") || "").trim().slice(0, 500);
-  return ua ? { "user-agent": ua } : {};
 }

@@ -91,17 +91,6 @@ def test_reset_link_is_fragment_only_hashed_short_lived_and_single_use(recovery)
     assert complete(client, token).status_code == 400
 
 
-def test_reset_email_uses_the_configured_resend_endpoint(recovery, monkeypatch):
-    client, _, _, send = recovery
-    monkeypatch.delenv("RESEND_API_URL", raising=False)
-    start(client)
-    assert send.call_args.args[0] == "https://api.resend.com/emails"
-    send.reset_mock()
-    monkeypatch.setenv("RESEND_API_URL", "http://127.0.0.1:12111/")
-    start(client, email="second@example.com")
-    assert send.call_args.args[0] == "http://127.0.0.1:12111/emails"
-
-
 @pytest.mark.parametrize("account", ["unknown", "sso", "inactive", "mail_failure"])
 def test_start_does_not_disclose_account_state_or_delivery_failure(recovery, account):
     client, redis, credentials, send = recovery

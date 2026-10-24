@@ -12,8 +12,6 @@ from __future__ import annotations
 
 import math
 
-import pytest
-
 from src.analysis.models import ProcessType as PT
 from src.profiles.models import MaterialProfile
 from src.costing.drivers import GeoDrivers
@@ -98,7 +96,7 @@ def test_each_new_process_positive_finite_cost_with_drivers():
         for dr in est.drivers:
             assert dr.provenance.value in ("MEASURED", "USER", "DEFAULT"), p.name
         # source strings honestly caveat the assumption
-        assert "not confirmed by a shop" in cyc_d.source, p.name
+        assert "not shop-validated" in cyc_d.source or "assumption" in cyc_d.source, p.name
 
 
 def test_new_families_carry_honesty_literal_in_drivers():
@@ -110,7 +108,7 @@ def test_new_families_carry_honesty_literal_in_drivers():
     for p in NEW_PROCESSES:
         est = cost_breakdown(p, d, mat, "aluminum", 100, rc, "US")
         sources = " ".join(dr.source for dr in est.drivers)
-        assert "typical value, not confirmed by a shop" in sources, (
+        assert "assumption, not shop-validated" in sources, (
             f"{p.name}: no driver carries the honesty caveat")
 
 
@@ -170,20 +168,18 @@ def test_forging_unit_cost_amortizes_down_with_qty():
 
 
 def test_wire_edm_is_slow_and_tool_less():
-    """Wire-EDM: no hard tooling (its one-time cost is just the order's first
-    setup), and the SLOW cut dominates the unit cost (machine is the largest line
-    item), with a wire consumable present."""
+    """Wire-EDM: no hard tooling (fixed cost 0), and the SLOW cut dominates the
+    unit cost (machine is the largest line item), with a wire consumable present."""
     rc, d, mat = build_rate_card(), _drivers(), _alu()
     est = cost_breakdown(PT.WIRE_EDM, d, mat, "aluminum", 100, rc, "US")
+    assert est.fixed_cost_usd == 0.0, "wire-EDM has no hard tooling"
     assert _driver(est, "tooling_cost") is None
-    assert 0 < est.fixed_cost_usd < est.unit_cost_usd * 100, "only the first setup is one-time"
-    assert est.fixed_cost_usd / 100 + est.variable_cost_usd == pytest.approx(est.unit_cost_usd, abs=2e-4)
     li = est.line_items
     assert li["machine"] == max(li.values()), f"slow EDM cut should dominate: {li}"
     assert "consumables" in li and li["consumables"] > 0, "wire consumable must appear"
     # the cut-path proxy is honestly flagged
     cyc = _driver(est, "cycle_time")
-    assert "cut path estimated" in cyc.source and "not a measured 3D path" in cyc.source
+    assert "PROXY" in cyc.source and "not a true 3D cut perimeter" in cyc.source
 
 
 def test_wire_edm_slower_material_costs_more_machine_time():
@@ -204,19 +200,16 @@ _POLY = dict(name="PA12 (Nylon 12)", density=1.01, cost_per_kg=60.0)
 
 # process -> (material spec, material_class, expected unit_cost, expected line_items)
 GOLDEN = {
-    # FDM updated for the shared 300 x 300 x 350 mm build size (src/profiles/envelopes.py):
-    # the plate holds more parts, so per-build setup and the Z climb spread further.
-    # 100 parts at 30 a plate pay 100/30 setups, not 4 (M14: no partial-plate step)
-    PT.FDM: (_POLY, "polymer", 24.6749,
-             {"amortized_fixed": 0.2917, "material": 1.9998, "machine": 15.2667, "labor": 7.1167}),
-    PT.SLA: (_POLY, "polymer", 56.8927,
-             {"amortized_fixed": 1.5, "material": 1.9998, "machine": 47.1429, "labor": 6.25}),
-    PT.DLP: (_POLY, "polymer", 14.0439,
-             {"amortized_fixed": 0.6176, "material": 1.9998, "machine": 5.7647, "labor": 5.6618}),
+    PT.FDM: (_POLY, "polymer", 25.0123,
+             {"amortized_fixed": 0.4375, "material": 1.9998, "machine": 15.4, "labor": 7.175}),
+    PT.SLA: (_POLY, "polymer", 56.9677,
+             {"amortized_fixed": 1.575, "material": 1.9998, "machine": 47.1429, "labor": 6.25}),
+    PT.DLP: (_POLY, "polymer", 14.0563,
+             {"amortized_fixed": 0.63, "material": 1.9998, "machine": 5.7647, "labor": 5.6618}),
     PT.SLS: (_POLY, "polymer", 9.2043,
              {"amortized_fixed": 0.175, "material": 1.9998, "machine": 4.1096, "labor": 2.9199}),
-    PT.MJF: (_POLY, "polymer", 9.0952,
-             {"amortized_fixed": 0.2035, "material": 1.9998, "machine": 3.8884, "labor": 3.0035}),
+    PT.MJF: (_POLY, "polymer", 9.2417,
+             {"amortized_fixed": 0.35, "material": 1.9998, "machine": 3.8884, "labor": 3.0035}),
     PT.CNC_3AXIS: (_ALU, "aluminum", 30.2797,
                    {"amortized_fixed": 0.2625, "material": 0.7484, "machine": 9.375,
                     "labor": 17.5, "nre": 0.7, "inspection": 1.225, "consumables": 0.4688}),
@@ -228,11 +221,11 @@ GOLDEN = {
                      {"amortized_fixed": 0.175, "material": 0.5927, "machine": 6.0125,
                       "labor": 10.5, "nre": 0.35, "inspection": 1.015, "consumables": 0.3006}),
     PT.INJECTION_MOLDING: (_POLY, "polymer", 65.3252,
-                           {"amortized_fixed": 0.0, "material": 1.8725, "machine": 1.7027,
-                            "labor": 1.75, "tooling": 60.0}),
+                           {"amortized_fixed": 60.0, "material": 1.8725, "machine": 1.7027,
+                            "labor": 1.75}),
     PT.DIE_CASTING: (_ALU, "aluminum", 97.5729,
-                     {"amortized_fixed": 0.0, "material": 0.6674, "machine": 3.4055,
-                      "labor": 3.5, "tooling": 90.0}),
+                     {"amortized_fixed": 90.0, "material": 0.6674, "machine": 3.4055,
+                      "labor": 3.5}),
     PT.SHEET_METAL: (_ALU, "aluminum", 5.7466,
                      {"amortized_fixed": 0.14, "material": 0.6804, "machine": 1.4262,
                       "labor": 3.5}),
@@ -253,61 +246,3 @@ def test_existing_eleven_byte_identical():
             f"{proc.name} unit_cost drifted: {est.unit_cost_usd} != {exp_unit}")
         assert est.line_items == exp_items, (
             f"{proc.name} line_items drifted: {est.line_items} != {exp_items}")
-
-
-# ── Round 14: a mould or tree is shared; fettling follows the casting's size ──
-@pytest.mark.parametrize("process, per_mould", [(PT.SAND_CASTING, 42), (PT.INVESTMENT_CASTING, 8)])
-def test_a_mould_or_tree_is_shared_by_the_castings_it_holds(process, per_mould):
-    """25 x 30 x 40 mm: 42 to a 500 x 400 mm sand mould, 8 to a 300 x 200 mm tree
-    (25 / 30 mm of sand or gating around each). The mould's time is shared."""
-    from src.costing.cost_model import castings_per_mould
-
-    rc, d = build_rate_card(), _drivers()
-    n, share, words = castings_per_mould(process, d, rc)
-    assert (n, share) == (per_mould, pytest.approx(1 / per_mould))
-    est = cost_breakdown(process, d, _alu(), "aluminum", 100, rc, "US")
-    cycle = _driver(est, "cycle_time")
-    assert f"÷ {per_mould}" in cycle.source and f"{per_mould} castings a " in cycle.source
-
-
-def test_a_casting_too_big_for_the_mould_takes_a_bigger_one():
-    from src.costing.cost_model import castings_per_mould
-
-    big = GeoDrivers(volume_cm3=64000.0, surface_area_cm2=9600.0, bbox_mm=(400.0, 400.0, 400.0),
-                     bbox_volume_cm3=64000.0, hull_volume_cm3=64000.0, nominal_wall_mm=200.0,
-                     face_count=12, max_bbox_mm=400.0, is_valid=True, rotational=False,
-                     rot_axis_len_mm=400.0, rot_cross_dia_mm=565.0)
-    n, share, words = castings_per_mould(PT.SAND_CASTING, big, build_rate_card())
-    assert n == 1 and share == pytest.approx(450 * 450 / (500 * 400))
-    assert "takes a mould 1.01× the 500 × 400 mm one" in words
-
-
-def test_fettling_follows_the_casting_surface_unless_the_hours_are_set():
-    rc, d = build_rate_card(), _drivers()
-    kg = d.mass_kg(_alu().density)
-    est = cost_breakdown(PT.SAND_CASTING, d, _alu(), "aluminum", 100, rc, "US")
-    expected_hr = 0.01 + 0.04 * kg ** (2 / 3)
-    assert est.line_items["labor"] == pytest.approx(expected_hr * 35.0, abs=1e-3)
-    assert "mass to the 2/3 power" in _driver(est, "labor_cost").source
-    # A shop's or user's own hand-work hours are the whole of it, at any size.
-    set_hours = build_rate_card({"post_hr_part.SAND_CASTING": 0.3})
-    est = cost_breakdown(PT.SAND_CASTING, d, _alu(), "aluminum", 100, set_hours, "US")
-    assert est.line_items["labor"] == pytest.approx(0.3 * 35.0)
-    assert "your figure for cutting off, fettling and cleaning" in _driver(est, "labor_cost").source
-
-
-def test_a_rate_table_published_before_the_mould_keys_prices_as_it_did():
-    """An org's governed card copied from the earlier table has no mould or fettling
-    keys: one casting a mould and its own flat hand work, as when it was published."""
-    import copy
-
-    from src.costing.rates import RATE_CARD_V0
-
-    table = copy.deepcopy(RATE_CARD_V0)
-    for key in ("mould_w_mm", "mould_l_mm", "mould_gap_mm", "fettle_hr_kg"):
-        table["process"][PT.SAND_CASTING].pop(key)
-    table["process"][PT.SAND_CASTING]["post_hr_part"] = 0.60
-    rc = build_rate_card(base_rate_table=table)
-    est = cost_breakdown(PT.SAND_CASTING, _drivers(), _alu(), "aluminum", 100, rc, "US")
-    assert est.line_items["labor"] == pytest.approx(21.0)
-    assert est.line_items["machine"] == pytest.approx(3.2972, abs=1e-4)

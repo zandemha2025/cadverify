@@ -33,7 +33,6 @@ import time
 from dataclasses import dataclass
 
 from fastapi import HTTPException, Request, Response
-from sqlalchemy.exc import TimeoutError as DBPoolTimeout
 
 from src.config.production import is_production
 
@@ -182,10 +181,6 @@ async def require_dashboard_session(request: Request) -> int:
         from src.auth.models import lookup_session_user
 
         row = await lookup_session_user(payload.user_id)
-    except DBPoolTimeout:
-        # Every DB connection was taken: busy (503 server_busy with Retry-After,
-        # main.py), never read as "no database" and never let through unchecked.
-        raise
     except Exception as exc:
         if is_production():
             raise HTTPException(

@@ -155,45 +155,6 @@ R1_AM = {
 _AM_GROUP = {"fdm": "FDM", "sla": "SLA_DLP", "dlp": "SLA_DLP",
              "sls": "SLS_MJF", "mjf": "SLS_MJF"}
 
-# R1S — FDM and SLA coupons, from the slicer. R1 above is volume-only: it has no
-# support, height or layer term, so it can't tell a plate on a pin (60 cm³ of
-# support) from a solid block of the same volume, and it priced FDM and SLA
-# coupons as if neither mattered. For the coupons in R1S_SLICED, PrusaSlicer
-# 2.7.2 sliced a full plate in the coupon's file orientation: K copies on a
-# spaced grid on the slicer printer's own bed (FDM: Original Prusa MK4 Input
-# Shaper, 250 × 210 mm, '0.20mm SPEED', Generic PLA, every overhang supported;
-# SLA: Original Prusa SL1S, 127 × 80 mm, '0.05 Normal', default supports and
-# pad). The reference prices that plate's time and material per part with
-# independent public-rate bands:
-#   ref_unit = handling + hours × machine $/hr + material cm³ × density × $/kg
-# (the lo corner takes every low rate, the hi corner every high one). The cost
-# model never sees these numbers: its print model is fitted to single-part
-# slices of other parts (every coupon is held out of that fit) and nests its
-# own plate. A coupon the slicer printer can't hold keeps R1. Re-derive with the slicer reference's plates.py and
-# bands.py (``src.costing.print_model`` names the calibration).
-R1S_RATES = {
-    # machine $/hr, material $/kg, density g/cm³, handling $/part (as R1's)
-    "fdm": {"rate": (4.0, 12.0), "price": (15.0, 40.0), "density": 1.24, "handling": (3.0, 15.0),
-            "basis": "FDM farm machine time $4–12/hr; PLA/PETG $15–40/kg"},
-    "sla": {"rate": (8.0, 20.0), "price": (35.0, 150.0), "density": 1.18, "handling": (5.0, 25.0),
-            "basis": "resin printer time $8–20/hr; standard to engineering resin $35–150/kg"},
-}
-# {coupon: {process: (hours per part, material cm³ per part, copies on the plate)}}
-R1S_SLICED: dict[str, dict[str, tuple[float, float, int]]] = {
-    'cv_cal_large_rotational_flange.stl': {'fdm': (2.3886, 70.95, 1)},
-    'cv_cal_medium_boxy_spacer.stl': {'fdm': (3.0568, 90.75, 2)},
-    'cv_cal_medium_flat_mount.stl': {'fdm': (1.4015, 39.253, 3)},
-    'cv_cal_medium_rotational_bracket.stl': {'fdm': (1.6199, 35.388, 4)},
-    'cv_cal_small_boxy_bracket.stl': {'fdm': (1.5007, 40.28, 4), 'sla': (1.2984, 45.333, 1)},
-    'cv_cal_small_flat_housing.stl': {'fdm': (0.2682, 5.722, 16), 'sla': (0.2331, 8.422, 2)},
-    'cv_cal_small_rotational_sensor.stl': {'fdm': (0.2397, 5.651, 16), 'sla': (0.1579, 6.934, 6)},
-    'cv_cal_tiny_boxy_cover.stl': {'fdm': (0.1469, 2.839, 16), 'sla': (0.1018, 4.729, 6)},
-    'cv_cal_tiny_flat_gasket.stl': {'fdm': (0.0153, 0.198, 16), 'sla': (0.0407, 1.23, 6)},
-    'cv_cal_tiny_rotational_adapter.stl': {'fdm': (0.1857, 3.246, 16), 'sla': (0.1355, 4.293, 6)},
-    'cv_cal_tiny_rotational_ring.stl': {'fdm': (0.0859, 1.324, 16), 'sla': (0.0432, 1.984, 12)},
-}
-
-
 # R2 — CNC independent MRR machining math.
 #   reference $/hr band, MRR band (cm³/min) by class, finish band (cm²/hr),
 #   billet density+price band, setup band, shop minimum band.
@@ -295,18 +256,6 @@ def ref_im_unit(max_bbox_mm: float, qty: int, n_cavities: int = 1):
     return (t_lo / qty + R3_VARIABLE[0], t_hi / qty + R3_VARIABLE[1])
 
 
-def ref_print(proc: str, part: str):
-    """R1S: the slicer-derived FDM/SLA band for a sliced coupon, else None."""
-    sliced = R1S_SLICED.get(part, {}).get(proc)
-    if not sliced:
-        return None
-    r = R1S_RATES[proc]
-    hours, cm3, _copies = sliced
-    kg = cm3 * r["density"] / 1000.0
-    return (r["handling"][0] + hours * r["rate"][0] + kg * r["price"][0],
-            r["handling"][1] + hours * r["rate"][1] + kg * r["price"][1])
-
-
 def ref_band(proc: str, d, material_class: str, qty: int, n_cavities: int = 1):
     """Dispatch to the right independent reference. None if no reference exists."""
     if proc in _AM_GROUP:
@@ -333,7 +282,6 @@ class Comparison:
     ref_lo: float
     ref_hi: float
     dfm_ready: bool
-    reference: str = ""   # R1S (slicer) for sliced FDM/SLA coupons, else the family's own
 
     @property
     def mid(self) -> float:
@@ -406,18 +354,14 @@ def run_harness(
         for e in rep.estimates:
             proc = e["process"]
             mclass = material_family(e["material"]) or "polymer"
-            band = ref_print(proc, fname)
-            reference = "R1S" if band else ""
-            if band is None:
-                band = ref_band(proc, d, mclass, e["quantity"])
+            band = ref_band(proc, d, mclass, e["quantity"])
             if band is None:
                 continue
             lo, hi = band
             res.comparisons.append(Comparison(
                 part=fname, v_cm3=d.volume_cm3, shape=shape, tier=tier,
                 process=proc, qty=e["quantity"], v1_unit=e["unit_cost_usd"],
-                ref_lo=round(lo, 2), ref_hi=round(hi, 2), dfm_ready=e["dfm_ready"],
-                reference=reference or ("R1" if proc in _AM_GROUP else "R2" if proc.startswith("cnc") else "R3")))
+                ref_lo=round(lo, 2), ref_hi=round(hi, 2), dfm_ready=e["dfm_ready"]))
 
         # B-5 tooling-$ standalone cross-check (injection molding only)
         im = next((e for e in rep.estimates if e["process"] == "injection_molding"
@@ -671,19 +615,7 @@ def build_report(res: HarnessResult) -> str:
              f"handling ${R1_AM['FDM'][2]:.0f}–${R1_AM['SLA_DLP'][3]:.0f}/part, "
              "resin highest). Looks only at MEASURED part volume — never at V1's cycle "
              "time, machine rate, or nesting count. This is the independent test of the "
-             "small-part-AM (B-1) and powder-bed-nesting (B-2) fixes. It is volume-only: "
-             "no support, height or layer term, so for FDM and SLA it is replaced by R1S "
-             "wherever the slicer reference covers the coupon.")
-    sliced = sorted(f"{name.removeprefix('cv_cal_').removesuffix('.stl')} {proc.upper()}"
-                    for name, procs in R1S_SLICED.items() for proc in procs)
-    L.append("- **R1S (FDM and SLA, from the slicer)** — PrusaSlicer 2.7.2 sliced a full "
-             "plate of each coupon in its file orientation on the slicer printer's own bed "
-             "(MK4 IS 250 × 210 mm, every overhang supported; SL1S 127 × 80 mm, default "
-             "supports and pad); `ref_unit = handling + hours × $/hr + material × density × "
-             f"$/kg` per part, FDM {R1S_RATES['fdm']['basis']}, resin {R1S_RATES['sla']['basis']}, "
-             "handling as R1. The cost model never sees these numbers (its print model is "
-             "fitted to other parts' single-part slices and nests its own plate). Covers: "
-             + (", ".join(sliced) or "none") + "; other FDM/SLA coupons keep R1.")
+             "small-part-AM (B-1) and powder-bed-nesting (B-2) fixes.")
     L.append("- **R2 (CNC)** — material-removal math: "
              "`material + (removed/MRR + area/finish + handling)×rate + setup×rate/lot`, "
              "MEASURED stock (turning = bounding cylinder; milling = hull×1.10) and "

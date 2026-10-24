@@ -57,22 +57,6 @@ _BATCH_ITEM_STATUSES = ("pending", "queued", "processing", "completed", "failed"
 _WEBHOOK_STATUSES = ("pending", "delivered", "failed", "other")
 
 
-# A metric when prometheus-client is installed, else None; every helper below
-# returns early on PROMETHEUS_AVAILABLE before touching one (typed as the
-# classes above are).
-HTTP_REQUESTS_TOTAL: Any
-HTTP_REQUEST_DURATION_SECONDS: Any
-COST_DECISIONS_TOTAL: Any
-ANALYSIS_DURATION_SECONDS: Any
-JOBS_CURRENT: Any
-BATCHES_CURRENT: Any
-BATCH_ITEMS_CURRENT: Any
-WEBHOOK_DELIVERIES_CURRENT: Any
-ASYNC_WORKER_UP: Any
-BATCHES_STALE_HEARTBEAT_CURRENT: Any
-WEBHOOK_RETRIES_DUE_CURRENT: Any
-ORPHAN_SWEEPS_TOTAL: Any
-
 if PROMETHEUS_AVAILABLE:
     HTTP_REQUESTS_TOTAL = Counter(
         "cadverify_http_requests_total",

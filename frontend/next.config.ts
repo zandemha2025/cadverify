@@ -13,11 +13,6 @@ const SECURITY_HEADERS = [
 const nextConfig: NextConfig = {
   // output: "standalone" is for Docker; Vercel uses its own adapter
 
-  // `next dev` blocks its own scripts and hot-reload socket for any host other
-  // than localhost, so a page opened at http://127.0.0.1:3000 never hydrates
-  // (nothing responds to a tap). Development only; production ignores it.
-  allowedDevOrigins: ["127.0.0.1"],
-
   async headers() {
     return [{ source: "/:path*", headers: SECURITY_HEADERS }];
   },

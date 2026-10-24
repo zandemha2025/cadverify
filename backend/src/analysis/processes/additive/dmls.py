@@ -3,7 +3,6 @@
 from src.analysis.context import GeometryContext
 from src.analysis.models import Issue, ProcessType
 from src.analysis.processes.base import register
-from src.profiles.envelopes import common_envelope
 from src.analysis.processes.checks import (
     check_build_volume,
     check_overhangs,
@@ -32,8 +31,8 @@ class DMLSAnalyzer:
                  cite="EOS DMLS best practice: 45° support threshold."))
         i.extend(check_small_features(ctx, 0.15, self.process,
                  cite="EOS M 400-4: 40µm layer, ~150µm feature."))
-        i.extend(check_build_volume(ctx, common_envelope(self.process), self.process,
-                 cite="Common size; e.g. EOS M 290."))
+        i.extend(check_build_volume(ctx, (400, 400, 400), self.process,
+                 cite="EOS M 400-4."))
         i.extend(check_trapped_volumes(ctx, self.process, min_drain_mm=5.0,
                  cite="Metal powder: 5mm+ drain holes."))
         i.extend(check_residual_stress(ctx, self.process,

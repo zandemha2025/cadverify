@@ -169,7 +169,7 @@ def match_by_across_flats(af_mm: float, kind: str) -> Optional[dict[str, Any]]:
             best_residual = residual
             best = (nominal, af_nominal, din_af)
 
-    if best is None or best_residual is None or best_residual > _MATCH_TOLERANCE_MM:  # set together
+    if best is None or best_residual > _MATCH_TOLERANCE_MM:
         return None
 
     nominal, af_nominal, din_af = best

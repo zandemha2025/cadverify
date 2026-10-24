@@ -12,22 +12,20 @@ Exit 0 = corpus green; exit 1 = any non-KNOWN-GAP row failed.
 from __future__ import annotations
 
 import json
-import os
 import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 BACKEND = REPO / "backend"
 sys.path.insert(0, str(BACKEND))
-# Each fixture is parsed once; a parse cache would only hide the parser.
-os.environ.setdefault("MESH_PARSE_CACHE_DISABLED", "1")
+
+import trimesh  # noqa: E402
 
 from src.analysis.base_analyzer import analyze_geometry  # noqa: E402
 from src.analysis.context import GeometryContext  # noqa: E402
 from src.analysis.features import detect_all as detect_features  # noqa: E402
 from src.analysis.models import ProcessType  # noqa: E402
 from src.analysis.processes import get_analyzer  # noqa: E402  (import registers all analyzers)
-from src.api.routes import _parse_mesh  # noqa: E402  (the upload route's own parser)
 
 CORPUS_DIR = BACKEND / "tests" / "trap-corpus"
 
@@ -39,8 +37,6 @@ GATE_CODES = {
     "small_features": {"SMALL_FEATURES"},
     "build_volume": {"EXCEEDS_BUILD_VOLUME"},
     "build_reorientation": {"BUILD_REORIENTATION_REQUIRED"},
-    # Fits only turned, or on the limit within binary-STL rounding: not "too big".
-    "build_fit_unproven_or_reoriented": {"BUILD_REORIENTATION_REQUIRED", "BUILD_ENVELOPE_PRECISION"},
     "aspect_ratio": {"EXTREME_ASPECT_RATIO"},
     "trapped_volumes": {"TRAPPED_VOLUME"},
 }
@@ -50,14 +46,9 @@ def run_fixture(entry: dict) -> list[str]:
     """Return the list of expectation failures for one fixture (empty = green)."""
     failures: list[str] = []
     path = CORPUS_DIR / entry["file"]
-    # The production parser, as an upload runs it: magic check, triangle cap,
-    # and the binary-STL coordinate rounding the checks account for. Loading
-    # with plain trimesh.load skipped that rounding, so CI could be green on
-    # findings production never showed.
-    try:
-        mesh, _suffix = _parse_mesh(path.read_bytes(), entry["file"])
-    except Exception as exc:  # a refused upload is a result too
-        return [f"parse refused: {getattr(exc, 'detail', exc)}"]
+    mesh = trimesh.load(str(path))
+    if isinstance(mesh, trimesh.Scene):
+        mesh = mesh.to_geometry()
     geometry = analyze_geometry(mesh)
     ctx = GeometryContext.build(mesh, geometry)
     ctx.features = detect_features(ctx.mesh)

@@ -85,19 +85,6 @@ def client_ip(request: Request) -> str:
     return peer.host if peer else "unknown"
 
 
-def client_user_agent(request: Request | None) -> str | None:
-    """The browser an audit row names: the request's User-Agent (the web app's
-    auth proxy forwards the browser's), at most 500 characters, through the log
-    scrubber so a crafted value can't plant a credential in the audit trail.
-    Informational, never authority."""
-    if request is None:
-        return None
-    from src.auth.scrubbing import _scrub_str
-
-    raw = (request.headers.get("user-agent") or "").strip()
-    return _scrub_str(raw)[:500] or None
-
-
 def require_verified_proxy(request: Request) -> str:
     """Fail closed for the deploy-time frontend/backend proxy handshake."""
     forwarded = verified_proxy_client_ip(request)

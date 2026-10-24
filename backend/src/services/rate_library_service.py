@@ -93,22 +93,6 @@ def validate_rate_table(payload: Any) -> None:
         raise ValueError(
             f"rate table 'global' is missing keys: {missing_global}"
         )
-    spec_ops = payload.get("spec_ops")
-    if spec_ops is not None:
-        # Optional: the org's own prices for finishes, heat treatment and
-        # inspection (src.costing.part_specs). Only known ops and fields.
-        from src.costing.part_specs import OVERRIDE_FIELDS, SPEC_OPS_V0
-
-        if not isinstance(spec_ops, dict):
-            raise ValueError("rate table 'spec_ops' must be an object")
-        for op, fields in spec_ops.items():
-            if op not in SPEC_OPS_V0:
-                raise ValueError(f"rate table 'spec_ops' has an unknown op '{op}'")
-            if not isinstance(fields, dict):
-                raise ValueError(f"rate table 'spec_ops.{op}' must be an object")
-            for k in fields:
-                if k not in OVERRIDE_FIELDS or (k not in SPEC_OPS_V0[op] and k != "lead_days"):
-                    raise ValueError(f"rate table 'spec_ops.{op}' has an unknown field '{k}'")
     try:
         build_rate_card(base_rate_table=payload)
     except Exception as exc:  # noqa: BLE001 — surface the engine's own message
@@ -186,39 +170,6 @@ def diff_payloads(a: dict, b: dict, *, _prefix: str = "") -> dict:
     return {"changed": changed, "added": added, "removed": removed}
 
 
-def changes_against(base: Optional[dict], payload: Any) -> list[dict]:
-    """Every value ``payload`` sets differently from ``base`` (the typical
-    ``RATE_CARD_V0`` when None): ``[{"path": "process.cnc_3axis.machine_rate",
-    "from": 75, "to": 82}, {"path": "material_prices.Mild Steel", "from": None,
-    "to": 2.4}]``. Paths use the stored (JSON) keys."""
-    import json
-
-    def norm(x):
-        return json.loads(json.dumps(x, default=str))
-
-    a = norm(base if base is not None else RATE_CARD_V0)
-    b = norm(payload if isinstance(payload, dict) else {})
-    d = diff_payloads(a, b)
-    out = [dict(c) for c in d["changed"]]
-
-    def leaf(obj, path):
-        for k in path.split("."):
-            if not isinstance(obj, dict) or k not in obj:
-                return None
-            obj = obj[k]
-        return obj
-
-    for path in d["added"]:
-        v = leaf(b, path)
-        if isinstance(v, dict):
-            out.extend({"path": f"{path}.{k}", "from": None, "to": x} for k, x in v.items())
-        else:
-            out.append({"path": path, "from": None, "to": v})
-    for path in d["removed"]:
-        out.append({"path": path, "from": leaf(a, path), "to": None})
-    return out
-
-
 # ---------------------------------------------------------------------------
 # Resolution cache (single-process; invalidated on publish)
 # ---------------------------------------------------------------------------
@@ -249,18 +200,6 @@ async def resolve_rate_table_for_org(
     flag is off, there is no org, or the org has no published card in effect.
     ``None`` keeps the cost path byte-identical to pre-W4.
     """
-    card = await resolve_rate_card_for_org(session, org_id, as_of)
-    return card["payload"] if card is not None else None
-
-
-async def resolve_rate_card_for_org(
-    session: AsyncSession,
-    org_id: Optional[str],
-    as_of: Optional[datetime] = None,
-) -> Optional[dict]:
-    """``{"payload", "version"}`` of the org's card in effect at ``as_of``, or
-    ``None`` under the same rules as ``resolve_rate_table_for_org``. The version
-    is what a price says it was figured at ("your rates v1")."""
     if not rate_library_enabled() or not org_id:
         return None
     now = as_of or _now()
@@ -269,7 +208,7 @@ async def resolve_rate_card_for_org(
     if cached is not None:
         ef, et = cached["effective_from"], cached["effective_to"]
         if ef is not None and ef <= now and (et is None or et > now):
-            return {"payload": cached["payload"], "version": cached["version"]}
+            return cached["payload"]
 
     rows = (
         await session.execute(
@@ -288,7 +227,7 @@ async def resolve_rate_card_for_org(
         "effective_to": row.effective_to,
         "version": row.version,
     }
-    return {"payload": row.payload, "version": row.version}
+    return row.payload
 
 
 # ---------------------------------------------------------------------------
@@ -378,7 +317,6 @@ async def update_draft(
     name: Optional[str] = None,
     change_note: Optional[str] = None,
     payload: Optional[dict] = None,
-    edited_by: Optional[int] = None,
 ) -> RateCardVersion:
     row = await get_version(session, org_id, version_id)
     if row is None:
@@ -394,8 +332,6 @@ async def update_draft(
         row.name = name
     if change_note is not None:
         row.change_note = change_note
-    if edited_by is not None:
-        row.edited_by = edited_by
     await session.flush()
     return row
 
@@ -535,7 +471,6 @@ def serialize_version(row: RateCardVersion, *, include_payload: bool = False) ->
         "effective_from": _iso(row.effective_from),
         "effective_to": _iso(row.effective_to),
         "created_by": row.created_by,
-        "edited_by": getattr(row, "edited_by", None),
         "created_at": _iso(row.created_at),
         "published_at": _iso(row.published_at),
         # Honest, always-present posture: a governed card is DEFAULT assumptions,

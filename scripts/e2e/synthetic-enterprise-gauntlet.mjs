@@ -254,17 +254,13 @@ async function main() {
       "Supplier network and RFQ package",
       "Simulate supplier-network handoff without pretending a live supplier was contacted.",
       async () => {
-        // dbd669b0 made the supplier's copy a plain request for quote (no "Live supplier
-        // send" / "Raw CAD included" lines); the service's guards stay, and the buyer's
-        // pages say it (enterprise-prehuman-readiness RFQ-PROCUREMENT-001).
         assert(
           contains(
             rfqService,
-            "ScaleCAD doesn't send it",
-            "live_supplier_send=False",
-            "include_raw_cad: bool = False",
-            '"raw_cad_unavailable"',
-            '"confidence_unvalidated"'
+            "not live procurement",
+            "Live supplier send",
+            "Raw CAD included",
+            "confidence_unvalidated"
           ),
           "RFQ package service does not preserve no-live-send and confidence warnings"
         );

@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.validation_caps import require_paid_access
 from src.config.public_urls import error_doc_url
-from src.auth.rbac import Role, org_role_allows_writes, require_org_checker, require_role
+from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_db_session
 from src.services import reconstruction_service
@@ -24,31 +24,6 @@ logger = logging.getLogger("cadverify.reconstruct_router")
 router = APIRouter(prefix="/api/v1", tags=["reconstruct"])
 
 
-_IMAGE_CHUNK = 1024 * 1024  # 1 MiB
-
-
-async def _read_image_capped(img: UploadFile) -> bytes:
-    """Read one uploaded image, refusing it as soon as it passes MAX_IMAGE_BYTES."""
-    from src.reconstruction import preprocessing
-
-    limit = preprocessing.MAX_IMAGE_BYTES
-    buf = bytearray()
-    while True:
-        chunk = await img.read(min(_IMAGE_CHUNK, limit + 1 - len(buf)))
-        if not chunk:
-            break
-        buf.extend(chunk)
-        if len(buf) > limit:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"Image exceeds maximum of {limit} bytes "
-                    f"({limit // (1024 * 1024)} MB)"
-                ),
-            )
-    return bytes(buf)
-
-
 @router.get("/reconstruct/capability")
 async def reconstruction_capability(
     user: AuthedUser = Depends(require_role(Role.viewer)),
@@ -56,8 +31,10 @@ async def reconstruction_capability(
     """Return the real deployment capability before a browser accepts images."""
     availability = reconstruction_service.check_reconstruction_availability()
     available = bool(availability["available"])
-    # The same rule POST /reconstruct enforces: platform analyst and org member.
-    can_submit = await org_role_allows_writes(user)
+    try:
+        can_submit = Role(user.role).rank >= Role.analyst.rank
+    except ValueError:
+        can_submit = False
     egress = bool(availability.get("egress")) if available else False
     if not available:
         message = (
@@ -68,7 +45,7 @@ async def reconstruction_capability(
     elif egress:
         message = (
             "Image-to-3D uses an approved third-party provider. Uploaded and "
-            "derived imagery leaves this ScaleCAD deployment."
+            "derived imagery leaves this ScaleCad deployment."
         )
     else:
         message = (
@@ -107,7 +84,7 @@ async def reconstruct(
     ),
     process_types: Optional[str] = Query(None, description="Comma-separated process types for analysis after reconstruction."),
     rule_pack: Optional[str] = Query(None, description="Industry rule pack: aerospace, automotive, oil_gas, medical."),
-    user: AuthedUser = Depends(require_org_checker),
+    user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
     _paid_access: None = Depends(require_paid_access),
 ):
@@ -147,10 +124,10 @@ async def reconstruct(
             },
         )
 
-    # Read each image with the size cap applied while reading.
+    # Read all image bytes
     image_data: list[tuple[bytes, str]] = []
     for img in images:
-        img_bytes = await _read_image_capped(img)
+        img_bytes = await img.read()
         content_type = img.content_type or "image/jpeg"
         image_data.append((img_bytes, content_type))
 

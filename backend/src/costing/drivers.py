@@ -8,14 +8,13 @@ from __future__ import annotations
 
 import math
 import os
-from dataclasses import dataclass, field
-from typing import Any
+from dataclasses import dataclass
 
 import numpy as np
 import trimesh
 
 from src.analysis.constants import SHEET_GAUGE_MAX_MM
-from src.analysis.context import bent_sheet_geometry, enclosing_box_dimensions, enclosing_cylinder_dimensions, flat_sheet_geometry, wall_thickness_tolerance, minimum_width_lower_bound
+from src.analysis.context import enclosing_box_dimensions, enclosing_cylinder_dimensions, flat_sheet_geometry, wall_thickness_tolerance, minimum_width_lower_bound
 from src.analysis.context import fitting_box_dimensions as build_orientation
 from src.costing.routing import is_rotational
 
@@ -47,7 +46,6 @@ class GeoDrivers:
     planar_aspect: float = 0.0        # mid_dim / gauge — flatness of the part
     outline_perimeter_mm: float = 0.0 # laser/punch cut length (outer + cutouts)
     bend_count: int = 0               # verified flat blanks have no bends
-    bend_length_mm: float = 0.0       # a bent sheet's bend lines (its width along them); 0 when not bent
     sheet_like: bool = False          # geometry reads as a constant-gauge flat sheet
     sheet_blank_mm: tuple | None = None  # gauge, short side, long side in the sheet plane
     sheet_tolerance_mm: float = 0.0   # numeric transform noise, not manufacturing allowance
@@ -58,12 +56,6 @@ class GeoDrivers:
     bbox_precision_mm: float = 0.0  # enclosing-dimension uncertainty, both sides
     minimum_width_bound_mm: float = 0.0  # hull-sphere diameter, before source-error allowance
     enclosing_cylinder_mm: tuple | None = None  # axial length, diameter; source-error padded
-    # ---- print drivers (MEASURED on the part as checked, +Z up) ---------
-    # src.costing.print_model.PrintFeatures: what FDM and SLA pricing reads
-    # (height, layers, support under the faces needing it). None for drivers
-    # built without a mesh; those keep the volume model.
-    print_features: Any = None
-    print_mesh: Any = field(default=None, repr=False, compare=False)  # for other ways down when it doesn't fit standing
 
     # ---- derived (MEASURED) ---------------------------------------------
     def mass_kg(self, density_g_cm3: float) -> float:
@@ -87,7 +79,7 @@ class GeoDrivers:
                      material_name: str) -> str:
         return (f"bounding cylinder Ø{self.rot_cross_dia_mm:.2f} × {self.rot_axis_len_mm:.2f} mm "
                 f"× {stock_allowance:.2f} stock allowance = {self.turning_stock_volume_cm3(stock_allowance):.2f} cm³ "
-                f"× {material_name} density {density_g_cm3:.2f} g/cm³ (typical value, not confirmed by a shop)")
+                f"× {material_name} density {density_g_cm3:.2f} g/cm³ [assumption, not shop-validated]")
 
     # ---- Milling / wire-EDM billet: enclosing rectangular stock ------
     def billet_volume_cm3(self, stock_allowance: float) -> float:
@@ -107,26 +99,13 @@ class GeoDrivers:
         if not bbox_billet_enabled():
             return (f"hull volume {self.hull_volume_cm3:.2f} cm³ × {stock_allowance:.2f} "
                     f"stock allowance × {material_name} density {density_g_cm3:.2f} g/cm³")
-        basis = basis_words(self.billet_basis)
+        basis = self.billet_basis
         if self.billet_bbox_mm:
             basis += " " + "×".join(f"{d:.4g}" for d in self.billet_bbox_mm) + " mm"
         basis += "; minimum not certified"
         return (f"bounding-box billet {self.billet_volume_cm3(1):.2f} cm³ ({basis}) × "
                 f"{stock_allowance:.2f} stock allowance × {material_name} density "
-                f"{density_g_cm3:.2f} g/cm³ (typical value, not confirmed by a shop)")
-
-
-_BASIS_WORDS = {
-    "oriented candidate": "the smallest box found around the part",
-    "principal-axis candidate": "a box along the part's main axes",
-    "file-axis fallback": "a box along the file's axes",
-    "measured enclosing cylinder": "the measured enclosing cylinder",
-}
-
-
-def basis_words(basis: str) -> str:
-    """How an enclosing box was found, in words: "oriented candidate" → "the smallest box found around the part"."""
-    return _BASIS_WORDS.get(basis, basis)
+                f"{density_g_cm3:.2f} g/cm³ [assumption, not shop-validated]")
 
 
 def parts_per_build(proc, bbox_mm, rates, envelope=None, cylinder=None) -> int:
@@ -219,28 +198,12 @@ def extract_drivers(geometry, mesh, features=None) -> GeoDrivers:
 
     sheet_geometry = flat_sheet_geometry(mesh)
     sheet_blank_mm = sheet_geometry[0] if sheet_geometry is not None else None
-    # M9: a sheet bent along parallel lines (an L bracket, a channel) is priced
-    # from its flat blank: width along the bends × developed length, plus its
-    # press-brake bends. Its blank outline is that rectangle.
-    bent = bent_sheet_geometry(mesh) if sheet_geometry is None and not rotational else None
-    bend_count = 0
-    bend_length_mm = 0.0
-    if bent is not None:
-        sheet_blank_mm = (bent.gauge_mm, *sorted((bent.width_mm, bent.developed_mm)))
-        w, length = bent.width_mm, bent.developed_mm
-        sheet_geometry = (sheet_blank_mm, np.array([[0.0, 0.0], [length, 0.0], [length, w], [0.0, w]]),
-                          bent.precision_mm)
-        bend_count = bent.bends
-        bend_length_mm = float(bent.width_mm) if bent.bends else 0.0
     sheet_tolerance_mm = wall_thickness_tolerance(
         mesh, max(1e-4, min(float(np.linalg.norm(dims)) * 1e-4, .1)))
     sheet_precision_mm = sheet_geometry[2] if sheet_geometry is not None else 0.0
     sheet_gauge_mm, planar_aspect, outline_perimeter_mm, sheet_like = _sheet_geometry(
         geometry.volume or 0.0, geometry.surface_area or 0.0, sheet_blank_mm,
         sheet_tolerance_mm + sheet_precision_mm)
-    if bent is not None:
-        # The blank is a plain rectangle (holes would break the bent reading).
-        outline_perimeter_mm = 2.0 * (bent.width_mm + bent.developed_mm)
     # A rotational solid is a turned/spun part, not a flat blank.
     sheet_like = sheet_like and not rotational
 
@@ -262,8 +225,7 @@ def extract_drivers(geometry, mesh, features=None) -> GeoDrivers:
         sheet_gauge_mm=sheet_gauge_mm,
         planar_aspect=round(planar_aspect, 2),
         outline_perimeter_mm=round(outline_perimeter_mm, 2),
-        bend_count=bend_count,  # flat blanks 0; a measured bent sheet its bends
-        bend_length_mm=round(bend_length_mm, 3),  # what a press brake's bend length must clear
+        bend_count=0,  # Only verified flat blanks are sheet-costable; no bends.
         sheet_like=sheet_like,
         sheet_blank_mm=sheet_blank_mm,
         sheet_tolerance_mm=sheet_tolerance_mm,
@@ -274,19 +236,4 @@ def extract_drivers(geometry, mesh, features=None) -> GeoDrivers:
         bbox_precision_mm=2 * float(mesh.metadata.get("coordinate_error", 0.0)),
         minimum_width_bound_mm=minimum_width_lower_bound(mesh),
         enclosing_cylinder_mm=enclosing_cylinder_dimensions(mesh, features),
-        print_features=_print_features(mesh),
-        print_mesh=mesh,
     )
-
-
-def _print_features(mesh):
-    """The print model's features of the part as checked, or None if they can't be measured."""
-    from src.costing.print_model import placed_features
-
-    try:
-        return placed_features(mesh)
-    except Exception:  # pragma: no cover - defensive: a mesh the support test can't read
-        import logging
-
-        logging.getLogger("cadverify.costing").warning("print features unavailable", exc_info=True)
-        return None

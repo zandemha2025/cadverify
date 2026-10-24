@@ -2,8 +2,7 @@ name: Ti-6Al-4V Grade 5
 aliases: [Ti64, TC4]
 alloy_designation: AMS 4928
 standards: [AMS 4928, AMS 4911, ASTM B348, ASTM F1472]
-# Printed titanium is the Ti6Al4V powder row in profiles/database.py (same alloy, src.profiles.identity).
-processes: [cnc_3axis, cnc_5axis, cnc_turning, forging, investment_casting]
+processes: [cnc_3axis, cnc_5axis, cnc_turning, dmls, slm, ebm, forging, investment_casting]
 mechanical:
   density_g_cm3: 4.43
   tensile_mpa: 1100

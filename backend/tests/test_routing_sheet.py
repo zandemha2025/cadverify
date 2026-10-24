@@ -133,9 +133,7 @@ def test_sheet_stock_range_matches_its_disclosed_limits(thickness, code, limit, 
     assert issue.measurement_unit == "mm"
     assert "default" in issue.message.lower()
     assert f"{limit:g}mm" in issue.message
-    # Outside the gauge range either way is not sheet stock: thinner can't be
-    # handled as sheet, thicker is plate or bar.
-    assert issue.severity == Severity.ERROR
+    assert issue.severity == (Severity.ERROR if code == "TOO_THIN_SHEET" else Severity.WARNING)
 
 
 @pytest.mark.parametrize("outline", ["rectangle", "triangle", "cutout"])

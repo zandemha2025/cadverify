@@ -90,10 +90,8 @@ def test_standard_and_omitted_byte_identical():
     # standard adds NO tolerance line item and NO tolerance driver
     assert "tolerance" not in std.line_items
     assert _driver(std, "tolerance_class") is None
-    # the reported band is the lines' own bands rolled up (ce-02), with no tolerance widening
-    from src.costing.confidence import rolled_up_band
-    assert std.est_error_band_pct == rolled_up_band(std.line_items, std.drivers, std.unit_cost_usd)[0]
-    assert "tolerance" not in (std.band_basis or "")
+    # the reported band equals the untouched family band (no widening)
+    assert std.est_error_band_pct == rates.band_pct(PT.CNC_3AXIS)
 
 
 # ── 2) monotonic in BOTH cost and band width (CNC) ──────────────────────────
@@ -130,8 +128,8 @@ def test_provenance_and_validated_never_flipped():
     assert d is not None
     # the DECLARATION is USER; the factor is a DEFAULT assumption (said so)
     assert d.provenance.value == "USER"
-    assert "You set the tolerance; the factor is a typical value" in d.source
-    assert "not confirmed by a shop" in d.source
+    assert "DEFAULT assumption" in d.source
+    assert "not shop-validated" in d.source
 
     # a tolerance declaration can NEVER flip a confidence interval to validated:
     # with no real residual model the band stays an assumption band.
@@ -183,7 +181,7 @@ def test_non_machining_family_cost_unchanged_band_widens():
     assert tight.est_error_band_pct > std.est_error_band_pct
     d = _driver(tight, "tolerance_class")
     assert d is not None and d.provenance.value == "USER"
-    assert "the price is unchanged" in d.source
+    assert "cost UNCHANGED" in d.source
 
 
 def test_tolerance_classes_ordered_and_standard_is_noop():

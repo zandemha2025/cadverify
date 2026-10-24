@@ -93,9 +93,6 @@ spec:
               value: {{ .Values.reconstruction.backend | quote }}
             - name: RECONSTRUCTION_ALLOW_REMOTE_EGRESS
               value: {{ ternary "1" "0" .Values.reconstruction.allowRemoteEgress | quote }}
-            # Import a part from a share link (the worker fetches it); never on the regulated plane.
-            - name: LINK_IMPORT_ENABLED
-              value: {{ ternary "1" "0" (and .Values.linkImport.enabled (not .Values.production.regulated)) | quote }}
             - name: AUDIT_ENABLED
               value: {{ .Values.audit.enabled | quote }}
             - name: OBJECT_STORE_BACKEND

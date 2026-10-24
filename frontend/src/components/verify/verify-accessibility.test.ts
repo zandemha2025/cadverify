@@ -16,22 +16,13 @@ test("Verify presents the result before optional assumptions accessibly", () => 
   assert.match(screenSource, /aria-checked=\{on\}/);
 });
 
-// Regression: QA ISSUE-005 — the in-flight state must win over the provisional
-// result object, which cannot yet know which conditions the record holds.
+// Regression: QA ISSUE-005 — the in-flight declaration state must win over the
+// provisional result object, which cannot yet know whether persistence succeeded.
 test("service-condition copy stays pending while verification is running", () => {
   const status = screenSource.indexOf("function envDoorStatus");
-  const pending = screenSource.indexOf("if (running)", status);
-  const declared = screenSource.indexOf("if (result.envDeclared)", status);
-  assert.ok(status >= 0 && pending > status && declared > pending);
-});
-
-// Regression: Verify erased stored service conditions. Conditions are edited only
-// in the editor, saved explicitly, and a change never re-runs verification by itself.
-test("service conditions are an explicit edit, not a run side effect", () => {
-  assert.match(screenSource, /<ServiceConditionsEditor/);
-  assert.match(screenSource, /Save conditions/);
-  assert.doesNotMatch(appSource, /\}, \[env\]\);/);
-  assert.match(appSource, /saveServiceConditions\(meshHash, next,/);
+  const pending = screenSource.indexOf("if (running && hostile)", status);
+  const persisted = screenSource.indexOf("if (result && result.envDeclared)", status);
+  assert.ok(status >= 0 && pending > status && persisted > pending);
 });
 
 // Regression: QA ISSUE-007 — material value/provenance follows the cost record;

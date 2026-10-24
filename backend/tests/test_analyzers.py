@@ -29,9 +29,7 @@ def test_build_envelope_accepts_a_proven_reorientation_without_erasing_other_che
         if angle:
             assert any(i.code == 'BUILD_REORIENTATION_REQUIRED' for i in issues)
             ctx.metadata['decimation'] = {'succeeded': True}
-            # Not proven to fit this size, but a larger FDM machine ScaleCAD knows
-            # takes it: a warning to check against the real machine (audit W3).
-            assert any(i.code == 'BUILD_ENVELOPE_UNVERIFIED' and i.severity == Severity.WARNING for i in
+            assert any(i.code == 'BUILD_ENVELOPE_UNVERIFIED' and i.severity == Severity.ERROR for i in
                        check_build_volume(ctx, (300, 300, 350), ProcessType.FDM))
 
     thin = trimesh.creation.box(extents=[290, 290, .4])
@@ -138,19 +136,16 @@ def test_unproved_step_profiles_request_wire_path_review():
     from src.parsers.step_mesher import step_to_trimesh_from_bytes
 
     controls = Path(__file__).resolve().parents[2] / "outputs/production-audit-20260929/shape-controls"
-    # The boss changes section despite all normals being axis aligned.
-    source = controls / "156-plate-with-boss.step"
-    mesh = step_to_trimesh_from_bytes(source.read_bytes(), source.name)
-    issues = check_prismatic(_build_ctx(mesh), ProcessType.WIRE_EDM)
-    assert [i.code for i in issues] == ["PRISMATIC_PROFILE_UNVERIFIED"]
-    assert issues[0].severity.value == "warning"
-    assert "multi-axis" in issues[0].message
-    # The bar with a transverse hole IS a straight extrusion along the hole. Its
-    # tessellated bore leans off square, but equal caps, volume = cap area ×
-    # 12 mm and bore nodes within one arc sagitta of the outline certify it (M9).
-    source = controls / "166-transverse-hole-bar.step"
-    mesh = step_to_trimesh_from_bytes(source.read_bytes(), source.name)
-    assert check_prismatic(_build_ctx(mesh), ProcessType.WIRE_EDM) == []
+    # The boss changes section despite all normals being axis aligned. The
+    # curved hole's adaptive triangles are not an exact extrusion, and the
+    # parser supplies no tessellation-error bound to certify its nominal CAD.
+    for filename in ["156-plate-with-boss.step", "166-transverse-hole-bar.step"]:
+        source = controls / filename
+        mesh = step_to_trimesh_from_bytes(source.read_bytes(), source.name)
+        issues = check_prismatic(_build_ctx(mesh), ProcessType.WIRE_EDM)
+        assert [i.code for i in issues] == ["PRISMATIC_PROFILE_UNVERIFIED"]
+        assert issues[0].severity.value == "warning"
+        assert "multi-axis" in issues[0].message
 
 
 def test_profile_check_discloses_rounding_decimation_and_nonextrusions():
@@ -217,10 +212,7 @@ def test_setup_search_accepts_rotated_boss_and_retains_uncertain_geometry():
 
     mesh = trimesh.creation.box(extents=[80, 12, 12])
     rounded = parse_stl_from_bytes(mesh.export(file_type="stl"))
-    # float32 rounding (nanometres) is not a re-entrant surface: a binary STL
-    # box gets the same answer as the exact box.
-    assert rounded.metadata["coordinate_error"] > 0
-    assert check_setup_access(_build_ctx(rounded), ProcessType.CNC_3AXIS) == []
+    assert check_setup_access(_build_ctx(rounded), ProcessType.CNC_3AXIS)[0].code == "SETUP_ACCESS_UNVERIFIED"
     ctx = _build_ctx(mesh); ctx.metadata["decimation"] = {"succeeded": True}
     issue = check_setup_access(ctx, ProcessType.CNC_3AXIS)[0]
     assert issue.code == "SETUP_ACCESS_UNVERIFIED" and not issue.affected_faces

@@ -137,14 +137,14 @@ def test_provenance_user_declaration_default_fraction_validated_false():
     d = _driver(e, "owned_in_house")
     assert d is not None, "expected an owned_in_house driver"
     assert d["provenance"] == "USER"                        # the declaration is USER
-    assert "not confirmed by a shop" in d["source"]              # honest fraction caveat
+    assert "not shop-validated" in d["source"]              # honest fraction caveat
     assert "capital" in d["source"].lower()
 
     # the fraction magnitude is surfaced as a DEFAULT assumption, unvalidated
     frac = next(a for a in report_to_dict(owned)["assumptions"]
                 if a["name"] == "machine_capital_frac")
     assert frac["provenance"] == "DEFAULT"
-    assert "not confirmed by a shop" in frac["source"]
+    assert "not shop-validated" in frac["source"]
 
     # owning must never flip the confidence band to MEASURED/validated
     assert e["confidence"]["validated"] is False

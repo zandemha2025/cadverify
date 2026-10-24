@@ -33,15 +33,10 @@ first use.
 from __future__ import annotations
 
 import asyncio
-import concurrent.futures
-import contextvars
 import logging
 import multiprocessing
 import os
-import tempfile
 import threading
-import uuid
-from contextlib import asynccontextmanager
 from concurrent.futures import ProcessPoolExecutor, TimeoutError as FuturesTimeout
 from concurrent.futures.process import BrokenProcessPool
 
@@ -57,25 +52,14 @@ _WORKER_CAP = 8
 _POOL_LOCK = threading.Lock()
 _POOL: ProcessPoolExecutor | None = None
 _STOPPING = False
-# The futures running or queued on each shared pool (by id), so a retired pool
-# is killed only once its other parses are done (``retire_pool``).
-_INFLIGHT: dict[int, set] = {}
-# How long a retired pool's other parses may run on before it is killed anyway.
-RETIRE_GRACE_SEC = 30.0
 
-# ── Per-rung CPU budget (the periodic-surface fix) ──────────────────────────
+# ── Per-rung wall-clock budget (the periodic-surface fix) ───────────────────
 # gmsh's DEFAULT 2D algorithm (retry-ladder rung 0) grinds for 2+ MINUTES before
 # FAILING on a periodic-surface part (e.g. nist_ctc_05), then the fast MeshAdapt
 # recovery rung runs — but by then the route's ANALYSIS_TIMEOUT_SEC has already
 # fired a 504, so the recovery never reaches the user. mesh.generate is an
 # uninterruptible in-thread C call, so the ONLY way to bound a rung is to run it
-# in a KILLABLE subprocess and hard-kill it at its cap.
-#
-# The caps are CPU seconds in the rung's worker process (read from /proc), not
-# wall time: on a loaded box a rung's wall time measures the load, and a
-# wall-clock cap gave the same part a different strategy and mesh, or a false
-# "can't be meshed". Wall time bounds the whole ladder only; running out of it
-# first is "busy" (ParseBusy), never a reason to try the next strategy.
+# in a KILLABLE subprocess and hard-kill it at a wall-clock cap.
 #
 # We split the route budget across rungs so no single rung can consume it:
 #   * rung 0 (shared warm pool): cap = min(RUNG0_FRACTION*budget, RUNG0_CAP_MAX).
@@ -91,153 +75,12 @@ _RECOVERY_FRACTION = 0.5
 
 
 class _RungTimeout(Exception):
-    """A single ladder rung used its CPU cap and was hard-killed (the strategy doesn't converge)."""
-
-
-class _RungStarved(Exception):
-    """A rung ran out of wall time before it used its CPU budget: the box was busy."""
-
-    def __init__(self, idx: int, used: float = 0.0, cap: float = 0.0, *, started: bool = True):
-        self.idx, self.used, self.cap, self.started = idx, used, cap, started
-        super().__init__(f"rung {idx} " + (
-            f"ran out of time with {used:.0f}s of its {cap:.0f}s of CPU" if started and used >= 0.5
-            else "never got started"))
-
-    def plain(self) -> str:
-        """What the person is told (the route answers busy; this is the job's and the log's text)."""
-        if not self.started or self.used < 0.5:
-            return "ScaleCAD is busy; this part didn't get started. Try again."
-        return "ScaleCAD is busy; this part ran out of time before its meshing finished. Try again."
-
-
-class ParseBusy(ValueError):
-    """The ladder ran out of wall time before a rung had used its CPU budget.
-
-    A rung's cap is CPU time in its parse worker, the part's own work, the same
-    idle or loaded: a rung that uses it up doesn't converge, and the ladder moves
-    to the next strategy. Wall time only bounds the whole ladder (the route's
-    budget). Running out of that first means the worker was starved of CPU, not
-    that the part is bad, so the ladder stops there, never advancing because of
-    time, and the route answers "busy, try again" (429 ``server_busy``). It is
-    still a ValueError for callers that only map those.
-    """
-
-
-class _Clock:
-    """The ladder's wall-clock deadline (``loop.time()``); each rung's worker start-up is added to it."""
-
-    __slots__ = ("deadline",)
-
-    def __init__(self, deadline: float):
-        self.deadline = deadline
-
-
-_LADDER_CLOCK: contextvars.ContextVar[_Clock | None] = contextvars.ContextVar("cadverify_ladder_clock", default=None)
-# A rung whose worker hasn't begun it this long after it was handed over (a spawn
-# and the mesher's imports on a starved box) never got started: busy.
-STARTUP_LIMIT_SEC = 60.0
-# How long taking a pool slot waits for a fresh pool's workers to warm up.
-WARM_WAIT_SEC = 60.0
-
-
-def ladder_clock(seconds: float):
-    """Set the ladder's wall-clock budget for the current task (returns the token to reset)."""
-    return _LADDER_CLOCK.set(_Clock(asyncio.get_event_loop().time() + seconds))
-# What a rung's worker reports when it starts: its pid and CPU seconds so far.
-_REPORT_DIR = os.path.join(tempfile.gettempdir(), f"cadverify-rungs-{os.getpid()}")
-_CLK_TCK = os.sysconf("SC_CLK_TCK") if hasattr(os, "sysconf") else 100
-
-
-def _cpu_seconds(pid: int) -> float | None:
-    """CPU seconds (user + system) a process has used, from /proc; None when unreadable."""
-    try:
-        with open(f"/proc/{pid}/stat") as fh:
-            fields = fh.read().rsplit(")", 1)[1].split()
-        return (int(fields[11]) + int(fields[12])) / _CLK_TCK
-    except (OSError, IndexError, ValueError):
-        return None
-
-
-def _new_report() -> str:
-    os.makedirs(_REPORT_DIR, exist_ok=True)
-    return os.path.join(_REPORT_DIR, uuid.uuid4().hex)
-
-
-def _report_start(path: str) -> None:
-    """In a rung's worker: tell the parent which process runs it and its CPU so far,
-    so the rung's budget is measured in this worker's CPU time, not wall time."""
-    me = os.getpid()
-    with open(path + ".tmp", "w") as fh:
-        fh.write(f"{me} {_cpu_seconds(me) or 0.0}")
-    os.replace(path + ".tmp", path)  # whole, never half-written
-
-
-def _read_report(path: str) -> tuple[int, float] | None:
-    try:
-        with open(path) as fh:
-            pid, cpu = fh.read().split()
-        return int(pid), float(cpu)
-    except (OSError, ValueError):
-        return None
-
-
-def _drop_report(path: str) -> None:
-    try:
-        os.unlink(path)
-    except OSError:
-        pass
-
-
-async def _await_rung(cfut, report: str, idx: int, cpu_cap: float):
-    """A rung's result, bounded by ``cpu_cap`` seconds of its worker's CPU and by the ladder's deadline.
-
-    ``_RungTimeout``: the worker used its CPU budget (the strategy doesn't
-    converge; the same on any load). ``_RungStarved``: the ladder's wall-clock
-    deadline came first (the box was busy). The caller kills the worker either way.
-    """
-    loop = asyncio.get_event_loop()
-    afut = asyncio.wrap_future(cfut)
-    afut.add_done_callback(lambda f: f.cancelled() or f.exception())  # retrieved: no "never retrieved"
-    clock = _LADDER_CLOCK.get() or _Clock(loop.time() + max(cpu_cap * 3, cpu_cap + 30.0))
-    handed_over = loop.time()
-    started = None
-    used = 0.0
-    while True:
-        if started is None:
-            left = STARTUP_LIMIT_SEC - (loop.time() - handed_over)
-        else:
-            left = clock.deadline - loop.time()
-        done, _ = await asyncio.wait({afut}, timeout=max(0.0, min(0.25, left)))
-        if done:
-            return afut.result()
-        if started is None:
-            started = _read_report(report)  # the worker's pid and CPU when it began this rung
-            if started is None:
-                if loop.time() - handed_over >= STARTUP_LIMIT_SEC:
-                    raise _RungStarved(idx, cap=cpu_cap, started=False)
-                continue
-            # The ladder's wall clock runs only while a rung's worker is on it:
-            # its start-up (a spawn and the mesher's imports, slow on a busy
-            # box) isn't the part's time.
-            clock.deadline += loop.time() - handed_over
-        now_cpu = _cpu_seconds(started[0])
-        if now_cpu is not None:
-            used = now_cpu - started[1]
-        if used >= cpu_cap:
-            raise _RungTimeout(f"rung {idx} used its {cpu_cap:.0f}s of CPU")
-        if loop.time() >= clock.deadline:
-            raise _RungStarved(idx, used, cpu_cap)
+    """A single ladder rung exceeded its wall-clock cap and was hard-killed."""
 
 
 def _budget_sec() -> float:
     """Total analysis budget to split across rungs (mirrors routes._analysis_
-    timeout_sec; the route's outer wait_for enforces the same total as a 504).
-    A big file checked on the worker carries its own (src.config.check_limits)."""
-    from src.config import check_limits
-
-    larger = check_limits.current()
-    if larger is not None:
-        return larger.budget_sec
+    timeout_sec; the route's outer wait_for enforces the same total as a 504)."""
     try:
         return max(0.1, float(os.getenv("ANALYSIS_TIMEOUT_SEC", "60")))
     except ValueError:
@@ -248,12 +91,7 @@ def _rung_caps(budget: float, n_rungs: int) -> list[float]:
     """Per-rung wall-clock caps. rung 0 gets min(0.4*budget, 25s); the recovery
     rungs evenly share 0.5*budget. Sum < budget so the honest 400 (all rungs
     failed) beats the route's total-budget 504."""
-    # A big file's own budget (src.config.check_limits) lifts the fixed rung-0
-    # ceiling: a large assembly can need more than 25 s on its first rung.
-    from src.config import check_limits
-
-    cap_max = _RUNG0_CAP_MAX if check_limits.current() is None else max(_RUNG0_CAP_MAX, _RUNG0_FRACTION * budget)
-    rung0 = min(_RUNG0_FRACTION * budget, cap_max, budget)
+    rung0 = min(_RUNG0_FRACTION * budget, _RUNG0_CAP_MAX, budget)
     caps = [rung0]
     rest = n_rungs - 1
     if rest > 0:
@@ -278,12 +116,9 @@ def worker_count() -> int:
     """min(cpu_count - 1, cap), env-overridable via PARSE_POOL_WORKERS, >= 1.
 
     cpu_count-1 leaves a core for the event loop / main process so the box stays
-    responsive under a parse burst. The CPUs are the container's (its cgroup CPU
-    quota, ``compute_budget.available_cpus``), not the host's.
+    responsive under a parse burst.
     """
-    from src.services.compute_budget import available_cpus
-
-    cpu = available_cpus()
+    cpu = os.cpu_count() or 2
     default = max(1, min(cpu - 1, _WORKER_CAP))
     raw = os.getenv("PARSE_POOL_WORKERS")
     if raw is None:
@@ -314,13 +149,11 @@ def tessellate(data: bytes, suffix: str) -> trimesh.Trimesh:
     return step_to_trimesh_from_bytes(data, f"upload{suffix}")
 
 
-def _rung_worker(data: bytes, suffix: str, idx: int, report: str | None = None) -> trimesh.Trimesh:
+def _rung_worker(data: bytes, suffix: str, idx: int) -> trimesh.Trimesh:
     """PURE, picklable worker entry for ONE ladder rung. Returns a
     ``trimesh.Trimesh`` or raises the step_mesher rung exceptions
     (``_StepReadError`` / ``_EmptyMeshError`` / other) that the orchestrator maps.
     Module-level so ``ProcessPoolExecutor`` can pickle it by qualified name."""
-    if report:
-        _report_start(report)
     from src.parsers.step_mesher import mesh_single_rung_from_bytes
 
     return mesh_single_rung_from_bytes(data, f"upload{suffix}", idx)
@@ -407,8 +240,6 @@ def prewarm(block: bool = False, timeout: float | None = 45.0) -> int:
         pool = _get_pool()
         n = worker_count()
         futures = [pool.submit(_prewarm_worker) for _ in range(n)]
-        with _POOL_LOCK:
-            _WARMING.setdefault(id(pool), futures)
         logger.info("parse pool pre-warm dispatched (workers=%d)", n)
     except Exception:  # pool build failed — leave lazy warmup intact
         logger.warning("parse pool pre-warm skipped (pool build error)", exc_info=True)
@@ -423,62 +254,6 @@ def prewarm(block: bool = False, timeout: float | None = 45.0) -> int:
                 logger.warning("parse pool worker pre-warm failed", exc_info=True)
         logger.info("parse pool pre-warm complete (%d/%d workers warm)", warmed, len(futures))
     return len(futures)
-
-
-def _submit_tracked(pool: ProcessPoolExecutor, fn, *args):
-    """``pool.submit`` that remembers the future until it is done (for ``retire_pool``)."""
-    cfut = pool.submit(fn, *args)
-    key = id(pool)
-    with _POOL_LOCK:
-        _INFLIGHT.setdefault(key, set()).add(cfut)
-
-    def _done(f, key=key):
-        with _POOL_LOCK:
-            live = _INFLIGHT.get(key)
-            if live is not None:
-                live.discard(f)
-
-    cfut.add_done_callback(_done)
-    return cfut
-
-
-def retire_pool(pool: ProcessPoolExecutor, stuck=None, *, grace: float | None = None) -> None:
-    """Take a shared pool out of service without killing the other parses on it.
-
-    For a parse that ran past its cap or whose request went away: gmsh's C call
-    can't be interrupted, so its worker must die, but SIGKILLing the whole pool
-    at once (``recycle_pool(kill=True)``) breaks every other request's parse on
-    it. Instead new work goes to a fresh pool at once, and this one is
-    hard-killed, the stuck worker with it, as soon as its other in-flight
-    parses have finished, or after ``grace`` seconds (``RETIRE_GRACE_SEC``),
-    whichever is first. A parse still on it then gets ``BrokenProcessPool`` and
-    the usual isolated retry.
-    """
-    global _POOL
-    grace = RETIRE_GRACE_SEC if grace is None else grace
-    with _POOL_LOCK:
-        if _POOL is pool:
-            _POOL = None
-        _WARMING.pop(id(pool), None)
-        others = [f for f in _INFLIGHT.get(id(pool), ()) if f is not stuck and not f.done()]
-    logger.info("parse pool retired (%d other parses finish first)", len(others))
-
-    def _reap() -> None:
-        if others:
-            concurrent.futures.wait(others, timeout=grace)
-        _hard_kill(pool)
-        try:
-            pool.shutdown(wait=False, cancel_futures=False)
-        except Exception:
-            logger.exception("retired parse pool shutdown failed")
-        with _POOL_LOCK:
-            _INFLIGHT.pop(id(pool), None)
-            _WARMING.pop(id(pool), None)
-
-    if others:
-        threading.Thread(target=_reap, name="parse-pool-reaper", daemon=True).start()
-    else:
-        _reap()
 
 
 def recycle_pool(kill: bool = False) -> None:
@@ -506,8 +281,6 @@ def recycle_pool(kill: bool = False) -> None:
     global _POOL
     with _POOL_LOCK:
         pool, _POOL = _POOL, None
-        if pool is not None:
-            _WARMING.pop(id(pool), None)  # an id can be reused by the next pool
     if pool is None:
         return
     if kill:
@@ -540,8 +313,6 @@ def shutdown(*, kill: bool = True, final: bool = False) -> None:
     with _POOL_LOCK:
         _STOPPING = final
         pool, _POOL = _POOL, None
-        if pool is not None:
-            _WARMING.pop(id(pool), None)
     if pool is not None:
         if kill:
             _hard_kill(pool)
@@ -569,66 +340,6 @@ def _ladder_semaphore() -> "asyncio.Semaphore":
     return sem
 
 
-# The task holding a pool slot (a task it starts is not it, and waits for its own).
-_SLOT_HOLDER: contextvars.ContextVar[object] = contextvars.ContextVar("cadverify_parse_slot_holder", default=None)
-
-
-@asynccontextmanager
-async def pool_slot(*, warm: bool = True):
-    """One of the pool's ``worker_count()`` slots for this task (re-entrant in the task).
-
-    A caller with a time limit takes it before starting its timer, so the time
-    spent waiting for a free pool worker behind other parts isn't counted as its
-    own (the ladder and the assembly extraction take it again harmlessly), and
-    so is a fresh pool's warm-up (``warm``; the ladder's own slot doesn't warm).
-    """
-    me = asyncio.current_task()
-    if me is not None and _SLOT_HOLDER.get() is me:
-        yield
-        return
-    async with _ladder_semaphore():
-        token = _SLOT_HOLDER.set(me)
-        try:
-            # A fresh pool (the first use, or after a retire) warms up here,
-            # before the caller's timer starts, so no part pays its spawn.
-            if warm:
-                await _warm_shared_pool()
-            yield
-        finally:
-            _SLOT_HOLDER.reset(token)
-
-
-# The warm-up tasks given to each shared pool (by id), so it is warmed once.
-_WARMING: dict[int, list] = {}
-
-
-def _warm_futures(pool: ProcessPoolExecutor) -> list:
-    with _POOL_LOCK:
-        futs = _WARMING.get(id(pool))
-        if futs is None:
-            futs = [pool.submit(_prewarm_worker) for _ in range(worker_count())]
-            _WARMING[id(pool)] = futs
-    return futs
-
-
-async def _warm_shared_pool() -> None:
-    """Wait (bounded) until the shared pool's workers are warm; best effort."""
-    if is_disabled():
-        return
-    try:
-        pool = _get_pool()
-        if not isinstance(pool, ProcessPoolExecutor):
-            return
-        pending = [f for f in _warm_futures(pool) if not f.done()]
-    except Exception:
-        return
-    if pending:
-        waits = [asyncio.wrap_future(f) for f in pending]
-        for w in waits:
-            w.add_done_callback(lambda f: f.cancelled() or f.exception())  # a failed warm-up is only slower
-        await asyncio.wait(waits, timeout=WARM_WAIT_SEC)
-
-
 def _hard_kill(ex: ProcessPoolExecutor) -> None:
     """SIGKILL every worker of a single-use executor. Safe to hard-kill because
     each recovery-rung executor owns exactly ONE worker running ONLY this rung —
@@ -647,26 +358,22 @@ def _hard_kill(ex: ProcessPoolExecutor) -> None:
             pass
 
 
-async def _run_rung_killable(data: bytes, suffix: str, idx: int, cap: float, *, worker=None, extra=()):
+async def _run_rung_killable(data: bytes, suffix: str, idx: int, cap: float):
     """Run ONE ladder rung in a dedicated single-worker spawn subprocess, bounded
-    by ``cap`` seconds of its CPU (and the ladder's deadline). On either, HARD-KILL
-    the worker (gmsh's mesh.generate is an uninterruptible C call — only SIGKILL
-    reclaims it) and raise ``_RungTimeout`` (CPU) or ``_RungStarved`` (deadline).
+    by ``cap`` seconds. On cap, HARD-KILL the worker (gmsh's mesh.generate is an
+    uninterruptible C call — only SIGKILL reclaims it) and raise ``_RungTimeout``.
     Worker exceptions (``_StepReadError`` / ``_EmptyMeshError`` / other) propagate
     for the orchestrator to map. A crashed worker surfaces as ``BrokenProcessPool``.
-    ``worker(data, suffix, idx, report, *extra)`` runs the rung (default: one rung
-    of a single part's ladder, ``_rung_worker``).
     """
     ctx = multiprocessing.get_context("spawn")
     ex = ProcessPoolExecutor(max_workers=1, mp_context=ctx)
-    report = _new_report()
     try:
-        cfut = ex.submit(worker or _rung_worker, data, suffix, idx, report, *extra)
+        cfut = ex.submit(_rung_worker, data, suffix, idx)
         try:
-            return await _await_rung(cfut, report, idx, cap)
-        except (_RungTimeout, _RungStarved):
+            return await asyncio.wait_for(asyncio.wrap_future(cfut), cap)
+        except asyncio.TimeoutError:
             _hard_kill(ex)
-            raise
+            raise _RungTimeout(f"rung {idx} exceeded {cap:.0f}s cap")
         except asyncio.CancelledError:
             # The request disappeared while gmsh was inside an uninterruptible C
             # call. The executor is single-use, so killing it cannot affect a
@@ -676,7 +383,6 @@ async def _run_rung_killable(data: bytes, suffix: str, idx: int, cap: float, *, 
     finally:
         # wait=False: never block the request on a worker we may have just killed.
         ex.shutdown(wait=False, cancel_futures=True)
-        _drop_report(report)
 
 
 def _run_tessellate_killable_sync(
@@ -703,22 +409,35 @@ def _run_tessellate_killable_sync(
         ex.shutdown(wait=False, cancel_futures=True)
 
 
+async def _run_assembly_killable(data: bytes, suffix: str):
+    """Retry one assembly extraction in a dedicated killable subprocess.
+
+    The route's outer ``wait_for`` owns the total wall-clock budget. If that
+    budget expires or the client disconnects, cancellation reaches this helper
+    and hard-kills its single worker.
+    """
+    ctx = multiprocessing.get_context("spawn")
+    ex = ProcessPoolExecutor(max_workers=1, mp_context=ctx)
+    try:
+        future = ex.submit(_extract_assembly_worker, data, suffix)
+        try:
+            return await asyncio.wrap_future(future)
+        except asyncio.CancelledError:
+            _hard_kill(ex)
+            raise
+    finally:
+        ex.shutdown(wait=False, cancel_futures=True)
+
+
 async def submit_async(data: bytes, suffix: str) -> trimesh.Trimesh:
-    """Await the retry-ladder tessellation with a PER-RUNG CPU-time cap.
+    """Await the retry-ladder tessellation with a PER-RUNG wall-clock cap.
 
     rung 0 runs on the shared warm process pool (byte-identical, concurrent, no
     latency regression for normal parts). Its cap only fires on a periodic-surface
-    GRIND, in which case its worker dies (the pool is retired, see retire_pool)
-    and the ladder falls to the recovery rungs, each run in its OWN killable
-    subprocess and hard-killed at its cap. This is what lets a periodic part
-    return a valid shell WITHIN the route budget instead of 504-ing after a
-    2-minute rung-0 grind.
-
-    The caps are CPU seconds in the rung's worker, the part's own work, so the
-    ladder's path (and the mesh) is the same on an idle or a loaded box. Wall
-    time only bounds the whole ladder (the route's budget, less a margin): when
-    it runs out first the worker was starved, and the ladder raises ParseBusy
-    (the route's 429 busy) instead of trying another strategy because of time.
+    GRIND, in which case we HARD-KILL the grinding worker (recycle_pool(kill=True))
+    and fall to the recovery rungs, each run in its OWN killable subprocess and
+    hard-killed at its cap. This is what lets a periodic part return a valid shell
+    WITHIN the route budget instead of 504-ing after a 2-minute rung-0 grind.
 
     On ``BrokenProcessPool`` (segfaulted worker, adversarial gmsh input) we
     hard-recycle the shared pool and retry rung 0 in its own killable subprocess.
@@ -729,87 +448,69 @@ async def submit_async(data: bytes, suffix: str) -> trimesh.Trimesh:
 
     loop = asyncio.get_event_loop()
     n = len(sm._MESH_RUNGS)
-    budget = _budget_sec()
-    caps = _rung_caps(budget, n)
-    # The whole ladder's wall clock: the route's budget, less a margin so the
-    # honest answer beats the route's own 504.
-    token = ladder_clock(max(1.0, budget - min(2.0, 0.05 * budget)))
-
-    try:
-        async with pool_slot(warm=False):
-            return await _ladder(data, suffix, sm, n, caps, loop)
-    finally:
-        _LADDER_CLOCK.reset(token)
-
-
-async def _ladder(data, suffix, sm, n, caps, loop):
-    """The rungs in order (see submit_async)."""
+    caps = _rung_caps(_budget_sec(), n)
     last_msg = ""
     best_open: trimesh.Trimesh | None = None
-    for idx in range(n):
-        try:
-            if idx == 0:
-                try:
-                    mesh = await _rung0_via_pool(data, suffix, caps[0], loop)
-                except BrokenProcessPool:
-                    logger.warning(
-                        "parse pool worker died on rung 0; hard-recycling + "
-                        "isolated retry"
-                    )
-                    recycle_pool(kill=True)
-                    mesh = await _run_rung_killable(
-                        data, suffix, idx, caps[idx]
-                    )
-            else:
-                mesh = await _run_rung_killable(data, suffix, idx, caps[idx])
-        except sm._StepReadError as exc:
-            # Unreadable STEP: a different algorithm cannot fix it — abort now.
-            raise ValueError(
-                "Could not read STEP geometry (not a valid/supported STEP file)."
-            ) from exc
-        except _RungTimeout as exc:
-            # It used its CPU budget: this strategy doesn't converge on this part.
-            last_msg = str(exc) or "periodic surface grind (rung capped)"
-            logger.info("step ladder rung %d hit its CPU cap; advancing (%s)", idx, exc)
-            continue
-        except _RungStarved as exc:
-            # Out of wall time before its CPU budget: the box is busy. Never
-            # advance because of time (the next strategy meshes differently).
-            logger.warning("step ladder stopped busy at rung %d (%s)", idx, exc)
-            raise ParseBusy(exc.plain()) from None
-        except sm._EmptyMeshError as exc:
-            last_msg = str(exc)
-            continue
-        except BrokenProcessPool:
-            last_msg = f"rung {idx} worker crashed"
-            logger.warning(
-                "isolated step ladder rung %d worker crashed; advancing", idx
-            )
-            continue
-        except Exception as exc:  # this rung failed to MESH a readable shape
-            last_msg = str(exc)
-            logger.info("step ladder rung %d failed (%s); advancing", idx, last_msg[:120])
-            continue
 
-        # A platform/version may return quickly from a periodic rung with an
-        # open shell instead of raising or grinding. Keep the best such shell
-        # only as a fallback and continue: a later MeshAdapt rung can close it.
-        if not mesh.is_watertight:
-            best_open = sm._prefer_open_shell(best_open, mesh)
-            last_msg = f"rung {idx} produced a non-watertight shell"
-            logger.info(
-                "step ladder rung %d produced an open shell (%d defective "
-                "edges); advancing",
-                idx, sm._shell_defect_count(mesh),
-            )
-            continue
+    async with _ladder_semaphore():
+        for idx in range(n):
+            try:
+                if idx == 0:
+                    try:
+                        mesh = await _rung0_via_pool(data, suffix, caps[0], loop)
+                    except BrokenProcessPool:
+                        logger.warning(
+                            "parse pool worker died on rung 0; hard-recycling + "
+                            "isolated retry"
+                        )
+                        recycle_pool(kill=True)
+                        mesh = await _run_rung_killable(
+                            data, suffix, idx, caps[idx]
+                        )
+                else:
+                    mesh = await _run_rung_killable(data, suffix, idx, caps[idx])
+            except sm._StepReadError as exc:
+                # Unreadable STEP: a different algorithm cannot fix it — abort now.
+                raise ValueError(
+                    "Could not read STEP geometry (not a valid/supported STEP file)."
+                ) from exc
+            except _RungTimeout as exc:
+                last_msg = str(exc) or "periodic surface grind (rung capped)"
+                logger.info("step ladder rung %d hit its cap; advancing (%s)", idx, exc)
+                continue
+            except sm._EmptyMeshError as exc:
+                last_msg = str(exc)
+                continue
+            except BrokenProcessPool:
+                last_msg = f"rung {idx} worker crashed"
+                logger.warning(
+                    "isolated step ladder rung %d worker crashed; advancing", idx
+                )
+                continue
+            except Exception as exc:  # this rung failed to MESH a readable shape
+                last_msg = str(exc)
+                logger.info("step ladder rung %d failed (%s); advancing", idx, last_msg[:120])
+                continue
 
-        if idx > 0:
-            logger.info(
-                "step ladder recovered on rung %d (faces=%d, watertight=%s)",
-                idx, len(mesh.faces), mesh.is_watertight,
-            )
-        return mesh
+            # A platform/version may return quickly from a periodic rung with an
+            # open shell instead of raising or grinding. Keep the best such shell
+            # only as a fallback and continue: a later MeshAdapt rung can close it.
+            if not mesh.is_watertight:
+                best_open = sm._prefer_open_shell(best_open, mesh)
+                last_msg = f"rung {idx} produced a non-watertight shell"
+                logger.info(
+                    "step ladder rung %d produced an open shell (%d defective "
+                    "edges); advancing",
+                    idx, sm._shell_defect_count(mesh),
+                )
+                continue
+
+            if idx > 0:
+                logger.info(
+                    "step ladder recovered on rung %d (faces=%d, watertight=%s)",
+                    idx, len(mesh.faces), mesh.is_watertight,
+                )
+            return mesh
 
     if best_open is not None:
         logger.info(
@@ -823,32 +524,22 @@ async def _ladder(data, suffix, sm, n, caps, loop):
     raise sm.ladder_failure_error(last_msg)
 
 
-async def _rung0_via_pool(data: bytes, suffix: str, cap: float, loop, *, worker=None, extra=()):
-    """Run rung 0 on the shared warm pool with a CPU-time cap. Success is
+async def _rung0_via_pool(data: bytes, suffix: str, cap: float, loop):
+    """Run rung 0 on the shared warm pool with a wall-clock cap. Success is
     byte-identical to the historical primary path. On cap (a periodic grind) raise
-    ``_RungTimeout``; on the ladder's deadline ``_RungStarved``. Either way the
-    pool is retired (its stuck worker killed once the other requests' parses on
-    it have finished; see retire_pool). ``BrokenProcessPool`` propagates for the
-    caller's fallback. ``worker``/``extra`` as for ``_run_rung_killable``."""
+    ``_RungTimeout`` and leave the runaway worker to finish in the background — we
+    do NOT hard-kill a shared pool worker (it may serve sibling requests; see
+    recycle_pool). ``BrokenProcessPool`` propagates for the caller's fallback."""
     pool = _get_pool()
-    report = _new_report()
-    cfut = _submit_tracked(pool, worker or _rung_worker, data, suffix, 0, report, *extra)
+    cfut = pool.submit(_rung_worker, data, suffix, 0)
     try:
-        return await _await_rung(cfut, report, 0, cap)
-    except _RungTimeout:
-        # The grinding worker must die so it doesn't keep a CPU (or block exit)
-        # while the recovery rungs run, but the other requests' parses on the
-        # same pool must not: the pool is retired, not killed outright.
-        if not cfut.cancel() and not cfut.done():
-            retire_pool(pool, stuck=cfut)
-        raise _RungTimeout(f"rung 0 used its {cap:.0f}s of CPU (periodic-surface grind)") from None
-    except (_RungStarved, asyncio.CancelledError):
-        # Out of time on a busy box, or the request went away mid-rung.
-        if not cfut.cancel() and not cfut.done():
-            retire_pool(pool, stuck=cfut)
-        raise
-    finally:
-        _drop_report(report)
+        return await asyncio.wait_for(asyncio.wrap_future(cfut), cap)
+    except asyncio.TimeoutError:
+        # Hard-kill the grinding worker + rebuild the pool so we don't leak a
+        # runaway (or block exit) while the recovery rungs run. Siblings recover
+        # via submit_async's BrokenProcessPool -> isolated retry.
+        recycle_pool(kill=True)
+        raise _RungTimeout(f"rung 0 exceeded {cap:.0f}s cap (periodic-surface grind)")
 
 
 def submit_sync(data: bytes, suffix: str) -> trimesh.Trimesh:
@@ -866,141 +557,60 @@ def submit_sync(data: bytes, suffix: str) -> trimesh.Trimesh:
 
 
 # ── Assembly ingestion (multi-solid STEP/IGES) ──────────────────────────────
-def _ap242_model(data: bytes, suffix: str):
-    """A file of embedded AP242 tessellation as its single-part model, else None.
-
-    That branch is a supported single part but not a B-rep gmsh/OCC's assembly
-    importer can read: the canonical mesh parser reads it, and the model says what
-    it is instead of the worker crashing into a misleading assembly 400."""
+def _extract_assembly_worker(data: bytes, suffix: str):
+    """PURE, picklable worker entry: extract the full AssemblyModel (per-part
+    meshes + world positions + product tree) IN THIS PROCESS. Module-level so
+    ``ProcessPoolExecutor`` can pickle it by qualified name. Raises plain
+    ``ValueError`` (route -> 400) for a bad/native/unmeshable file."""
     from src.parsers.ap242_tessellated_parser import is_ap242_tessellated
-    from src.parsers.assembly_mesher import single_part_model_from_mesh
+    from src.parsers.assembly_mesher import (
+        extract_assembly_from_bytes,
+        single_part_model_from_mesh,
+    )
 
+    # The AP242 embedded-tessellation branch is a supported single part but is
+    # not a B-rep that gmsh/OCC's assembly importer can read. Reuse the canonical
+    # mesh parser and return a truthful single-part classification instead of
+    # crashing a parser worker and emitting a misleading assembly 400.
     if suffix.lower() in {".step", ".stp"} and is_ap242_tessellated(data):
+        mesh = tessellate(data, suffix)
         return single_part_model_from_mesh(
-            tessellate(data, suffix),
+            mesh,
             source_suffix=suffix,
             name="embedded-tessellated-part",
         )
-    return None
+
+    return extract_assembly_from_bytes(data, f"upload{suffix}")
 
 
-def _extract_assembly_worker(data: bytes, suffix: str, mesh_single_part: bool = True):
-    """PURE, picklable worker entry: extract the full AssemblyModel (per-part
-    meshes + world positions + product tree), the whole ladder IN THIS PROCESS
-    (the kill switch's in-thread path). Raises plain ``ValueError`` (route -> 400)
-    for a bad/native/unmeshable file. ``mesh_single_part=False``: a file of one
-    solid comes back unmeshed."""
-    from src.parsers.assembly_mesher import extract_assembly_from_bytes
+async def submit_assembly_async(data: bytes, suffix: str):
+    """Extract an ``AssemblyModel`` off the event loop, bounded by the route
+    budget. Runs the CPU-bound multi-solid gmsh extraction in the shared spawn
+    pool (so N assemblies don't serialize on the GIL/gmsh lock and the loop stays
+    responsive), hard-bounded by ``ANALYSIS_TIMEOUT_SEC`` at the caller. On
+    ``BrokenProcessPool`` (a worker died on adversarial gmsh input) we hard-
+    recycle the pool and retry THIS request in a dedicated killable subprocess.
+    Untrusted assembly bytes are never parsed in the API process after a crash.
 
-    model = _ap242_model(data, suffix)
-    if model is not None:
-        return model
-    return extract_assembly_from_bytes(data, f"upload{suffix}", mesh_single_part=mesh_single_part)
-
-
-class _FinalRungError(Exception):
-    """A rung's failure no other strategy changes (the file's embedded AP242
-    tessellation is unreadable): the ladder re-raises the original as it was."""
-
-    def __init__(self, error: BaseException):
-        super().__init__(error)
-        self.error = error
-
-
-def _assembly_rung_worker(data: bytes, suffix: str, idx: int, report: str | None = None,
-                          mesh_single_part: bool = True):
-    """PURE, picklable worker entry for ONE rung of the assembly ladder."""
-    if report:
-        _report_start(report)
-    from src.parsers.assembly_mesher import extract_assembly_rung_from_bytes
-
-    if idx == 0:
-        try:
-            model = _ap242_model(data, suffix)
-        except Exception as exc:
-            raise _FinalRungError(exc) from None
-        if model is not None:
-            return model
-    return extract_assembly_rung_from_bytes(data, f"upload{suffix}", idx, mesh_single_part=mesh_single_part)
-
-
-async def submit_assembly_async(data: bytes, suffix: str, *, mesh_single_part: bool = True):
-    """Extract an ``AssemblyModel`` off the event loop with the same per-rung CPU
-    caps as a single part's ladder (``submit_async``).
-
-    An assembly's bodies are meshed in one gmsh call, so one body that grinds
-    (nist_ctc05's periodic surface 103: 220 s on rung 0 before failing) held the
-    whole file until the route's 504, every retry. Now rung 0 runs on the shared
-    warm pool and the recovery rungs each in their own killable subprocess, each
-    bounded by its CPU cap (``_rung_caps``); a rung that uses it up is killed and
-    the next strategy runs. A file that meshes on rung 0 within its cap gets the
-    same model as before. Running out of the ladder's wall time (the route's
-    budget, less a margin) is busy (``ParseBusy``), never a reason to advance.
-    ``BrokenProcessPool`` on rung 0 hard-recycles the shared pool and retries that
-    rung in its own subprocess: untrusted bytes are never parsed in the API
-    process. ``mesh_single_part=False`` (the probe's question: how many bodies?)
-    reads a one-solid file unmeshed.
+    The per-assembly retry ladder (primary -> MeshAdapt-uniform -> +OCC-heal) runs
+    WITHIN the worker call (``assembly_mesher._extract_with_ladder``); the caller's
+    outer ``wait_for`` provides the wall-clock bound.
     """
-    from src.parsers.assembly_mesher import check_assembly_suffix
+    import asyncio
 
-    check_assembly_suffix(suffix.lower())
     loop = asyncio.get_event_loop()
     if is_disabled():
         return await loop.run_in_executor(
-            None, _extract_assembly_worker, data, suffix, mesh_single_part
+            None, _extract_assembly_worker, data, suffix
         )
-    from src.parsers import step_mesher as sm
-
-    budget = _budget_sec()
-    caps = _rung_caps(budget, len(sm._MESH_RUNGS))
-    token = ladder_clock(max(1.0, budget - min(2.0, 0.05 * budget)))
+    pool = _get_pool()
     try:
-        async with pool_slot(warm=False):
-            return await _assembly_ladder(data, suffix, mesh_single_part, sm, caps, loop)
-    finally:
-        _LADDER_CLOCK.reset(token)
-
-
-async def _assembly_ladder(data, suffix, mesh_single_part, sm, caps, loop):
-    """The assembly's rungs in order (see submit_assembly_async); errors read as
-    ``assembly_mesher._extract_with_ladder`` words them."""
-    run = {"worker": _assembly_rung_worker, "extra": (mesh_single_part,)}
-    names = [rung[0] for rung in sm._MESH_RUNGS]
-    last_msg = ""
-    for idx, cap in enumerate(caps):
-        try:
-            if idx == 0:
-                try:
-                    model = await _rung0_via_pool(data, suffix, cap, loop, **run)
-                except BrokenProcessPool:
-                    logger.warning("parse pool worker died on assembly rung 0; hard-recycling + isolated retry")
-                    recycle_pool(kill=True)
-                    model = await _run_rung_killable(data, suffix, idx, cap, **run)
-            else:
-                model = await _run_rung_killable(data, suffix, idx, cap, **run)
-        except _FinalRungError as exc:
-            raise exc.error from None
-        except sm._StepReadError as exc:
-            raise ValueError("Could not read STEP/IGES geometry (not a valid/supported file).") from exc
-        except _RungTimeout as exc:
-            last_msg = str(exc)
-            logger.info("assembly ladder rung %d hit its CPU cap; advancing (%s)", idx, exc)
-            continue
-        except _RungStarved as exc:
-            logger.warning("assembly ladder stopped busy at rung %d (%s)", idx, exc)
-            raise ParseBusy(exc.plain()) from None
-        except BrokenProcessPool:
-            last_msg = f"rung {idx} worker crashed"
-            logger.warning("assembly ladder rung %d worker crashed; advancing", idx)
-            continue
-        except Exception as exc:  # this rung failed to MESH a readable assembly
-            last_msg = str(exc)
-            logger.info("assembly mesher rung '%s' failed (%s); advancing", names[idx], last_msg[:120])
-            continue
-        if idx > 0:
-            logger.info("assembly mesher recovered on retry rung '%s' (parts=%d)", names[idx], model.part_count)
-        return model
-    raise ValueError(
-        f"Could not tessellate this assembly [{last_msg[:160]}] "
-        f"(all {len(caps)} mesh strategies failed)."
-    )
+        cfut = pool.submit(_extract_assembly_worker, data, suffix)
+        return await asyncio.wrap_future(cfut)
+    except BrokenProcessPool:
+        logger.warning(
+            "parse pool worker died during assembly extraction; hard-recycling + "
+            "isolated retry"
+        )
+        recycle_pool(kill=True)
+        return await _run_assembly_killable(data, suffix)

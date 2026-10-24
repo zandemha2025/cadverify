@@ -136,14 +136,12 @@ test("authenticated setup and read calls stay inside the credentialed Chromium p
     assert.equal(source.includes(forbidden), false, `${forbidden} bypasses the authenticated page`);
   }
 
-  assert.equal(source.split("await browserApi(page,").length - 1, 7);
+  assert.equal(source.split("await browserApi(page,").length - 1, 6);
   for (const call of [
     'await browserApi(page, "/api/proxy/orgs")',
     'await browserApi(page, "/api/proxy/machine-inventory")',
     'await browserApi(page, "/api/proxy/rate-library", {',
-    // A rate card is published by approving its change request (C2).
-    'await browserApi(page, "/api/proxy/governance/change-requests", {',
-    'await browserApi(page, `/api/proxy/governance/change-requests/${proposed.body.id}/approve`',
+    'await browserApi(page, `/api/proxy/rate-library/${draft.body.id}/publish`',
     'await browserApi(page, "/api/proxy/rate-library/effective")',
     'await browserApi(page, `/api/proxy/cost-decisions/${decisionId}`',
   ]) {

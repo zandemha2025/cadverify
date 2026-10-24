@@ -1,12 +1,11 @@
 "use client";
 
-import { AlertTriangle, Download } from "lucide-react";
+import { Download } from "lucide-react";
 import AnalysisDashboard from "@/components/AnalysisDashboard";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import type { RepairResult } from "@/lib/api";
-import { formatVolumeChange, repairFailureReason } from "@/lib/repair-details";
 
 interface RepairComparisonProps {
   result: RepairResult;
@@ -41,16 +40,15 @@ export default function RepairComparison({
   };
 
   if (!result.repair_applied) {
-    const reason = repairFailureReason(result.repair_details);
     return (
       <Card tone="warn" className="bg-warn-bg">
         <CardContent compact className="space-y-1">
           <div className="flex items-center gap-2">
             <StatusBadge tone="warn" label="Repair not possible" size="sm" />
           </div>
-          {reason && (
+          {result.repair_details.error && (
             <p className="num text-xs text-muted-foreground">
-              Reason: {reason}
+              Reason: {result.repair_details.error}
             </p>
           )}
         </CardContent>
@@ -58,29 +56,19 @@ export default function RepairComparison({
     );
   }
 
-  const volumeChange = formatVolumeChange(result.repair_details.volume_change_pct);
-  // The API warns when the repaired solid's volume moved past its threshold:
-  // the shell closed, but holes or bores of the design may have been filled.
-  const volumeWarning = result.repair_details.volume_warning;
-
   return (
     <div className="space-y-4">
       {/* Repair summary banner */}
-      <Card tone={volumeWarning ? "warn" : "pass"} className={volumeWarning ? "bg-warn-bg" : "bg-pass-bg"}>
+      <Card tone="pass" className="bg-pass-bg">
         <CardContent className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="space-y-1">
-              <StatusBadge
-                tone={volumeWarning ? "warn" : "pass"}
-                label={volumeWarning ? "Repaired — check features" : "Mesh repaired"}
-                size="sm"
-              />
+              <StatusBadge tone="pass" label="Mesh repaired" size="sm" />
               <p className="num text-xs text-muted-foreground">
                 Tier {result.repair_details.tier} ·{" "}
                 {result.repair_details.original_faces?.toLocaleString()} →{" "}
                 {result.repair_details.repaired_faces?.toLocaleString()} faces ·{" "}
                 {result.repair_details.duration_ms?.toFixed(0)}ms
-                {volumeChange && <> · volume {volumeChange}</>}
               </p>
             </div>
             {result.repaired_file_b64 && (
@@ -89,16 +77,6 @@ export default function RepairComparison({
               </Button>
             )}
           </div>
-          {volumeWarning && (
-            <div
-              role="alert"
-              data-testid="repair-volume-warning"
-              className="flex items-start gap-2 rounded-[var(--radius)] border border-warn-border bg-background px-3 py-2"
-            >
-              <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warn" aria-hidden />
-              <p className="text-xs text-foreground">{volumeWarning}</p>
-            </div>
-          )}
         </CardContent>
       </Card>
 

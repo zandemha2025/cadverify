@@ -21,7 +21,7 @@ class DieCastingAnalyzer:
 
     def analyze(self, ctx: GeometryContext) -> list[Issue]:
         i: list[Issue] = []
-        i.extend(check_draft_angles(ctx, 1.0, self.process, internal_deg=2.0,
+        i.extend(check_draft_angles(ctx, 1.0, self.process,
                  cite="NADCA §3: 1° min external, 2° internal."))
         i.extend(check_wall_uniformity(ctx, 0.8, 12.0, 3.0, self.process,
                  cite="NADCA: 0.8–12mm, uniform preferred."))

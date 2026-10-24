@@ -41,17 +41,6 @@ export interface PerRouteFit {
   machine_rate_usd?: number | null;
   capital_frac?: number | null;
   secondary_ops?: string[];
-  /** On a pass: the machine's own post-processing (stress relief, sintering)
-   *  assumed done in-house because Your shop never said it's sent out. */
-  assumed_in_house?: string[];
-  /** On a pass: steps Your shop sends out (the part is still made on the machine). */
-  sent_out?: string[];
-  /** On a pass: the fields the fit took from the maker's published spec (a
-   *  catalog machine kept unedited), not the shop's own values. */
-  maker_spec?: { catalog: string; fields: ("max_workpiece_kg" | "materials")[] };
-  /** On a pass: what the fit didn't check, said plainly, e.g. "weight: no plate
-   *  load published or declared; build volume governs" for a printer. */
-  notes?: string[];
 }
 
 /** The top-level `verification` block (present only when the org declared machines
@@ -171,33 +160,6 @@ export function verificationForRoute(
   };
 }
 
-/**
- * The banner's second line when the displayed route is made outside although a
- * machine you own clears another route (the engine's in-house rule picked
- * outside at this quantity). The static outsource line ("You own nothing of the
- * recommended process family") would be false then, so say what is true.
- * `basis` is the engine's decision.options[q].basis; `inHousePrice` its
- * in-house unit cost. Null when the static line holds.
- */
-export function ownedAlternativeSub(
-  routeVerdict: MakeabilityLattice,
-  verification: VerificationBlock | null,
-  basis: string | null | undefined,
-  inHousePrice: string | null,
-): string | null {
-  if (routeVerdict !== "makeable_outsource_only" || !verification) return null;
-  if (verification.verdict !== "makeable_in_house" && verification.verdict !== "makeable_with_secondary_op") return null;
-  const machine = verification.best_machine;
-  if (!machine) return null;
-  const why =
-    basis === "outside_sooner"
-      ? "the outside route is cheaper and arrives sooner than your machine could finish the run"
-      : basis === "outside_cheaper"
-        ? "the outside route costs less, by more than 2%"
-        : "the outside route is the pick at this quantity";
-  return `Your ${machine} can make it${inHousePrice ? ` at ${inHousePrice}/unit` : ""}; ${why}. Both are priced below.`;
-}
-
 export interface RecordVerdictModel {
   text: string;
   kicker: string;
@@ -270,9 +232,7 @@ function fmtBound(v: unknown): string {
  *  own `human` string. Never invents a number the engine didn't send. */
 export function gapText(f: FitFailure): string {
   // Envelope bounds can compare a diameter to a chamber diagonal, not an axis.
-  // A route DFM blocker's own message names the rule, unit and measured value.
-  // A sheet thickness or press force miss names its material, unit and limit (me-02: "need 5, have 4.76").
-  if ((f.gate === "envelope" || f.gate === "dfm" || f.gate === "thickness" || f.gate === "force") && f.human) return f.human;
+  if (f.gate === "envelope" && f.human) return f.human;
   if (isNum(f.need) && isNum(f.have)) {
     return `need ${fmtBound(f.need)}, have ${fmtBound(f.have)}`;
   }
@@ -361,9 +321,8 @@ export function marginalRate(
 }
 
 /** The top-level acquisition gap (concrete measured-vs-declared deltas) — what an
- *  org would need to acquire to make this in-house. A route DFM blocker is a
- *  design change, not an acquisition, so it is never listed here. */
+ *  org would need to acquire to make this in-house. */
 export function acquisitionGap(v: VerificationBlock | null | undefined): FitFailure[] {
   if (!v || !Array.isArray(v.gap)) return [];
-  return v.gap.filter((f) => f.gate !== "dfm");
+  return v.gap;
 }

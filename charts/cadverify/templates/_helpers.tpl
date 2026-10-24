@@ -126,9 +126,6 @@ single-replica workloads).
   {{- if .Values.auth.publicPasswordSignup -}}
     {{- fail "production requires verified account creation; auth.publicPasswordSignup must be false" -}}
   {{- end -}}
-  {{- if and (has .Values.auth.mode (list "saml" "oidc" "hybrid")) (not .Values.auth.ssoOrgId) -}}
-    {{- fail "production SSO (auth.mode saml, oidc or hybrid) requires auth.ssoOrgId: the id of the organization that owns the identity provider, or none before it exists" -}}
-  {{- end -}}
   {{- if ne .Values.objectStore.backend "s3" -}}
     {{- fail "production requires objectStore.backend=s3" -}}
   {{- end -}}
@@ -270,9 +267,6 @@ single-replica workloads).
     {{- if .Values.reconstruction.allowRemoteEgress -}}
       {{- fail "regulated production prohibits remote reconstruction egress" -}}
     {{- end -}}
-    {{- if .Values.linkImport.enabled -}}
-      {{- fail "regulated production keeps import from a link off (linkImport.enabled=false)" -}}
-    {{- end -}}
     {{- if ne .Values.ingress.className "nginx" -}}
       {{- fail "the regulated baseline requires the reviewed nginx ingress class" -}}
     {{- end -}}
@@ -294,9 +288,6 @@ single-replica workloads).
       {{- end -}}
       {{- if contains "replace-me" .Values.objectStore.s3.kmsKeyId -}}
         {{- fail "replace the documentation-only KMS key before deployment" -}}
-      {{- end -}}
-      {{- if contains "replace-me" (toString .Values.auth.ssoOrgId) -}}
-        {{- fail "replace the documentation-only auth.ssoOrgId before deployment" -}}
       {{- end -}}
       {{- if or (contains "example." .Values.ingress.host) (contains "replace-me" .Values.objectStore.s3.bucket) -}}
         {{- fail "replace documentation-only host and bucket values before deployment" -}}

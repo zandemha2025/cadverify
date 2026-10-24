@@ -348,8 +348,7 @@ Parameters:
 - `end` (required): ISO 8601 date, end of range
 - `user_id` (optional): filter by user
 - `action` (optional): filter by action type (e.g., `auth.login`, `analysis.created`)
-- `cursor` (optional): the previous page's `next_cursor`; entries are returned
-  newest first, so each following page holds older entries
+- `cursor` (optional): for pagination
 - `limit` (optional): 1-200, default 50
 
 ### Exporting Audit Logs as CSV

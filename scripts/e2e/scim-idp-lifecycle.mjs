@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveAdminApiKey } from "./local-admin-api-key.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -10,12 +11,7 @@ const outputRoot = process.env.E2E_ARTIFACT_DIR
   : path.join(repoRoot, ".gstack", "qa-reports");
 const runId = process.env.E2E_RUN_ID || new Date().toISOString().slice(0, 10);
 const apiBase = (process.env.PROOFSHAPE_API_URL || process.env.CADVERIFY_API_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
-// SCIM serves only the organization that owns the backend's identity provider
-// (its SSO_ORG_ID), so the key must be an admin key issued in that org. A
-// throwaway local org can never be it, so this run never makes one.
-const token = process.env.CADVERIFY_SCIM_TOKEN || process.env.PROOFSHAPE_SCIM_TOKEN || process.env.CADVERIFY_API_KEY || process.env.PROOFSHAPE_API_KEY || "";
-const missingCredential =
-  "Requires CADVERIFY_SCIM_TOKEN (or PROOFSHAPE_SCIM_TOKEN): an admin API key issued in the organization the backend names in SSO_ORG_ID, on a backend that mounts SCIM (AUTH_MODE saml/oidc/hybrid or SCIM_ENABLED=1). SCIM answers no other organization.";
+let token = process.env.PROOFSHAPE_SCIM_TOKEN || process.env.PROOFSHAPE_API_KEY || process.env.CADVERIFY_SCIM_TOKEN || process.env.CADVERIFY_API_KEY || "";
 
 const artifacts = {
   json: path.join(outputRoot, `scim-idp-lifecycle-${runId}.json`),
@@ -74,10 +70,6 @@ async function runProvider(provider) {
 
   await step(steps, `${provider}: service discovery`, async () => {
     const config = await request("GET", "/scim/v2/ServiceProviderConfig");
-    assert(
-      !(config.status === 403 && (config.json?.code ?? config.json?.detail?.code) === "sso_org_required"),
-      "ServiceProviderConfig HTTP 403 sso_org_required: the key's organization is not the backend's SSO_ORG_ID organization",
-    );
     assert(config.status === 200, `ServiceProviderConfig HTTP ${config.status}`);
     assert(config.json?.patch?.supported === true, "PATCH not advertised");
     const resourceTypes = await request("GET", "/scim/v2/ResourceTypes");
@@ -173,13 +165,22 @@ ${rows}
 
 async function main() {
   await mkdir(outputRoot, { recursive: true });
+  const credential = await resolveAdminApiKey({
+    apiBase,
+    configuredToken: token,
+    runId,
+    purpose: "scim",
+    // SCIM refuses personal orgs, so the throwaway admin provisions a team org.
+    sharedOrg: true,
+  });
+  token = credential.token;
   if (!token) {
     const data = {
       status: "SKIPPED",
       generatedAt: new Date().toISOString(),
       runId,
       apiBase,
-      boundary: missingCredential,
+      boundary: credential.boundary || "Requires PROOFSHAPE_SCIM_TOKEN or PROOFSHAPE_API_KEY for an admin of a shared (non-personal) org on a backend that mounts SCIM (AUTH_MODE saml/oidc/hybrid or SCIM_ENABLED=1).",
       providers: [],
     };
     await writeFile(artifacts.json, `${JSON.stringify(data, null, 2)}\n`);
@@ -199,7 +200,11 @@ async function main() {
     runId,
     apiBase,
     boundary: "SCIM protocol lifecycle simulation over the real ScaleCad SCIM HTTP surface; not vendor sandbox certification.",
-    credential: { source: "configured admin key of the SSO_ORG_ID organization" },
+    credential: {
+      source: credential.source,
+      accountEmail: credential.accountEmail || null,
+      keyPrefix: credential.keyPrefix || null,
+    },
     providers,
     failed,
   };

@@ -27,7 +27,6 @@ from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from sqlalchemy import select
@@ -36,16 +35,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.client_ip import (
     client_ip,
-    client_user_agent,
     require_auth_proxy_if_enabled,
     require_verified_proxy,
 )
 from src.auth.dashboard_session import (
-    COOKIE_NAME,
     clear_session_cookie,
     require_dashboard_session,
     sign,
-    unsign_payload,
 )
 from src.auth.disposable import classify, normalize_email
 from src.auth.hashing import hash_password, password_needs_rehash, verify_password
@@ -53,7 +49,6 @@ from src.auth.rate_limit import limiter
 from src.auth.models import (
     bump_session_version,
     create_password_user,
-    lookup_session_user,
     get_user_session_version,
     get_login_credentials,
     get_user_public,
@@ -328,14 +323,14 @@ async def create_pilot_request(
                 "from": resend_from,
                 "to": inbox,
                 "reply_to": email,
-                "subject": f"ScaleCAD pilot request — {safe_company}",
+                "subject": f"ScaleCad pilot request — {safe_company}",
                 "text": (
                     f"Pilot request {receipt}\n\nWork email: {email}\n"
                     f"Company: {company}\nDeployment: {body.deployment}\n\n"
                     f"What they make:\n{what}"
                 ),
                 "html": (
-                    f"<h1>New ScaleCAD pilot request</h1>"
+                    f"<h1>New ScaleCad pilot request</h1>"
                     f"<p><strong>Receipt:</strong> {html.escape(receipt)}</p>"
                     f"<p><strong>Work email:</strong> {html.escape(email)}<br>"
                     f"<strong>Company:</strong> {html.escape(company)}<br>"
@@ -417,17 +412,16 @@ async def _run_abuse_controls(request: Request, email_norm: str) -> str:
     # Per-IP throttle: only when Redis is configured (deploy-gated). The local
     # E2E launcher intentionally creates many throwaway accounts from 127.0.0.1;
     # allow that only outside production so repeated proof runs stay deterministic.
-    from src.auth.signup_limits import ip_signup_limit_enabled, per_ip_signup_limit, release_slots
+    from src.auth.signup_limits import ip_signup_limit_enabled, per_ip_signup_limit
 
-    counted = await per_ip_signup_limit(request) if ip_signup_limit_enabled() else None
+    if ip_signup_limit_enabled():
+        await per_ip_signup_limit(request)
 
     # Disposable classification. Soft-flag set lives in Redis; use an empty set
     # locally so the pure in-process hard-reject list still applies.
     soft_set: set[str] = set()
     verdict = classify(email_norm, soft_set)
     if verdict == "hard_reject":
-        # A refused sign-up doesn't count toward the network's limit.
-        await release_slots([counted])
         raise _err(
             400,
             "email_domain_blocked",
@@ -463,10 +457,6 @@ async def signup(body: SignupIn, request: Request) -> dict:
         signup_metadata=profile_metadata(body),
     )
     if uid is None:
-        from src.auth.signup_limits import ip_signup_key, ip_signup_limit_enabled, release_slots
-
-        if ip_signup_limit_enabled():
-            await release_slots([ip_signup_key(request)])  # refused: it doesn't count
         raise _err(
             409,
             "email_taken",
@@ -530,36 +520,14 @@ async def login(body: LoginIn, request: Request, response: Response) -> dict:
         except Exception:
             pass
 
-    # Two-step sign-in: an account with it on (or in an organization that
-    # requires it) gets a short-lived challenge, never a session, until the
-    # code is checked (src/auth/two_step_routes.py writes auth.login then).
-    from src.auth.two_step import make_challenge, sign_in_requirement_for
-
-    two_step = await sign_in_requirement_for(user_id)
-    if two_step is not None:
-        response.headers["Cache-Control"] = "no-store"
-        return {
-            "user": {"id": user_id, "email": email, "role": role},
-            "two_step": two_step,
-            "challenge": make_challenge(
-                user_id, await get_user_session_version(user_id), two_step, "password"
-            ),
-        }
-
     from src.services.audit_service import log_action
 
-    # Where the sign-in came from, as two-step completions record it: the
-    # verified proxy IP (else the direct peer) and the browser. Never the
-    # password or the session.
     await log_action(
         user_id=user_id,
         user_email=email,
         action="auth.login",
         resource_type="user",
         resource_id=str(user_id),
-        detail={"auth_provider": "password"},
-        ip_address=client_ip(request),
-        user_agent=client_user_agent(request),
     )
     return {
         "user": {"id": user_id, "email": email, "role": role},
@@ -607,38 +575,12 @@ async def initialize_password(
 
 
 @router.post("/logout")
-async def logout(request: Request, response: Response):
-    """Sign out: the session ends on the server, not only in this browser.
-
-    Dashboard sessions are stateless HMAC tokens that carry the account's
-    ``session_version``, so a copied cookie would outlive a cookie-only logout.
-    A live session cookie bumps the version (ending every session of the
-    account, as /logout-all does) and the cookie is cleared. A missing, forged
-    or already-ended cookie only clears the cookie. If the account can't be
-    read the cookie is still cleared and the answer is a 503, never a claimed
-    sign-out.
-    """
-    cookie = request.cookies.get(COOKIE_NAME)
-    payload = unsign_payload(cookie) if cookie else None
-    revoked = False
-    if payload is not None:
-        try:
-            row = await lookup_session_user(payload.user_id)
-            if row is not None and row.session_version == payload.session_version:
-                revoked = await bump_session_version(payload.user_id) is not None
-        except Exception:
-            logger.warning("logout: session could not be ended for user_id=%s", payload.user_id, exc_info=True)
-            failed = JSONResponse(
-                status_code=503,
-                content={"detail": {
-                    "code": "logout_unavailable",
-                    "message": "This browser is signed out, but the session couldn't be ended on the server. Try again.",
-                }},
-            )
-            clear_session_cookie(failed)
-            return failed
+async def logout(response: Response) -> dict:
+    # Single-browser logout clears the cookie. Use /logout-all or the admin
+    # revoke-sessions route to bump users.session_version and invalidate every
+    # outstanding dashboard cookie for the account.
     clear_session_cookie(response)
-    return {"ok": True, "session_ended": revoked}
+    return {"ok": True}
 
 
 @router.post("/logout-all")
@@ -732,10 +674,3 @@ async def crm_location(
         ), {"uid": int(body.account_id.removeprefix("scalecad-user-")), "metadata": json.dumps(metadata)})
         await session.commit()
     return {"ok": True}
-
-
-# Two-step sign-in (challenge, account and organization-rule routes) rides this
-# router, which every deployment mounts at /auth.
-from src.auth.two_step_routes import router as _two_step_router  # noqa: E402
-
-router.include_router(_two_step_router)

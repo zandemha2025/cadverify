@@ -96,12 +96,6 @@ export default function RfqPackageDetailPage({
         </Card>
       </div>
 
-      {!pkg.live_supplier_send && (
-        <p className="text-sm text-muted-foreground">
-          Not sent by ScaleCAD: download the ZIP and send it yourself. Replies aren&apos;t tracked.
-        </p>
-      )}
-
       {pkg.warnings.length > 0 && (
         <Card>
           <CardHeader>

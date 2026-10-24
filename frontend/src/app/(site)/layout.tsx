@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./site.css";
 
 export const metadata: Metadata = {
-  title: "ScaleCAD — Know which of your parts you should be making",
+  title: "ScaleCad — Know which of your parts you should be making",
   description: "Make manufacturing decisions with traceable evidence. Explore a sample, review the findings, and bring your own part.",
 };
 

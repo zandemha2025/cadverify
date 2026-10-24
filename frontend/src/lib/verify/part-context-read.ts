@@ -1,7 +1,7 @@
 /**
  * READ side of the declared part-context (GET /api/v1/part-context/{mesh_hash}).
  *
- * `part-context.ts` only WRITES the world (PUT, on an explicit conditions edit). The
+ * The frozen `part-context.ts` only WRITES the world (PUT, during the walk). The
  * Part standing page needs to READ it back to render a part's lineage
  * (program → assembly → part) and its declared annual volume. This lives in a
  * separate module by contract (part-context.ts is a wired client we must not
@@ -31,17 +31,12 @@ export interface PartContext {
   provenance: "user";
   /** the declared service world, only present when actually declared. */
   service_environment?: Record<string, unknown>;
-  /** the declared part specs (finish, Ra, heat treatment, inspection,
-   *  certifications), only present when actually declared. */
-  part_specs?: Record<string, unknown>;
   /** BOM-rollup linkage (Slice 3), present only when the org tied this part to a
    *  persisted bom_edges tree — names the tree + this part's ref + vehicles/year so
    *  its annual volume rolls up from the real hierarchy instead of the flat field. */
   bom_assembly_key?: string | null;
   bom_child_ref?: string | null;
   bom_roots_per_year?: number | null;
-  /** What the org pays today to buy the part (typed on its Decision view, or from a catalog run's parts list). */
-  buy_price?: import("../../components/v4/part/buy-price").BuyPrice | null;
 }
 
 export interface PartContextResult {

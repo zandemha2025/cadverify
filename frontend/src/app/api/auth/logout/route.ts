@@ -8,14 +8,10 @@
 import { NextResponse } from "next/server";
 import { backendUrl } from "@/lib/api-base";
 import { clearSession, getSessionToken } from "@/lib/session";
-import { crossSiteRefusal } from "@/lib/same-origin-request";
 
 export const dynamic = "force-dynamic";
 
-export async function POST(req: Request) {
-  // Signing out ends every session of the account, so another site can't do it either.
-  const crossSite = crossSiteRefusal(req);
-  if (crossSite) return crossSite;
+export async function POST() {
   const token = await getSessionToken();
   let revoked = token == null;
   try {

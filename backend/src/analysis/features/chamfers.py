@@ -28,8 +28,6 @@ invented chamfer is a bogus manufacturing note); false negatives just mean
 
 from __future__ import annotations
 
-from typing import cast
-
 import numpy as np
 import trimesh
 
@@ -132,7 +130,7 @@ def detect_chamfers(
         if aspect is not None and aspect < min_aspect:
             continue
 
-        centroid = cast("tuple[float, float, float]", tuple(float(v) for v in centroids[g_faces].mean(axis=0)))
+        centroid = tuple(float(v) for v in centroids[g_faces].mean(axis=0))
         mean_bevel = (ang1 + ang2) / 2.0
 
         # Confidence: modest baseline heuristic, biased down for anything

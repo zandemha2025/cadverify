@@ -31,8 +31,6 @@ structlog==24.4.0
 sentry-sdk==2.18.0
 prometheus-client>=0.20.0
 weasyprint>=62.0
-# Reject the vulnerable transitive decoder (GHSA-9v8h-qqgm-4m35).
-brotli>=1.2.1
 jinja2>=3.1.0
 scalar-fastapi>=1.8.0
 arq>=0.27.0

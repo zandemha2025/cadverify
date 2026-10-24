@@ -26,13 +26,12 @@ from __future__ import annotations
 from src.config.public_urls import error_doc_url
 
 from enum import Enum
-from typing import AsyncIterator, Optional
+from typing import Optional
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, HTTPException
 from pydantic import BaseModel
 
 from src.auth.models import lookup_org_membership
-from src.auth.org_binding import bind_gate_org, gate_org, release_gate_org
 from src.auth.require_api_key import AuthedUser, require_api_key
 
 
@@ -120,70 +119,6 @@ class OrgAuthContext(BaseModel):
     org_role: Optional[str] = None
 
 
-async def _authorize_org_role(
-    request: Request | None, user: AuthedUser, min_role: OrgRole
-) -> OrgAuthContext:
-    """The org-role decision behind :func:`require_org_role` (no binding).
-
-    Raises the 403 (and logs the refused write) when the caller's role in the
-    active org is below ``min_role``.
-    """
-    is_superadmin = user.role == Role.superadmin.value
-    membership = await lookup_org_membership(user.user_id)
-    # Bearer keys retain their issuing org. If the user's active membership
-    # changed after authentication, fail this authorization check instead of
-    # silently moving the key to the new organization.
-    if user.org_id is not None and (
-        membership is None or membership[0] != user.org_id
-    ):
-        membership = None
-    # A second gate in a request that already bound an org (R2 F1) checks that
-    # same org; a different answer means the org moved under the request.
-    bound = gate_org(user.user_id)
-    if bound is not None and membership is not None and membership[0] != bound:
-        membership = None
-    org_id = membership[0] if membership else None
-    org_role = membership[1] if membership else None
-
-    if not is_superadmin:
-        allowed = False
-        if org_role is not None:
-            try:
-                allowed = OrgRole(org_role).rank >= min_role.rank
-            except ValueError:
-                allowed = False
-        if not allowed:
-            await log_refused_write(
-                request,
-                user,
-                org_id=org_id or user.org_id,
-                org_role=org_role,
-                reason="insufficient_org_role",
-            )
-            raise HTTPException(
-                403,
-                detail={
-                    "code": "insufficient_org_role",
-                    "message": (
-                        f"Requires org {min_role.value} role or higher"
-                    ),
-                    "doc_url": (
-                        error_doc_url("insufficient_org_role")
-                    ),
-                },
-            )
-
-    return OrgAuthContext(
-        user_id=user.user_id,
-        api_key_id=user.api_key_id,
-        key_prefix=user.key_prefix,
-        role=user.role,
-        is_superadmin=is_superadmin,
-        org_id=org_id,
-        org_role=org_role,
-    )
-
-
 def require_org_role(min_role: OrgRole):
     """Return a FastAPI dependency enforcing a minimum ORG role.
 
@@ -195,171 +130,53 @@ def require_org_role(min_role: OrgRole):
     The returned ``OrgAuthContext`` gives the route both the decision *and* the
     org boundary (``org_id``) it needs to scope its reads/writes — this is the
     first place ``resolve_org``-style resolution is wired into a real consumer.
-
-    The org it checked stays bound for the rest of the request
-    (``auth.org_binding``): every org resolver the route calls answers that org,
-    even if the caller switches their active org while the request runs. The
-    dependency yields so the binding is released when the request ends.
     """
 
-    async def _check(
-        request: Request, user: AuthedUser = Depends(require_api_key)
-    ) -> AsyncIterator[OrgAuthContext]:
-        ctx = await _authorize_org_role(request, user, min_role)
-        token = bind_gate_org(ctx.user_id, ctx.org_id)
-        try:
-            yield ctx
-        finally:
-            release_gate_org(token)
+    async def _check(user: AuthedUser = Depends(require_api_key)) -> OrgAuthContext:
+        is_superadmin = user.role == Role.superadmin.value
+        membership = await lookup_org_membership(user.user_id)
+        # Bearer keys retain their issuing org. If the user's active membership
+        # changed after authentication, fail this authorization check instead of
+        # silently moving the key to the new organization.
+        if user.org_id is not None and (
+            membership is None or membership[0] != user.org_id
+        ):
+            membership = None
+        org_id = membership[0] if membership else None
+        org_role = membership[1] if membership else None
+
+        if not is_superadmin:
+            allowed = False
+            if org_role is not None:
+                try:
+                    allowed = OrgRole(org_role).rank >= min_role.rank
+                except ValueError:
+                    allowed = False
+            if not allowed:
+                raise HTTPException(
+                    403,
+                    detail={
+                        "code": "insufficient_org_role",
+                        "message": (
+                            f"Requires org {min_role.value} role or higher"
+                        ),
+                        "doc_url": (
+                            error_doc_url("insufficient_org_role")
+                        ),
+                    },
+                )
+
+        return OrgAuthContext(
+            user_id=user.user_id,
+            api_key_id=user.api_key_id,
+            key_prefix=user.key_prefix,
+            role=user.role,
+            is_superadmin=is_superadmin,
+            org_id=org_id,
+            org_role=org_role,
+        )
 
     return _check
-
-
-_WRITE_SAFE = frozenset({"GET", "HEAD", "OPTIONS"})
-
-
-async def log_refused_write(
-    request: Request | None,
-    user: AuthedUser,
-    *,
-    org_id: str | None,
-    org_role: str | None,
-    reason: str,
-) -> None:
-    """Record a refused write in the org's audit log ("Refused: <action>").
-
-    Reads are not logged. Never raises: the refusal is the answer either way.
-    """
-    method = (getattr(request, "method", None) or "").upper()
-    if not method or method in _WRITE_SAFE:
-        return
-    path = getattr(getattr(request, "url", None), "path", "") or ""
-    try:
-        from src.services.audit_service import record_refusal
-
-        await record_refusal(
-            user_id=user.user_id,
-            org_id=org_id,
-            method=method,
-            path=path,
-            org_role=org_role,
-            reason=reason,
-            key_prefix=user.key_prefix,
-        )
-    except Exception:  # the audit row is best effort; the 403 stands
-        pass
-
-
-async def _org_name(org_id: str) -> Optional[str]:
-    from sqlalchemy import text
-
-    from src.auth.models import _session
-
-    async with _session()() as s:
-        row = (
-            await s.execute(
-                text("SELECT name FROM organizations WHERE id = :id"), {"id": org_id}
-            )
-        ).first()
-    return str(row[0]) if row and row[0] else None
-
-
-async def _read_only_refusal(user: AuthedUser, action: str) -> HTTPException:
-    """The plain 403 an org viewer (or a member-less account) gets for a write."""
-    org_id = org_name = org_role = None
-    try:
-        membership = await lookup_org_membership(user.user_id)
-        if membership is not None:
-            org_id, org_role = membership
-            org_name = await _org_name(org_id)
-    except Exception:  # the refusal stands even if the name can't be read
-        pass
-    if org_role in ("member", "admin"):
-        # Not a viewer: a bearer key issued by another org than the active one.
-        return HTTPException(
-            403,
-            detail={
-                "code": "api_key_org_mismatch",
-                "message": (
-                    "This API key was issued in another organization than your "
-                    "active one. Use a key issued for the active organization."
-                ),
-                "doc_url": error_doc_url("api_key_org_mismatch"),
-            },
-        )
-    if org_role is None:
-        message = (
-            "Your account isn't a member of an organization. Ask an admin for "
-            f"member access to {action}."
-        )
-    else:
-        message = (
-            f"You're a viewer in {org_name or 'this organization'}: you can open "
-            f"its parts and records. Ask an admin for member access to {action}."
-        )
-    return HTTPException(
-        403,
-        detail={
-            "code": "org_member_required",
-            "message": message,
-            "org_id": org_id,
-            "org_name": org_name,
-            "org_role": org_role,
-            "doc_url": error_doc_url("org_member_required"),
-        },
-    )
-
-
-def _org_member_write_gate(action: str):
-    """Platform ``analyst`` AND org role ``member`` or above in the active org.
-
-    An org ``viewer`` keeps every read but cannot check, import, edit, run or
-    share anything; the refusal names the org and says what to ask for.
-    Platform superadmins keep the ``require_org_role`` bypass.
-    """
-
-    async def _gate(
-        request: Request, user: AuthedUser = Depends(require_role(Role.analyst))
-    ) -> AsyncIterator[AuthedUser]:
-        try:
-            # The org-role check logs the refused write itself.
-            ctx = await _authorize_org_role(request, user, OrgRole.member)
-        except HTTPException as exc:
-            detail = exc.detail if isinstance(exc.detail, dict) else {}
-            if detail.get("code") != "insufficient_org_role":
-                raise
-            raise await _read_only_refusal(user, action) from exc
-        # The write lands in the org this checked (R2 F1), released at the end.
-        token = bind_gate_org(user.user_id, ctx.org_id)
-        try:
-            yield user
-        finally:
-            release_gate_org(token)
-
-    return _gate
-
-
-# The one gate for routes that change or publish an organization's data, and
-# its twin for routes that check a new part (same rule, the refusal says
-# "check new parts"). Tests that bypass auth on the main app override both.
-require_org_writer = _org_member_write_gate("change them")
-require_org_checker = _org_member_write_gate("check new parts")
-
-
-async def org_role_allows_writes(user: AuthedUser) -> bool:
-    """Whether ``user`` would clear :data:`require_org_writer` (for capability probes)."""
-    try:
-        rank = Role(user.role).rank
-    except ValueError:
-        return False
-    if rank < Role.analyst.rank:
-        return False
-    try:
-        # A capability probe is a read: no request, so nothing is logged.
-        await _authorize_org_role(None, user, OrgRole.member)
-    except HTTPException:
-        return False
-    return True
 
 
 def require_role_and_org_role(min_role: Role, min_org_role: OrgRole):

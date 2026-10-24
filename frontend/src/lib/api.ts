@@ -8,20 +8,14 @@ import {
   networkRecoveryMessage,
 } from "@/lib/api-recovery";
 import { API_BASE, browserOrBackendUrl } from "./api-base";
-import { busySignal } from "./verify/busy.ts";
 import type { AnalysisListRow } from "./recent-parts";
 import type { CostDisposition, CostDispositionBasis } from "./cost-disposition";
-import type { PartType } from "./verify/bodies";
-import type { CostQtyModel } from "./qty-model";
 import { createReconstructionSubmissionId } from "./reconstruction-id";
 import { track } from "./analytics";
 
 export interface GeometryInfo {
   vertices: number;
-  /** Mesh triangles (an STL's own, or the ones ScaleCAD meshed a STEP/IGES into). */
   faces: number;
-  /** A STEP/IGES's own faces, the count its CAD tool shows (absent for an STL). */
-  cad_faces?: number;
   volume_mm3: number;
   surface_area_mm2: number;
   bounding_box_mm: [number, number, number];
@@ -77,19 +71,6 @@ export interface Issue {
   /** "localized" when the finding has faces or a region center; "whole_part"
    *  when it is honestly unlocalizable (no faked location). */
   scope?: "localized" | "whole_part";
-  /** The CAD faces the affected triangles lie on (STEP/IGES only). */
-  cad_face_count?: number;
-  /** Per-rule parts of one finding (draft: outside and inside walls, each with its rule). */
-  breakdown?: IssueRulePart[];
-}
-
-export interface IssueRulePart {
-  walls: "outside" | "inside";
-  need_deg: number;
-  measured_deg: number;
-  /** mesh triangles short of the rule (0: these walls meet it) */
-  faces: number;
-  cad_faces?: number | null;
 }
 
 export interface Segment {
@@ -183,8 +164,6 @@ export interface ValidationResult {
     provenance: "USER";
     note: string;
   };
-  /** What the file holds: one solid, or several bodies and what kind of set (checks since part types). */
-  part_type?: PartType;
 }
 
 export interface Material {
@@ -284,46 +263,8 @@ export interface RepairDetails {
   repaired_faces?: number;
   holes_filled?: number;
   duration_ms?: number;
-  /** Pre-repair volume with each hole capped flat (an estimate). */
-  original_volume_mm3?: number | null;
-  repaired_volume_mm3?: number | null;
-  volume_change_pct?: number | null;
-  /** Set when repair changed volume past the API threshold (or it was unmeasurable). */
-  volume_warning?: string | null;
-  /** User-facing explanation on every refused repair. */
-  reason?: string;
-  /** Raw engine error (exception path only; empty on timeout). */
   error?: string;
-  /** Open edges closed by welding vertices closer than 0.001 mm before the repair. */
-  welded_edges?: number;
-  /** The threshold volume_warning uses, in percent. */
-  warn_pct?: number;
-  /** What was open in the file as read. */
-  openings?: RepairOpenings;
-  /** A refused repair that closed some openings: what is still open. */
-  openings_after?: { faces: number; open_edges: number; loops: number; largest_mm: number | null } | null;
-  /** The one-sentence outcome (also the top-level `summary`). */
-  summary?: string;
 }
-
-/**
- * Where a file is open, as the repair read it (backend repair_service.describe_openings).
- * kind: a missing face, small gaps, faces that touch but aren't joined (seams),
- * a surface with no thickness, or nothing open.
- */
-export interface RepairOpenings {
-  kind: "none" | "seams" | "surface" | "face" | "gaps";
-  open_edges: number;
-  welded_edges: number;
-  open_edges_after_weld: number;
-  loops: number;
-  largest_mm: number | null;
-  sizes_mm: number[];
-  part_mm: number;
-}
-
-/** How one repair ended. Older responses carry no outcome; derive it from repair_applied. */
-export type RepairOutcomeKind = "repaired" | "closed_changed" | "partly" | "not_repaired" | "not_needed";
 
 export interface RepairResult {
   original_analysis: ValidationResult;
@@ -340,41 +281,6 @@ export interface RepairResult {
     repaired_sha256: string;
     download_media_type: "model/stl";
     download_filename: string;
-    checks_used?: number;
-  } | null;
-  outcome?: RepairOutcomeKind;
-  summary?: string;
-}
-
-/**
- * POST /parts/{mesh_hash}/repair: the same repair on the organization's kept
- * source. The repaired copy is a saved part linked to this one; it downloads
- * from `download.url`, and `repaired_file_b64` is null when it's large.
- */
-export interface StoredRepairResult extends RepairResult {
-  source: { mesh_hash: string; filename: string; format: string; bytes: number };
-  repaired: {
-    mesh_hash: string;
-    sha256: string;
-    format: string;
-    bytes: number;
-    verdict: string | null;
-    faces: number | null;
-    volume_mm3: number | null;
-    is_watertight: boolean | null;
-    methods_can_make: { count: number; of: number; processes: string[] };
-    decimated_for_analysis: boolean;
-    filename: string;
-  } | null;
-  download: { url: string; filename: string; media_type: string; bytes: number } | null;
-  lineage: { parent_mesh_hash: string; parent_filename: string; fix: string; created_at: string } | null;
-  prices: {
-    quantities: number[];
-    material_class: string;
-    basis: string;
-    before: null;
-    after: { qty: number; process: string | null; material: string | null; unit_cost_usd: number | null }[] | null;
-    note: string;
   } | null;
 }
 
@@ -408,38 +314,11 @@ export function getLatestRateLimits(): RateLimits | undefined {
  * Centralized API client — attaches auth headers, extracts rate limits,
  * handles errors (timeout, malformed JSON, 5xx retry, 429 toast, 4xx throw).
  */
-/** An API refusal's HTTP status and code, kept on the thrown Error (the message stays the
- *  user-facing text), so a caller can act on it: a web check refused as too heavy
- *  for the web process (413 CHECK_TOO_LARGE) goes to the worker instead. */
-export type HttpError = Error & { status?: number; code?: string | null; retryAfter?: string | null };
-
-export function withHttpStatus(error: Error, status: number, payload: unknown, retryAfter?: string | null): HttpError {
-  const e = error as HttpError;
-  e.status = status;
-  if (retryAfter !== undefined) e.retryAfter = retryAfter;
-  const p = payload as { code?: unknown; detail?: { code?: unknown } } | null;
-  const code = typeof p?.detail === "object" && p?.detail ? p.detail.code : p?.code;
-  e.code = typeof code === "string" ? code : null;
-  return e;
-}
-
 const apiClient = {
   async fetch(
     url: string,
     options: RequestInit = {},
-    {
-      retries = 0,
-      retryDelayMs = 1000,
-      quiet = false,
-    }: {
-      retries?: number;
-      retryDelayMs?: number;
-      /** The caller shows busy and ScaleCAD-side failures itself (busy.ts): a busy refusal
-       *  (429 or 503 server_busy), any other 5xx, and no answer at all are thrown with
-       *  their status (0: no answer), code and Retry-After, and no error toast. A 5xx is
-       *  still reported to Sentry. Other refusals are unchanged. */
-      quiet?: boolean;
-    } = {}
+    { retries = 0, retryDelayMs = 1000 }: { retries?: number; retryDelayMs?: number } = {}
   ): Promise<Response> {
     // Same-origin → the httpOnly session cookie is sent automatically and the
     // Next proxy forwards it to the backend. No Authorization header needed.
@@ -473,7 +352,6 @@ const apiClient = {
         // Network error / timeout
         lastError = new Error(networkRecoveryMessage(resource), { cause: err });
         if (attempt === retries) {
-          if (quiet) throw withHttpStatus(lastError, 0, null);
           toast.error(lastError.message);
           throw lastError;
         }
@@ -489,7 +367,6 @@ const apiClient = {
         const err = await res.json().catch(() => ({ detail: "Rate limit exceeded" }));
         const message = apiRecoveryMessage({ status: 429, payload: err, resource,
           retryAfter: res.headers.get("Retry-After") });
-        if (quiet && busySignal(429, err)) throw withHttpStatus(new Error(message), 429, err, res.headers.get("Retry-After"));
         toast.error(message);
         throw new Error(message);
       }
@@ -505,11 +382,9 @@ const apiClient = {
             retryAfter: res.headers.get("retry-after"),
           }),
         );
-        if (quiet && busySignal(res.status, problem)) throw withHttpStatus(lastError, res.status, problem, res.headers.get("retry-after"));
         if (attempt === retries) {
-          Sentry.captureException(lastError, { extra: { url, status: res.status } });
-          if (quiet) throw withHttpStatus(lastError, res.status, problem, res.headers.get("retry-after"));
           toast.error(lastError.message);
+          Sentry.captureException(lastError, { extra: { url, status: res.status } });
           throw lastError;
         }
         continue;
@@ -518,13 +393,9 @@ const apiClient = {
       // 4xx (non-429) — no retry
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: res.statusText }));
-        throw withHttpStatus(
-          new Error(
-            apiQuotaMessage(err) || apiProblemDetail(err) ||
-              apiRecoveryMessage({ status: res.status, payload: err, resource }),
-          ),
-          res.status,
-          err,
+        throw new Error(
+          apiQuotaMessage(err) || apiProblemDetail(err) ||
+            apiRecoveryMessage({ status: res.status, payload: err, resource }),
         );
       }
 
@@ -533,8 +404,8 @@ const apiClient = {
     throw lastError || new Error("Request failed");
   },
 
-  async fetchJson<T>(url: string, options: RequestInit = {}, extra: { quiet?: boolean } = {}): Promise<T> {
-    const res = await this.fetch(url, options, { retries: 2, retryDelayMs: 1000, ...extra });
+  async fetchJson<T>(url: string, options: RequestInit = {}): Promise<T> {
+    const res = await this.fetch(url, options, { retries: 2, retryDelayMs: 1000 });
     try {
       return await res.json();
     } catch {
@@ -557,9 +428,7 @@ export async function validateFile(
    *  Off by default → no query param → response is byte-identical to before. */
   includeThickness?: boolean,
   sourceUnits?: "mm" | "inch",
-  partCheckId?: string,
-  /** quiet: the caller shows busy and ScaleCAD-side failures itself (apiClient.fetch). */
-  opts: { quiet?: boolean } = {}
+  partCheckId?: string
 ): Promise<ValidationResult> {
   const formData = new FormData();
   formData.append("file", file);
@@ -584,7 +453,7 @@ export async function validateFile(
     url += `?${qs}`;
   }
 
-  return apiClient.fetchJson<ValidationResult>(url, { method: "POST", body: formData, headers: partCheckId ? { "x-part-check-id": partCheckId } : undefined }, opts);
+  return apiClient.fetchJson<ValidationResult>(url, { method: "POST", body: formData, headers: partCheckId ? { "x-part-check-id": partCheckId } : undefined });
 }
 
 export async function validateQuick(file: File): Promise<{
@@ -894,17 +763,6 @@ export interface CostDriver {
   provenance: Provenance;
   source: string;
   error_band_pct: number | null;
-  /** The org's published rate card version this line's rate comes from ("Your rates v1"); absent for a typical rate. */
-  rate_card?: number;
-}
-
-/** Which rate card a saved record was priced at, and which is in effect now (0 = typical rates). */
-export interface RateBasis {
-  priced: number;
-  current: number;
-  out_of_date: boolean;
-  /** "Priced at rates v0; your rates are v1." */
-  text: string;
 }
 
 /**
@@ -951,7 +809,7 @@ export interface CostLeadTime {
   mid_days: number;
   components: Record<string, number>;
   capacity:
-    | { n_machines?: number; machine_hours_per_day?: number; provenance?: string; basis?: string; in_house?: boolean; machine?: string }
+    | { n_machines?: number; machine_hours_per_day?: number; provenance?: string }
     | Record<string, never>;
 }
 
@@ -979,30 +837,9 @@ export interface CostEstimate {
   environment_excluded?: boolean;
   /** Cited reason for environment_excluded, usually naming the governing standard. */
   environment_exclusion_reason?: string;
-  /** True when the part's declared specs (finish/Ra, heat treatment…) can't be met on this route. */
-  spec_excluded?: boolean;
-  /** Why the specs rule this route out, with the source of the process's typical roughness etc. */
-  spec_exclusion_reason?: string;
-  /** The unmet spec requirements as findings (code SPEC_*). */
-  spec_findings?: Issue[];
-  /** Spec facts said plainly that don't block the route ("HIP isn't added for wrought stock"). */
-  spec_notes?: string[];
   line_items: Record<string, number>;
   drivers: CostDriver[];
   lead_time: CostLeadTime;
-  /** The material as fields (absent on older records): the part's own mass (CAD volume × density),
-   *  the mass the price is charged on (stock, printed with supports, poured), density and $/kg. */
-  material_mass?: CostMaterialMass;
-  /** How each line moves with the quantity (absent on records priced before it was kept):
-   *  the model's own price at any other quantity, see lib/qty-model.ts (ce-06). */
-  qty_model?: CostQtyModel;
-}
-
-export interface CostMaterialMass {
-  part_kg: number;
-  used_kg: number;
-  density_g_cm3: number;
-  usd_per_kg: number;
 }
 
 export interface CostRecommendation {
@@ -1013,39 +850,6 @@ export interface CostRecommendation {
   dfm_verdict: string;
   lead_low_days: number | null;
   lead_high_days: number | null;
-  /** Present when a machine you own clears a route at this quantity: whether the pick is in-house, why, and on which machine. */
-  in_house?: boolean;
-  basis?: CostPickBasis;
-  machine?: string;
-  /** An outside pick that is your own process bought from a job shop at its fully loaded rate. */
-  same_process_outside?: boolean;
-}
-
-/** Why the engine picked in-house or outside when a machine you own clears a route (decision.IN_HOUSE_RULE). "tie": within 2% of each other. */
-export type CostPickBasis = "in_house_only" | "in_house_cheapest" | "tie" | "outside_cheaper" | "outside_sooner";
-
-/** One side of the in-house / outside comparison: the engine's own estimate, its range and lead time. */
-export interface CostOptionSide {
-  process: string;
-  material: string;
-  unit_cost_usd: number;
-  low_usd: number;
-  high_usd: number;
-  lead_low_days: number | null;
-  lead_high_days: number | null;
-  dfm_verdict?: string;
-  /** In-house side only: the machine of yours that clears every check, and how many you declared. */
-  machine?: string | null;
-  machine_count?: number | null;
-  /** Outside side only: your own process bought from a job shop at its fully loaded rate. */
-  same_process?: boolean;
-}
-
-export interface CostOptionPair {
-  in_house: CostOptionSide;
-  outside: CostOptionSide | null;
-  pick: "in_house" | "outside";
-  basis: CostPickBasis;
 }
 
 export interface CostRedesigned {
@@ -1064,10 +868,6 @@ export interface CostDecision {
   recommendation: Record<string, CostRecommendation>;
   if_redesigned: Record<string, CostRedesigned | null>;
   note: string;
-  /** Per quantity: the cheapest route on a machine you own next to the cheapest outside route. Absent when none of your machines clears a route. */
-  options?: Record<string, CostOptionPair>;
-  /** The rule the engine used to pick between them, in words. */
-  rule?: string;
 }
 
 export interface CostAssumption {
@@ -1076,8 +876,6 @@ export interface CostAssumption {
   unit: string;
   provenance: Provenance;
   source: string;
-  /** The org's published rate card version this value comes from; absent for a typical value. */
-  rate_card?: number;
 }
 
 export interface CostGeometry {
@@ -1095,10 +893,6 @@ export interface CostFeasibility {
   costed: boolean;
   blockers?: string[];
   cost_exclusion_reason?: string;
-  /** Why a process the geometry allows has no price in this material class (ce-19). */
-  not_priced_reason?: string;
-  /** False when the process can't run the class at all (FDM and steel); true when only no grade is on file. */
-  runs_class?: boolean;
 }
 
 export interface CostUnitWarning {
@@ -1111,19 +905,6 @@ export interface CostUnitWarning {
   };
   assumed_units?: string;
   provenance?: string;
-}
-
-export interface CostSpecsBlock {
-  /** As declared: {finishes, ra_um, ra_unit, heat_treatments, inspection, certifications, nadcap_processes}. */
-  declared: Record<string, unknown>;
-  summary: string[];
-  ra_text: string | null;
-  certifications: { key: string; label: string; shop_op: string }[];
-  nadcap_processes: string[];
-  ops: { op: string; label: string }[];
-  excluded_processes: string[];
-  provenance: "user";
-  note: string;
 }
 
 export interface CostReport {
@@ -1142,11 +923,7 @@ export interface CostReport {
   /** Measured-geometry safety rail for unitless CAD. These warnings must stay
    * visible until the user confirms millimetres versus inches and re-costs. */
   unit_warnings?: CostUnitWarning[];
-  /** The part specs this check was priced with (present only when declared). */
-  specs?: CostSpecsBlock | null;
   decision: CostDecision | null;
-  /** The org's published rate card this check was priced at; absent when priced at typical rates (v0). */
-  rate_card?: { version: number; changed: Record<string, number>; source: string };
   /** Persisted machine-fit verdict lattice. Present when the organization has
    *  declared inventory and/or a service environment. This is independent of
    *  the route's DFM status and must remain the authority for makeability copy. */
@@ -1337,20 +1114,6 @@ export interface CostDecisionGovernance {
   disposition_basis?: CostDispositionBasis | null;
   disposition_updated_at?: string | null;
   disposition_updated_by_user_id?: number | null;
-  /** The sign-off as people see it (who, when, note, and whether it went out of date). */
-  signoff?: CostSignoff | null;
-  /** Which rate card priced this record and which is in effect now. */
-  rates?: RateBasis | null;
-}
-
-export interface CostSignoff {
-  by_user_id: number | null;
-  by: string | null;
-  at: string | null;
-  note: string | null;
-  stale: boolean;
-  stale_reason: string | null;
-  stale_at: string | null;
 }
 
 export interface CostDecisionSummary extends CostDecisionGovernance {
@@ -1652,10 +1415,6 @@ export interface CatalogUnitCost {
   withheld: boolean;
   withheld_reason: string | null;
   validated: boolean;
-  /** Why this quantity: "declared" (the part's yearly quantity, priced) or "default" (10, else the first of 10 or more, else the largest), the part page's own rule. */
-  qty_basis?: "declared" | "default" | null;
-  /** The part's declared yearly quantity, when it has one (it may not be priced yet). */
-  declared_qty?: number | null;
 }
 
 /**
@@ -1779,34 +1538,22 @@ function costStem(filename: string): string {
   return filename.replace(/\.[^.]+$/, "");
 }
 
-/**
- * The download name for a record's export: the server's (unique per record,
- * "pocket-block-Z7JG57-cost.csv"), else the part's name with the record's last
- * six characters (ce-14: every record of a part exported under one name).
- */
-export function exportName(res: Response | null, filename: string, id: string, kind: string): string {
-  const cd = res?.headers?.get?.("content-disposition") ?? "";
-  const m = /filename="?([^";]+)"?/i.exec(cd);
-  if (m && m[1]) return m[1];
-  return `${costStem(filename)}-${id.slice(-6).toUpperCase()}-${kind}`;
-}
-
 /** Download the cost-report PDF for a saved decision. */
 export async function downloadCostPdf(id: string, filename: string): Promise<void> {
   const res = await apiClient.fetch(`${API_BASE}/cost-decisions/${id}/pdf`);
-  triggerBlobDownload(await res.blob(), exportName(res, filename, id, "cost-report.pdf"));
+  triggerBlobDownload(await res.blob(), `${costStem(filename)}-cost-report.pdf`);
 }
 
 /** Export the raw glass-box decision JSON (result_json) for a saved decision. */
 export async function exportCostJson(id: string, filename: string): Promise<void> {
   const res = await apiClient.fetch(`${API_BASE}/cost-decisions/${id}/export.json`);
-  triggerBlobDownload(await res.blob(), exportName(res, filename, id, "cost.json"));
+  triggerBlobDownload(await res.blob(), `${costStem(filename)}-cost.json`);
 }
 
-/** Export the CSV of cost inputs: one row per cost line with its hours, rates, kg and $/kg, the record and its rate card (ce-14). */
+/** Export the estimates / line-items table as CSV (honest confidence columns). */
 export async function exportCostCsv(id: string, filename: string): Promise<void> {
   const res = await apiClient.fetch(`${API_BASE}/cost-decisions/${id}/export.csv`);
-  triggerBlobDownload(await res.blob(), exportName(res, filename, id, "cost.csv"));
+  triggerBlobDownload(await res.blob(), `${costStem(filename)}-cost.csv`);
 }
 
 /** Download a generated RFQ/supplier evidence ZIP. */

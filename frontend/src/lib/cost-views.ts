@@ -260,9 +260,8 @@ export function parseCalibration(report: CostReport): CalibrationView {
     display: fmtAssumptionValue(a),
   });
 
-  // A value from the org's published rate card (rate_card set) is "your rates vN", not a shop profile.
   const shopRates = (report.assumptions ?? [])
-    .filter((a) => a.provenance === "SHOP" && a.rate_card == null)
+    .filter((a) => a.provenance === "SHOP")
     .map(toRate);
   const defaultRates = (report.assumptions ?? [])
     .filter((a) => a.provenance === "DEFAULT")
@@ -335,7 +334,7 @@ export function buildAnswerSummary(
   const lines: string[] = [];
   if (report?.decision) {
     const dec = report.decision;
-    lines.push(`ScaleCAD — ${report.filename}`);
+    lines.push(`ScaleCad — ${report.filename}`);
     const pick = selection.recommendation;
     lines.push(pick ? `Make by ${procLabel(pick.curve.process)} / ${pick.curve.material} at quantity ${selection.quantity}` : "Manufacturing recommendation unavailable");
     if (pick && selection.estimate?.quantity !== selection.quantity) {

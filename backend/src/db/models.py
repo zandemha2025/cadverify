@@ -64,12 +64,6 @@ class Organization(Base):
     """
 
     __tablename__ = "organizations"
-    __table_args__ = (
-        CheckConstraint(
-            "signoff_role IS NULL OR signoff_role IN ('member', 'admin')",
-            name="ck_organizations_signoff_role",
-        ),
-    )
 
     id: Mapped[str] = mapped_column(
         Text, primary_key=True, default=lambda: str(ULID())
@@ -79,30 +73,16 @@ class Organization(Base):
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )
-    # Who may sign off a recorded make-or-buy decision (migration 0056): the
-    # organization role ``member`` or ``admin``. NULL keeps the default: anyone
-    # who can record an outcome can sign it off.
-    signoff_role: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    # The account's own organization from sign-up (migration 0060). The one
-    # marker of a personal org: its name can be changed, this can't. SAML
-    # group mappings and SCIM refuse an org with it set.
-    is_personal: Mapped[bool] = mapped_column(
-        Boolean, server_default="false", nullable=False, default=False
-    )
 
-    # relationships. Never loaded with the row: an organization's members, teams
-    # and group mappings grow with it, and no reader walks them from here (each is
-    # queried by org_id where it is needed). Touching one unloaded raises rather
-    # than running a hidden query; load it explicitly with selectinload() if a
-    # caller ever needs it.
+    # relationships
     teams: Mapped[List[Team]] = relationship(
-        back_populates="organization", lazy="raise_on_sql"
+        back_populates="organization", lazy="selectin"
     )
     memberships: Mapped[List[Membership]] = relationship(
-        back_populates="organization", lazy="raise_on_sql"
+        back_populates="organization", lazy="selectin"
     )
     saml_group_mappings: Mapped[List[SamlGroupMapping]] = relationship(
-        back_populates="organization", lazy="raise_on_sql"
+        back_populates="organization", lazy="selectin"
     )
 
 
@@ -302,22 +282,12 @@ class User(Base):
     full_name: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     phone: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     signup_metadata: Mapped[dict] = mapped_column(JSON().with_variant(JSONB, "postgresql"), nullable=False, server_default="{}")
-    # Per-user settings that follow the person across devices (migration 0056),
-    # e.g. {"length_unit": "in"}. Validated by ``user_preferences_service``.
-    preferences: Mapped[dict] = mapped_column(JSON().with_variant(JSONB, "postgresql"), nullable=False, server_default="{}")
     last_seen_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     notion_page_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     crm_sync_after: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), index=True)
     # Product plan gate (trial enforcement): 'trial' accounts are capped at
     # VALIDATION_CAP_PER_USER completed validations; 'pilot' is uncapped.
     plan: Mapped[str] = mapped_column(Text, server_default="trial", nullable=False)
-    # Free-check grant recorded for accounts that predate email tiers. NULL
-    # means the allowance comes from the email domain (src.auth.validation_caps).
-    free_check_grant: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    # SMS-verified number (E.164). One account per number; the signup phone
-    # field above is unverified CRM context and is never used for gating.
-    verified_phone: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    phone_verified_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     # Org-membership beat (§39): account-level deactivation. ``is_active`` is a
     # security control (no feature flag) — false blocks EVERY auth path (login,
     # Google/SAML/magic re-provision, existing sessions, and API keys the user
@@ -340,21 +310,13 @@ class User(Base):
         Text, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True
     )
 
-    # relationships. Never loaded with the user: a person's checks, runs, priced
-    # records and keys grow with their history, and the user row is read on every
-    # page (preferences, length unit, admin and SCIM). Loading them eagerly made
-    # GET /account/preferences cost 0.6-0.9 s for someone with 100 checks and 90
-    # priced records (capacity report C6). Every reader queries these tables by
-    # user_id or org_id instead; touching one unloaded raises rather than running
-    # a hidden query.
-    api_keys: Mapped[List[ApiKey]] = relationship(back_populates="user", lazy="raise_on_sql")
-    analyses: Mapped[List[Analysis]] = relationship(
-        back_populates="user", lazy="raise_on_sql", foreign_keys="Analysis.user_id"
-    )
-    batches: Mapped[List[Batch]] = relationship(back_populates="user", lazy="raise_on_sql")
+    # relationships
+    api_keys: Mapped[List[ApiKey]] = relationship(back_populates="user", lazy="selectin")
+    analyses: Mapped[List[Analysis]] = relationship(back_populates="user", lazy="selectin")
+    batches: Mapped[List[Batch]] = relationship(back_populates="user", lazy="selectin")
     cost_decisions: Mapped[List[CostDecision]] = relationship(
         back_populates="user",
-        lazy="raise_on_sql",
+        lazy="selectin",
         foreign_keys="CostDecision.user_id",
     )
 
@@ -400,13 +362,7 @@ class AuthIdentity(Base):
 
 class ApiKey(Base):
     __tablename__ = "api_keys"
-    __table_args__ = (
-        Index("ix_api_keys_org_id", "org_id"),
-        CheckConstraint(
-            "scope IS NULL OR scope IN ('read', 'read_write')",
-            name="ck_api_keys_scope",
-        ),
-    )
+    __table_args__ = (Index("ix_api_keys_org_id", "org_id"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     user_id: Mapped[int] = mapped_column(
@@ -426,13 +382,6 @@ class ApiKey(Base):
         TIMESTAMP(timezone=True), nullable=True
     )
     revoked_at: Mapped[Optional[datetime]] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=True
-    )
-    # 0061: 'read' (GET/HEAD/OPTIONS only) or 'read_write'; NULL is read and
-    # write (keys made before 0061). A viewer's key is read only regardless.
-    scope: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    # 0061: when the key stops working; NULL never expires.
-    expires_at: Mapped[Optional[datetime]] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )
 
@@ -606,30 +555,13 @@ class Analysis(Base):
     share_short_id: Mapped[Optional[str]] = mapped_column(
         Text, unique=False, nullable=True
     )
-    # Share-link lifecycle (migration 0053, ``src.services.share_links``). The
-    # short id stays after a link is switched off or ends, so the public page can
-    # say which; ``share_created_at`` NULL marks a link made before end dates.
-    share_created_at: Mapped[Optional[datetime]] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=True
-    )
-    share_created_by: Mapped[Optional[int]] = mapped_column(
-        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
-    )
-    share_expires_at: Mapped[Optional[datetime]] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=True
-    )
-    share_revoked_at: Mapped[Optional[datetime]] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=True
-    )
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )
 
     # relationships
-    user: Mapped[User] = relationship(back_populates="analyses", foreign_keys=[user_id])
-    # Not loaded with the analysis (a list of checks would otherwise query jobs for
-    # every row); read jobs by analysis_id where needed.
-    jobs: Mapped[List[Job]] = relationship(back_populates="analysis", lazy="raise_on_sql")
+    user: Mapped[User] = relationship(back_populates="analyses")
+    jobs: Mapped[List[Job]] = relationship(back_populates="analysis", lazy="selectin")
 
 
 class CostDecision(Base):
@@ -665,7 +597,7 @@ class CostDecision(Base):
         ),
         CheckConstraint(
             "user_disposition IS NULL OR user_disposition IN "
-            "('inhouse', 'outside', 'acquire', 'redesign', 'supplier')",
+            "('inhouse', 'outside', 'acquire', 'redesign')",
             name="ck_cost_decisions_disposition",
         ),
     )
@@ -728,25 +660,6 @@ class CostDecision(Base):
     share_short_id: Mapped[Optional[str]] = mapped_column(
         Text, unique=False, nullable=True
     )
-    # Share-link lifecycle (migration 0053, ``src.services.share_links``). The
-    # short id stays after a link is switched off or ends, so the public page can
-    # say which; ``share_created_at`` NULL marks a link made before end dates.
-    share_created_at: Mapped[Optional[datetime]] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=True
-    )
-    share_created_by: Mapped[Optional[int]] = mapped_column(
-        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
-    )
-    share_expires_at: Mapped[Optional[datetime]] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=True
-    )
-    share_revoked_at: Mapped[Optional[datetime]] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=True
-    )
-    # What the current link shows (migration 0063, ``src.services.supplier_links``):
-    # {include_cost, include_cad, note, quantity}. NULL: a link made before it,
-    # which shows no cost.
-    share_options: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )
@@ -808,51 +721,6 @@ class TrialCheck(Base):
     operations: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
 
 
-class CatalogPart(Base):
-    """One distinct part a free account ran in a catalog run (migration 0052).
-
-    ``file_hash`` is the same file identity as a check (filename and bytes).
-    ``reserved`` while its batch item runs, ``counted`` once it completes; a part
-    that fails or is skipped deletes its row so the slot comes back. Deleting the
-    batch or the part keeps the row: the slot stays used.
-    """
-    __tablename__ = "catalog_parts"
-    __table_args__ = (
-        Index("ix_catalog_parts_batch_item", "batch_item_id"),
-        CheckConstraint("state IN ('reserved', 'counted')", name="ck_catalog_parts_state"),
-    )
-
-    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
-    file_hash: Mapped[str] = mapped_column(Text, primary_key=True)
-    batch_id: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("batches.id", ondelete="SET NULL"), nullable=True)
-    batch_item_id: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("batch_items.id", ondelete="SET NULL"), nullable=True)
-    state: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
-
-
-class BillingAccount(Base):
-    """Stripe customer/subscription for a self-serve Pro account."""
-    __tablename__ = "billing_accounts"
-
-    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
-    stripe_customer_id: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
-    stripe_subscription_id: Mapped[Optional[str]] = mapped_column(Text, unique=True, nullable=True)
-    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="none")
-    current_period_start: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
-    current_period_end: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
-    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
-
-
-class BillingEvent(Base):
-    """Processed Stripe webhook event IDs (Stripe retries; handle each once)."""
-    __tablename__ = "billing_events"
-
-    event_id: Mapped[str] = mapped_column(Text, primary_key=True)
-    event_type: Mapped[str] = mapped_column(Text, nullable=False)
-    received_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
-
-
 class UsageEvent(Base):
     __tablename__ = "usage_events"
     __table_args__ = (
@@ -865,10 +733,8 @@ class UsageEvent(Base):
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
-    # Nullable, SET NULL (migration 0057): deleting an organization clears its
-    # rows' file hashes and keeps the counts, with no organization.
-    org_id: Mapped[Optional[str]] = mapped_column(
-        Text, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
     )
     api_key_id: Mapped[Optional[int]] = mapped_column(
         BigInteger, ForeignKey("api_keys.id", ondelete="SET NULL"), nullable=True
@@ -951,14 +817,12 @@ class Batch(Base):
         TIMESTAMP(timezone=True), nullable=True
     )
 
-    # relationships. Not loaded with the run: a catalog run holds hundreds or
-    # thousands of items, and a list of runs reads only the run's own counters.
-    # Items and deliveries are queried by batch_id where needed.
+    # relationships
     items: Mapped[List[BatchItem]] = relationship(
-        back_populates="batch", lazy="raise_on_sql"
+        back_populates="batch", lazy="selectin"
     )
     webhook_deliveries: Mapped[List[WebhookDelivery]] = relationship(
-        back_populates="batch", lazy="raise_on_sql"
+        back_populates="batch", lazy="selectin"
     )
     user: Mapped[User] = relationship(back_populates="batches")
 
@@ -1048,12 +912,7 @@ class BatchItem(Base):
 
 
 class DirectUpload(Base):
-    """Org-owned capability for one server-addressed multipart upload.
-
-    ``purpose`` is ``batch_zip`` (a batch's ZIP), ``part`` (one CAD file,
-    checked on the worker from the stored object; migration 0055) or ``link``
-    (one CAD file the worker fetches from a share link and checks; migration
-    0058).
+    """Org-owned capability for one server-addressed S3 multipart upload.
 
     Provider coordinates are deliberately private persistence details. Public
     APIs address this row by ``ulid`` and every read is org-scoped; callers can
@@ -1063,7 +922,7 @@ class DirectUpload(Base):
     __tablename__ = "direct_uploads"
     __table_args__ = (
         CheckConstraint(
-            "purpose IN ('batch_zip', 'part', 'link')",
+            "purpose IN ('batch_zip')",
             name="ck_direct_uploads_purpose",
         ),
         CheckConstraint(
@@ -1361,18 +1220,8 @@ class GroundTruthRecordRow(Base):
     __tablename__ = "ground_truth_records"
     __table_args__ = (
         CheckConstraint("source_units IN ('mm', 'inch')", name="ck_ground_truth_source_units"),
-        # Migration 0054: a row carries a cost per part, machine hours, or both.
-        CheckConstraint(
-            "actual_unit_cost_usd IS NOT NULL OR actual_machine_hours IS NOT NULL",
-            name="ck_ground_truth_cost_or_hours",
-        ),
-        CheckConstraint(
-            "match_basis IS NULL OR match_basis IN ('file_hash', 'part_number', 'file_name', 'chosen')",
-            name="ck_ground_truth_match_basis",
-        ),
         Index("ix_ground_truth_records_org", "org_id"),
         Index("ix_ground_truth_records_org_part", "org_id", "part_id"),
-        Index("ix_ground_truth_records_org_evidence", "org_id", "evidence_sha256"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -1388,8 +1237,7 @@ class GroundTruthRecordRow(Base):
     part_id: Mapped[str] = mapped_column(Text, nullable=False)
     process: Mapped[str] = mapped_column(Text, nullable=False)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
-    # Real cost per part. Empty when the row carries machine hours only (0054).
-    actual_unit_cost_usd: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    actual_unit_cost_usd: Mapped[float] = mapped_column(Float, nullable=False)
     material_class: Mapped[str] = mapped_column(
         Text, nullable=False, server_default="polymer"
     )
@@ -1423,55 +1271,6 @@ class GroundTruthRecordRow(Base):
     surface_area_cm2: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     max_bbox_mm: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     face_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    # ── Part actuals (migration 0054): what the customer gave and what it matched.
-    # The customer's own part number and machine name, as given; how the row was
-    # matched to a checked part (the part's file hash is kept in evidence_sha256).
-    part_number: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    machine: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    match_basis: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
-    )
-
-
-class OrgCalibration(Base):
-    """One calibration an organization applied to its future estimates (0054).
-
-    ``factors`` is ``{process: {"hours": f | null, "cost": f | null, ...}}``:
-    machine hours for that method are multiplied by ``hours`` and the cost per
-    part by ``cost``, both fitted on the organization's own matched actuals.
-    ``basis`` keeps what the factors were fitted on (parts, records, held-out
-    errors before and after). The newest ``applied`` row is in effect; Undo
-    marks it ``undone`` (who and when) and the one before it takes effect again.
-    Org-scoped: one organization's calibration never touches another's numbers.
-    """
-
-    __tablename__ = "org_calibrations"
-    __table_args__ = (
-        CheckConstraint("status IN ('applied', 'undone')", name="ck_org_calibrations_status"),
-        Index("ix_org_calibrations_org_applied", "org_id", "applied_at"),
-    )
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    ulid: Mapped[str] = mapped_column(
-        Text, unique=True, nullable=False, default=lambda: str(ULID())
-    )
-    org_id: Mapped[str] = mapped_column(
-        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
-    )
-    factors: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
-    basis: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
-    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="applied")
-    applied_by: Mapped[Optional[int]] = mapped_column(
-        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
-    )
-    applied_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
-    )
-    undone_by: Mapped[Optional[int]] = mapped_column(
-        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
-    )
-    undone_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )
@@ -1543,11 +1342,6 @@ class RateCardVersion(Base):
     created_by: Mapped[Optional[int]] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    # Who last changed the draft (0065): its author or last editor can't
-    # approve it while the org has another admin (governance_service.approve).
-    edited_by: Mapped[Optional[int]] = mapped_column(
-        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
-    )
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )
@@ -1605,12 +1399,6 @@ class PartContext(Base):
     service_environment: Mapped[Optional[Dict[str, Any]]] = mapped_column(
         JSONB, nullable=True
     )
-    # Declared part specs (migration 0056): USER-declared, never inferred.
-    # {finishes, ra_um, ra_unit, heat_treatments, inspection, certifications,
-    # nadcap_processes} — see ``src.costing.part_specs``. NULL → none declared.
-    part_specs: Mapped[Optional[Dict[str, Any]]] = mapped_column(
-        JSONB, nullable=True
-    )
     # BOM-rollup linkage (customer-context Slice 3, migration 0037): the OPTIONAL
     # reference that ties this part to a persisted BOM/assembly tree so its annual
     # volume can be ROLLED UP from the real hierarchy instead of the flat declared
@@ -1623,14 +1411,6 @@ class PartContext(Base):
     bom_assembly_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     bom_child_ref: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     bom_roots_per_year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    # What the org pays today to buy this part (migration 0059): USER-declared,
-    # from a catalog run's parts list or the part's Decision view.
-    # {usd_each, per, source: "parts_list"|"you", run_id, updated_at}. Not an
-    # engine input: it moves a part between make and buy and sets the saving,
-    # never the engine's figures, so it never marks a record out of date.
-    buy_price: Mapped[Optional[Dict[str, Any]]] = mapped_column(
-        JSONB, nullable=True
-    )
     created_by: Mapped[Optional[int]] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
@@ -1705,10 +1485,6 @@ class MachineInstance(Base):
         JSONB, nullable=True
     )
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    # Hours available a year (migration 0064): {shifts, hours_per_shift,
-    # days_per_year} per machine, × count. NULL → the shown default
-    # (machine_load_service.DEFAULT_SCHEDULE). Capacity, never a fit axis.
-    schedule: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     created_by: Mapped[Optional[int]] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
@@ -1963,11 +1739,6 @@ class ShopProfileVersion(Base):
     created_by: Mapped[Optional[int]] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    # Who last changed the draft (0065): its author or last editor can't
-    # approve it while the org has another admin (governance_service.approve).
-    edited_by: Mapped[Optional[int]] = mapped_column(
-        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
-    )
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )
@@ -2039,9 +1810,6 @@ class ChangeRequest(Base):
     decided_at: Mapped[Optional[datetime]] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )
-    # Set at approval (0065): the reviewer proposed it, wrote the draft or last
-    # edited it. NULL for older decisions (read as: approved by the proposer).
-    self_approved: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
 
 
 # ---------------------------------------------------------------------------
@@ -2112,11 +1880,6 @@ class MaterialLibraryVersion(Base):
         TIMESTAMP(timezone=True), nullable=True
     )
     created_by: Mapped[Optional[int]] = mapped_column(
-        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
-    )
-    # Who last changed the draft (0065): its author or last editor can't
-    # approve it while the org has another admin (governance_service.approve).
-    edited_by: Mapped[Optional[int]] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
@@ -2438,12 +2201,6 @@ class RfqPackage(Base):
     __table_args__ = (
         Index("ix_rfq_packages_org_created", "org_id", "created_at"),
         Index("ix_rfq_packages_org_status", "org_id", "status"),
-        Index(
-            "ix_rfq_packages_share",
-            "share_short_id",
-            unique=True,
-            postgresql_where=text("share_short_id IS NOT NULL"),
-        ),
         CheckConstraint(
             "status IN ('generated','archived')",
             name="ck_rfq_packages_status",
@@ -2482,17 +2239,6 @@ class RfqPackage(Base):
     items_json: Mapped[List[Dict[str, Any]]] = mapped_column(JSONB, nullable=False)
     warnings_json: Mapped[List[Dict[str, Any]]] = mapped_column(JSONB, nullable=False)
     metadata_json: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
-    # A package link: the supplier opens the package without signing in
-    # (migration 0063, ``src.services.share_links`` / ``supplier_links``).
-    is_public: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
-    share_short_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    share_created_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
-    share_created_by: Mapped[Optional[int]] = mapped_column(
-        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
-    )
-    share_expires_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
-    share_revoked_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
-    share_options: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )
@@ -2631,91 +2377,3 @@ class DesignRevision(Base):
     )
 
     project: Mapped[DesignProject] = relationship(back_populates="revisions")
-
-
-# ---------------------------------------------------------------------------
-# Data control (migration 0053): one receipt per part or organization deletion
-# ---------------------------------------------------------------------------
-
-
-class DataDeletion(Base):
-    """What one deletion removed, and the stored files still being removed.
-
-    The database rows go in one transaction; the object store is emptied after
-    it commits (``steps_json`` lists the prefixes/keys, ``steps_done`` counts the
-    finished ones) and retried until done. ``org_id`` is plain text with no FK on
-    purpose: the receipt outlives the organization it describes. It holds the
-    deleted part's SHA-256 (``target``) and row counts, never a file name.
-    """
-
-    __tablename__ = "data_deletions"
-    __table_args__ = (
-        CheckConstraint("scope IN ('part', 'organization', 'account')", name="ck_data_deletions_scope"),
-        CheckConstraint(
-            "status IN ('removing_files', 'done', 'failed')", name="ck_data_deletions_status"
-        ),
-        Index("ix_data_deletions_org_scope_target", "org_id", "scope", "target"),
-        Index("ix_data_deletions_status_updated", "status", "updated_at"),
-    )
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    ulid: Mapped[str] = mapped_column(
-        Text, unique=True, nullable=False, default=lambda: str(ULID())
-    )
-    scope: Mapped[str] = mapped_column(Text, nullable=False)
-    org_id: Mapped[str] = mapped_column(Text, nullable=False)
-    target: Mapped[str] = mapped_column(Text, nullable=False)
-    requested_by: Mapped[Optional[int]] = mapped_column(
-        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
-    )
-    status: Mapped[str] = mapped_column(
-        Text, nullable=False, server_default="removing_files"
-    )
-    removed_json: Mapped[Dict[str, Any]] = mapped_column(
-        JSONB, nullable=False, server_default=text("'{}'::jsonb")
-    )
-    steps_json: Mapped[List[Dict[str, Any]]] = mapped_column(
-        JSONB, nullable=False, server_default=text("'[]'::jsonb")
-    )
-    steps_total: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
-    steps_done: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
-    files_removed: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
-    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
-    last_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    final_sweep_due_at: Mapped[Optional[datetime]] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=True
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
-    )
-    completed_at: Mapped[Optional[datetime]] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=True
-    )
-
-
-class DeletedAccountAllowance(Base):
-    """Free allowance a deleted account had used, by a one-way fingerprint of its email.
-
-    ``email_hmac`` is an HMAC of the normalised email under the server's API-key
-    pepper (``src.services.deleted_account_allowance``), never the email. A new
-    account with the same normalised email starts from these counts, so
-    deleting an account and signing up again doesn't reissue free checks.
-    """
-
-    __tablename__ = "deleted_account_allowances"
-    __table_args__ = (
-        CheckConstraint(
-            "checks_used >= 0 AND catalog_parts_used >= 0",
-            name="ck_deleted_account_allowances_counts",
-        ),
-    )
-
-    email_hmac: Mapped[str] = mapped_column(Text, primary_key=True)
-    checks_used: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
-    catalog_parts_used: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
-    deleted_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
-    )

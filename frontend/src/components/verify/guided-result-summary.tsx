@@ -1,7 +1,6 @@
 "use client";
 
 import { isQuotaErrorMessage, isLifetimeQuotaErrorMessage } from "@/lib/api-recovery";
-import { UpgradeButton } from "@/components/billing/upgrade-button";
 import { formatIssueValue } from "@/lib/inspection-bind";
 
 import { ArrowRight, CheckCircle2, TriangleAlert } from "lucide-react";
@@ -267,7 +266,7 @@ export function GuidedResultSummary({
               Back to start
             </button>
             {isLifetimeQuotaErrorMessage(result?.costError) || isLifetimeQuotaErrorMessage(result?.validationError) ? (
-              <UpgradeButton style={summaryButton(true)} />
+              <a href="/history" style={summaryButton(true)}>Review usage and contact options</a>
             ) : <button type="button" onClick={onUpload} style={summaryButton(true)}>
               Check my own CAD
             </button>}

@@ -4,9 +4,8 @@ Auth model (deliberate): /metrics is UNAUTHENTICATED at the app layer because
 Prometheus scrapers do not carry API keys — putting it behind require_api_key
 would make it unscrapable. In production it MUST be scraped over a private
 network / behind an ingress allowlist and never exposed to the public internet.
-Existence of the endpoint is gated by METRICS_ENABLED: on by default outside a
-release, off by default in a release (RELEASE set to a non-dev value), where
-only METRICS_ENABLED=1 serves it; METRICS_ENABLED=0 always returns 404. Because it is intentionally public, it is also
+Existence of the endpoint is gated by METRICS_ENABLED (default on); set
+METRICS_ENABLED=0 to return 404. Because it is intentionally public, it is also
 listed in scripts/ci/check_route_auth.py's public-route allowlist so the CI
 auth-coverage guard treats it as legitimately unauthenticated.
 
@@ -38,11 +37,7 @@ _TRUTHY = {"1", "true", "yes", "on"}
 
 
 def _metrics_enabled() -> bool:
-    """On by default outside a release; in a release only with METRICS_ENABLED=1."""
-    from src.config.production import is_production
-
-    default = "0" if is_production() else "1"
-    return os.getenv("METRICS_ENABLED", default).strip().lower() in _TRUTHY
+    return os.getenv("METRICS_ENABLED", "1").strip().lower() in _TRUTHY
 
 
 def _resolve_path_template(request: Request) -> str:

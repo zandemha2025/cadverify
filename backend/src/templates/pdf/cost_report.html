@@ -31,7 +31,6 @@
     .pick { background: #eaf5ea; }
     .src { font-size: 8px; color: #555; }
     .avoid-break { page-break-inside: avoid; }
-    .stale { background: #fdf3dc; border-left: 3px solid #8c5200; padding: 6px 8px; margin: 8px 0; color: #3d2600; }
     .governance { background: #f4f8f4; border-left: 3px solid #3d7a4a; padding: 6px 8px; margin: 8px 0; }
     .governance-note { margin-top: 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
   </style>
@@ -39,22 +38,13 @@
 <body>
 
   <!-- Header -->
-  <h1>{% if outbound is not none %}Cost estimate{% else %}Should-Cost &amp; Make-vs-Buy Report{% endif %}</h1>
+  <h1>Should-Cost &amp; Make-vs-Buy Report</h1>
   <p class="sub">
     <strong>{{ filename }}</strong>
     {% if label %}&mdash; {{ label }}{% endif %}
     &mdash; {{ created_at[:10] }}
     {% if material_class %}&middot; material class: {{ material_class }}{% endif %}
-    {% if outbound is none %}&middot; priced at {% if rates and rates.get('priced') %}your rates v{{ rates.get('priced') }}{% else %}typical rates (v0){% endif %}{% endif %}
   </p>
-
-  {% if stale_lines %}
-  <!-- An out-of-date record says so first, before any price (ce-14). -->
-  <div class="stale">
-    <strong>Out of date.</strong>
-    {% for l in stale_lines %}{{ l }} {% endfor %}
-  </div>
-  {% endif %}
 
   <!-- Honesty disclaimer (never certified) -->
   <div class="disclaimer">
@@ -63,27 +53,11 @@
     assumptions (tagged DEFAULT / MODEL / SHOP / USER / MEASURED below).
     Confidence bands are <strong>assumption-based, not yet validated</strong>
     against measured shop outcomes &mdash; they are propagated from the stated
-    assumptions, not a guarantee. {% if outbound is not none %}It is an estimate,
-    not a quote, an offer or a price you are held to.{% else %}Use as a negotiation and design baseline,
-    not a quote.{% endif %}
+    assumptions, not a guarantee. Use as a negotiation and design baseline,
+    not a quote.
   </div>
 
-  <!-- Persisted signoff travels with every exported decision record. A
-       supplier's copy (RFQ package, ``outbound``) states only the route
-       requested; the review status, approvers, the recorded outcome and notes
-       stay with the organization. A status is shown only when one is given. -->
-  {% if outbound is not none %}
-  <h2>{% if outbound.get('approval_status') %}Review{% else %}Request{% endif %}</h2>
-  <div class="governance">
-    {% if outbound.get('approval_status') %}<strong>Status:</strong> {{ outbound.get('approval_status') }}{% endif %}
-    {% if outbound.get('is_stale') %}&middot; out of date: check again before quoting{% endif %}
-    {% set req = outbound.get('requested') %}
-    {% if req %}
-      {% if outbound.get('approval_status') %}&middot; {% endif %}<strong>Requested:</strong> {{ req.get('process') | process_name }} / {{ req.get('material') | pdf_text }} / quantity {{ req.get('quantity') }}
-    {% endif %}
-    <div class="governance-note">The sender's machines, rates, choices and internal notes are not in this copy. A value marked hidden was set by the sender's shop.</div>
-  </div>
-  {% else %}
+  <!-- Persisted signoff travels with every exported decision record. -->
   <h2>Decision Governance</h2>
   <div class="governance">
     <strong>Status:</strong> {{ governance.get('approval_status', 'unreviewed') }}
@@ -94,7 +68,7 @@
     {% endif %}
     {% if governance.get('disposition_basis') %}
       {% set basis = governance.get('disposition_basis') %}
-      &middot; <strong>Outcome basis:</strong> {{ basis.get('process') | process_name }} / {{ basis.get('material') | pdf_text }} / quantity {{ basis.get('quantity') }}
+      &middot; <strong>Outcome basis:</strong> {{ basis.get('process') }} / {{ basis.get('material') | pdf_text }} / quantity {{ basis.get('quantity') }}
     {% elif governance.get('user_disposition') %}
       &middot; <strong>Outcome basis:</strong> Process and quantity were not recorded
     {% endif %}
@@ -116,40 +90,29 @@
 {{ governance.get('disposition_note') | pdf_text }}</div>
     {% endif %}
   </div>
-  {% endif %}
 
   <!-- Geometry -->
   <h2>Geometry</h2>
   {% set geo = result.get('geometry', {}) %}
   <table>
-    <thead><tr><th>Volume</th><th>Surface area</th><th>Bounding box</th><th>Watertight</th><th>Faces</th></tr></thead>
+    <thead><tr><th>Volume (cm&sup3;)</th><th>Surface area (cm&sup2;)</th><th>Bounding box (mm)</th><th>Watertight</th><th>Faces</th></tr></thead>
     <tr>
-      <td class="num">{{ geo_text.volume }}</td>
-      <td class="num">{{ geo_text.area }}</td>
-      <td>{{ geo_text.bbox }}</td>
+      <td class="num">{{ geo.get('volume_cm3', 'N/A') }}</td>
+      <td class="num">{{ geo.get('surface_area_cm2', 'N/A') }}</td>
+      <td>{{ geo.get('bbox_mm', []) | join(' × ') }}</td>
       <td>{{ 'Yes' if geo.get('watertight') else 'No' }}</td>
       <td class="num">{{ geo.get('face_count', 'N/A') | format_number }}</td>
     </tr>
   </table>
-
-  <!-- Part specs (declared on the part; present only when declared) -->
-  {% set specs = result.get('specs') %}
-  {% if specs and specs.get('summary') %}
-  <h2>Part specs</h2>
-  <ul>
-    {% for line in specs.get('summary') %}<li>{{ line | pdf_text }}</li>{% endfor %}
-  </ul>
-  {% if specs.get('excluded_processes') %}<p class="muted">Ruled out by these specs: {% for pv in specs.get('excluded_processes') %}{{ pv | process_name }}{% if not loop.last %}, {% endif %}{% endfor %}.</p>{% endif %}
-  {% endif %}
 
   <!-- Routing -->
   {% set routing = result.get('routing') %}
   {% if routing %}
   <h2>Geometric Routing</h2>
   <p>
-    Recommended process: <strong>{{ routing.get('recommended_process') | process_name }}</strong>
+    Recommended process: <strong>{{ routing.get('recommended_process') }}</strong>
     (archetype: {{ routing.get('archetype') }}, confidence {{ routing.get('confidence') }})
-    {% if routing.get('reasoning') %}<br><span class="muted">{{ routing.get('reasoning') | units(length_unit, with_mm) }}</span>{% endif %}
+    {% if routing.get('reasoning') %}<br><span class="muted">{{ routing.get('reasoning') }}</span>{% endif %}
   </p>
   {% endif %}
 
@@ -161,9 +124,9 @@
   {% if dec %}
   <div class="crossover">
     <p style="margin:0 0 3px 0;">
-      <strong>Make now:</strong> {{ dec.get('make_now_process') | process_name }} / {{ dec.get('make_now_material') }}
+      <strong>Make now:</strong> {{ dec.get('make_now_process') }} / {{ dec.get('make_now_material') }}
       {% if dec.get('tooling_process') %}
-        &middot; <strong>Tooling / production candidate:</strong> {{ dec.get('tooling_process') | process_name }}
+        &middot; <strong>Tooling / production candidate:</strong> {{ dec.get('tooling_process') }}
         ({{ 'DFM-ready' if dec.get('tooling_dfm_ready') else 'redesign required' }})
       {% endif %}
     </p>
@@ -172,8 +135,6 @@
       {% if dec.get('crossover_qty') %}
         &asymp; {{ dec.get('crossover_qty') }} units &mdash; above this the tooling/production
         route becomes the cheaper per-unit choice.
-      {% elif outbound is not none %}
-        not stated in this copy.
       {% else %}
         none within the evaluated range &mdash; make-as-is stays cheapest.
       {% endif %}
@@ -192,11 +153,11 @@
       {% if r %}
       <tr class="pick">
         <td class="num">{{ q }}</td>
-        <td>{{ r.get('process') | process_name }}</td>
+        <td>{{ r.get('process') }}</td>
         <td>{{ r.get('material') }}</td>
         <td class="num">{{ r.get('unit_cost_usd') | format_money }}/unit</td>
         <td>
-          {% if alt %}{{ alt.get('process') | process_name }} {{ alt.get('unit_cost_usd') | format_money }}/unit
+          {% if alt %}{{ alt.get('process') }} {{ alt.get('unit_cost_usd') | format_money }}/unit
             {% if alt.get('caveat') %}<span class="muted">({{ alt.get('caveat') }})</span>{% endif %}
           {% else %}&mdash;{% endif %}
         </td>
@@ -234,7 +195,7 @@
     {% for e in estimates %}
     {% set ci = e.get('confidence') or {} %}
     <tr>
-      <td>{{ e.get('process') | process_name }}</td>
+      <td>{{ e.get('process') }}</td>
       <td>{{ e.get('material') }}</td>
       <td class="num">{{ e.get('quantity') }}</td>
       <td class="num"><strong>{{ e.get('unit_cost_usd') | format_money }}</strong></td>
@@ -257,26 +218,24 @@
     Band basis (assumption-based rows): {{ (estimates[0].get('confidence') or {}).get('basis') }}
   </p>
 
-  <!-- Line items: dense matrix, one row per estimate. Each line is rounded to the
-       cent on its own; the Rounding column carries the difference, so every row
-       adds up to its unit cost to the cent (ce-01, src/costing/footing.py). -->
+  <!-- Line items: dense matrix, one row per estimate -->
   <h3>Line items (USD/unit — sum to unit cost)</h3>
-  <p class="muted" style="margin:0 0 4px 0;">
-    Each line is rounded to the cent. The unit cost is rounded once, from the
-    unrounded lines, so a Rounding column carries the cent or two between them:
-    every row adds up to its unit cost.
-  </p>
-  {% set li_keys = estimates | line_keys %}
+  {% set li_keys = [] %}
+  {% for e in estimates %}
+    {% for k in (e.get('line_items') or {}).keys() %}
+      {% if k not in li_keys %}{% set _ = li_keys.append(k) %}{% endif %}
+    {% endfor %}
+  {% endfor %}
   <table class="line-items">
     <thead><tr>
       <th>Process</th><th>Material</th><th class="num">Qty</th>
-      {% for k in li_keys %}<th class="num">{{ k | line_name }}</th>{% endfor %}
+      {% for k in li_keys %}<th class="num">{{ k | replace('_', ' ') }}</th>{% endfor %}
       <th class="num">&Sigma; unit</th>
     </tr></thead>
     {% for e in estimates %}
-    {% set li = e | footed %}
+    {% set li = e.get('line_items') or {} %}
     <tr>
-      <td>{{ e.get('process') | process_name }}</td>
+      <td>{{ e.get('process') }}</td>
       <td>{{ e.get('material') }}</td>
       <td class="num">{{ e.get('quantity') }}</td>
       {% for k in li_keys %}
@@ -300,12 +259,8 @@
   <p class="muted" style="margin:0 0 4px 0;">
     <span class="prov prov-DEFAULT">DEFAULT</span> generic book value &middot;
     <span class="prov prov-MODEL">MODEL</span> learned/estimated &middot;
-    {% if outbound is not none %}
-    <span class="prov prov-SHOP">SHOP</span> <span class="prov prov-USER">USER</span> set by the sender's shop, value hidden &middot;
-    {% else %}
     <span class="prov prov-SHOP">SHOP</span> your calibrated profile &middot;
     <span class="prov prov-USER">USER</span> override &middot;
-    {% endif %}
     <span class="prov prov-MEASURED">MEASURED</span> real held-out residuals.
     Provenance holds across all quantities; values shown at qty
     {{ (estimates[0].get('quantity')) }} (reference).
@@ -316,7 +271,7 @@
     {% if combo not in seen_combos %}
       {% set _ = seen_combos.append(combo) %}
       <div class="avoid-break">
-      <h3>{{ e.get('process') | process_name }} / {{ e.get('material') }}</h3>
+      <h3>{{ e.get('process') }} / {{ e.get('material') }}</h3>
       {% set drivers = e.get('drivers') or [] %}
       {% if drivers %}
       <table>
@@ -324,9 +279,9 @@
         {% for d in drivers %}
         <tr>
           <td>{{ d.get('name') }}</td>
-          <td class="num">{% if d.get('value') is none %}hidden{% else %}{{ d.get('value') }} {{ d.get('unit') }}{% endif %}</td>
+          <td class="num">{{ d.get('value') }} {{ d.get('unit') }}</td>
           <td><span class="prov prov-{{ d.get('provenance') }}">{{ d.get('provenance') }}</span></td>
-          <td class="src">{{ d.get('source') | units(length_unit, with_mm) }}</td>
+          <td class="src">{{ d.get('source') }}</td>
         </tr>
         {% endfor %}
       </table>
@@ -342,11 +297,7 @@
 
   <!-- Assumptions log -->
   <h2>Assumptions Log</h2>
-  {% if outbound is not none %}
-  <p class="muted" style="margin:0 0 3px 0;">DEFAULT = generic fallback &middot; SHOP / USER = set by the sender's shop, value hidden.</p>
-  {% else %}
   <p class="muted" style="margin:0 0 3px 0;">DEFAULT = generic fallback &middot; SHOP = your calibrated profile &middot; USER = ad-hoc override. Every assumption is editable and re-costable.</p>
-  {% endif %}
   {% set assumptions = result.get('assumptions', []) %}
   {% if assumptions %}
   <table>
@@ -354,9 +305,9 @@
     {% for a in assumptions %}
     <tr>
       <td>{{ a.get('name') }}</td>
-      <td class="num">{% if a.get('value') is none %}hidden{% else %}{{ a.get('value') }}{% endif %}</td>
+      <td class="num">{{ a.get('value') }}</td>
       <td>{{ a.get('unit') }}</td>
-      <td class="src">{{ a.get('source') | units(length_unit, with_mm) }}</td>
+      <td class="src">{{ a.get('source') }}</td>
       <td><span class="prov prov-{{ a.get('provenance') }}">{{ a.get('provenance') }}</span></td>
     </tr>
     {% endfor %}
@@ -369,13 +320,13 @@
   {% if notes %}
   <h3>Notes</h3>
   <ul style="margin:3px 0;">
-    {% for n in notes %}<li>{{ n | units(length_unit, with_mm) }}</li>{% endfor %}
+    {% for n in notes %}<li>{{ n }}</li>{% endfor %}
   </ul>
   {% endif %}
 
   <!-- Footer -->
   <div class="footer">
-    ScaleCAD {{ engine_version }} |{% if mesh_hash %} mesh: {{ mesh_hash }} |{% endif %} checked {{ checked_at or created_at }}{% if outbound is none %} at {% if rates and rates.get('priced') %}rates v{{ rates.get('priced') }}{% else %}typical rates (v0){% endif %}{% endif %} |
+    ScaleCad {{ engine_version }} | mesh: {{ mesh_hash }} | generated {{ created_at }} |
     Assumption-based should-cost &mdash; not a validated quote.
   </div>
 

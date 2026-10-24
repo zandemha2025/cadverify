@@ -404,16 +404,6 @@ test("parseCalibration falls back to an honest 'your shop profile' label when ra
   assert.equal(view.shopName, "your shop profile", "still honestly flagged as calibrated, just unnamed");
 });
 
-test("ce-16: the org's published rate card ($58/h, rate_card v1) is not read as a shop profile", () => {
-  const r = report({
-    notes: [],
-    assumptions: [assumption({ name: "labor_rate", value: 58, unit: "$/hr", provenance: "SHOP", source: "$58/h labor rate from your rates v1", rate_card: 1 } as never)],
-  });
-  const view = parseCalibration(r);
-  assert.equal(view.shopName, null, "the breakdown's rates pill reads 'yours v1', not 'your shop profile'");
-  assert.equal(view.shopRates.length, 0);
-});
-
 /* ---- (f) buildCompareRows / blockersByProcess ---------------------- */
 
 test("buildCompareRows builds one row per costed process, sorted cheapest-at-high-volume first", () => {

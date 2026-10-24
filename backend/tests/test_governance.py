@@ -41,20 +41,6 @@ class _FakeSession:
         return None
 
 
-@pytest.fixture(autouse=True)
-def _drafts_by_nobody(monkeypatch):
-    """``approve`` reads the target draft to see who wrote it (R2 F3). These
-    tests' drafts were written by nobody in particular; a test that cares stubs
-    ``get_version`` itself."""
-    from src.services import material_library_service
-
-    async def _get_version(session, org_id, vid):
-        return SimpleNamespace(id=vid, status="draft", created_by=None)
-
-    for lib in (rate_library_service, shop_library_service, material_library_service):
-        monkeypatch.setattr(lib, "get_version", _get_version)
-
-
 def _cr(**kw):
     base = dict(
         id=1,
@@ -149,8 +135,8 @@ async def test_approve_publishes_and_marks_approved(monkeypatch):
     async def _get_request(session, org_id, rid):
         return cr
 
-    async def _publish(session, org_id, vid, *, effective_from=None):
-        calls["publish"] = (org_id, vid, effective_from)
+    async def _publish(session, org_id, vid):
+        calls["publish"] = (org_id, vid)
         return published
 
     monkeypatch.setattr(svc, "get_request", _get_request)
@@ -158,81 +144,11 @@ async def test_approve_publishes_and_marks_approved(monkeypatch):
 
     row, pub = await svc.approve(_FakeSession(), "orgA", 1, reviewer_id=20)
     # Governance delegated to the REAL publish path with the target draft's id.
-    assert calls["publish"] == ("orgA", 7, None)
+    assert calls["publish"] == ("orgA", 7)
     assert pub is published
     assert row.status == "approved"
     assert row.reviewed_by == 20
     assert row.decided_at is not None
-    assert row.self_approved is False
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("asset_type,lib", [
-    (svc.ASSET_RATE_CARD, rate_library_service),
-    (svc.ASSET_SHOP_PROFILE, shop_library_service),
-])
-async def test_the_drafts_author_cant_approve_it_while_another_admin_can(monkeypatch, asset_type, lib):
-    """A member proposed it, but the reviewer wrote the draft: refused (R2 F3)."""
-    cr = _cr(status="proposed", asset_type=asset_type, proposed_by=30)
-
-    async def _get_request(session, org_id, rid):
-        return cr
-
-    async def _get_version(session, org_id, vid):
-        return SimpleNamespace(id=vid, status="draft", created_by=20)
-
-    async def _other_admins(session, org_id, user_id):
-        return 1
-
-    async def _publish(*a, **k):
-        raise AssertionError("an author's approval must not publish")
-
-    monkeypatch.setattr(svc, "get_request", _get_request)
-    monkeypatch.setattr(svc, "other_admins", _other_admins)
-    monkeypatch.setattr(lib, "get_version", _get_version)
-    monkeypatch.setattr(lib, "publish_version", _publish)
-    with pytest.raises(HTTPException) as ei:
-        await svc.approve(_FakeSession(), "orgA", 1, reviewer_id=20)
-    assert ei.value.status_code == 403
-    assert ei.value.detail["code"] == "self_approval"
-    assert ei.value.detail["message"].startswith("You wrote this draft, so another admin approves it.")
-    assert cr.status == "proposed"
-
-    # The last editor counts too, where the library records one.
-    async def _edited(session, org_id, vid):
-        return SimpleNamespace(id=vid, status="draft", created_by=40, edited_by=20)
-
-    monkeypatch.setattr(lib, "get_version", _edited)
-    with pytest.raises(HTTPException) as ei:
-        await svc.approve(_FakeSession(), "orgA", 1, reviewer_id=20)
-    assert ei.value.detail["message"].startswith("You last edited this draft")
-
-
-@pytest.mark.asyncio
-async def test_a_single_admin_approves_their_own_draft(monkeypatch):
-    cr = _cr(status="proposed", proposed_by=30)
-    published = SimpleNamespace(id=7, status="published")
-
-    async def _get_request(session, org_id, rid):
-        return cr
-
-    async def _get_version(session, org_id, vid):
-        return SimpleNamespace(id=vid, status="draft", created_by=20)
-
-    async def _other_admins(session, org_id, user_id):
-        return 0
-
-    async def _publish(session, org_id, vid, *, effective_from=None):
-        return published
-
-    monkeypatch.setattr(svc, "get_request", _get_request)
-    monkeypatch.setattr(svc, "other_admins", _other_admins)
-    monkeypatch.setattr(rate_library_service, "get_version", _get_version)
-    monkeypatch.setattr(rate_library_service, "publish_version", _publish)
-    row, pub = await svc.approve(_FakeSession(), "orgA", 1, reviewer_id=20)
-    assert row.status == "approved" and pub is published
-    # Recorded, so the list says so later although a member proposed it.
-    assert row.self_approved is True and svc.serialize_request(row)["self_approved"] is True
 
 
 @pytest.mark.asyncio
@@ -243,7 +159,7 @@ async def test_approve_aborts_if_publish_fails(monkeypatch):
     async def _get_request(session, org_id, rid):
         return cr
 
-    async def _publish(session, org_id, vid, *, effective_from=None):
+    async def _publish(session, org_id, vid):
         raise HTTPException(status_code=409, detail="version already published")
 
     monkeypatch.setattr(svc, "get_request", _get_request)
@@ -331,8 +247,4 @@ def test_serialize_request_shape():
         "reviewed_by": 20,
         "created_at": ts.isoformat(),
         "decided_at": ts.isoformat(),
-        "self_approved": False,
     }
-    # approved by the person who proposed it: labelled
-    assert svc.serialize_request(_cr(status="approved", reviewed_by=10))["self_approved"] is True
-    assert svc.serialize_request(_cr(status="rejected", reviewed_by=10))["self_approved"] is False

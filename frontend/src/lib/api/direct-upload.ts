@@ -44,8 +44,6 @@ export interface MultipartUploadPart {
   part_number: number;
   url: string;
   expires_at?: string;
-  /** The local backend's relay: the part goes through the API, PUT via the same-origin proxy with the session. */
-  relay?: boolean;
 }
 
 export interface MultipartUploadSession {
@@ -358,20 +356,14 @@ function parseMultipartPart(
     );
   }
 
-  // S3 gives each part a presigned URL. The local backend (never production)
-  // relays parts through the API instead and gives an /api/v1 path (transport
-  // "relay"), which goes through the same-origin proxy like every API call.
-  const relayUrl = rawPart.url.startsWith("/api/v1/") ? sameOriginApiUrl(rawPart.url) : undefined;
-  if (!relayUrl) {
-    try {
-      const protocol = new URL(rawPart.url).protocol;
-      if (protocol !== "https:" && protocol !== "http:") throw new Error();
-    } catch {
-      throw new DirectUploadError(
-        "The upload service returned an invalid part destination. Retry the ZIP.",
-        stage,
-      );
-    }
+  try {
+    const protocol = new URL(rawPart.url).protocol;
+    if (protocol !== "https:" && protocol !== "http:") throw new Error();
+  } catch {
+    throw new DirectUploadError(
+      "The upload service returned an invalid part destination. Retry the ZIP.",
+      stage,
+    );
   }
 
   const rawExpiry = rawPart.expires_at;
@@ -387,22 +379,9 @@ function parseMultipartPart(
 
   return {
     part_number: rawPart.part_number as number,
-    url: relayUrl ?? rawPart.url,
+    url: rawPart.url,
     expires_at: rawExpiry as string | undefined,
-    ...(relayUrl ? { relay: true } : {}),
   };
-}
-
-/** The relay's part receipt: the API sends the ETag in its JSON body as well,
- *  and the proxy relays no ETag header. */
-async function relayedEtag(response: Response): Promise<string | undefined> {
-  try {
-    const body: unknown = await response.json();
-    const etag = isRecord(body) && typeof body.etag === "string" ? body.etag.trim() : "";
-    return etag || undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 function parseMultipartSession(
@@ -581,9 +560,7 @@ async function uploadPart(
       response = await fetcher(part.url, {
         method: "PUT",
         body,
-        // A presigned S3 URL carries its own authorization and gets no cookies;
-        // the relay is the API itself, authorized by the session.
-        credentials: part.relay ? "same-origin" : "omit",
+        credentials: "omit",
         redirect: "error",
         referrerPolicy: "no-referrer",
         signal,
@@ -596,9 +573,7 @@ async function uploadPart(
     }
 
     if (response?.ok) {
-      const etag =
-        response.headers.get("etag")?.trim() ||
-        (part.relay ? await relayedEtag(response) : undefined);
+      const etag = response.headers.get("etag")?.trim();
       if (!etag) {
         throw new DirectUploadError(
           `Part ${part.part_number} uploaded without a verifiable receipt. Retry the ZIP.`,
@@ -822,7 +797,7 @@ async function completeMultipartWithRecovery(
       );
     }
     throw new CompletionOutcomeUnknownError(
-      `The ZIP reached storage, but completion could not be confirmed (${detail}). Retry the same ZIP; ScaleCAD will resume the same upload instead of creating a duplicate.`,
+      `The ZIP reached storage, but completion could not be confirmed (${detail}). Retry the same ZIP; ScaleCad will resume the same upload instead of creating a duplicate.`,
     );
   }
 }

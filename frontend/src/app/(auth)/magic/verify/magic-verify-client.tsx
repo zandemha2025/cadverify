@@ -3,23 +3,17 @@
 import * as React from "react";
 import { AuthFrame, AuthSubmit, AuthTextLink } from "@/components/auth/auth-frame";
 import { authErrorMessage } from "@/lib/api-recovery";
-import { twoStepHref } from "@/components/two-step/href";
-import { browserPendingPartStore, peekPendingPart } from "@/lib/pending-part";
-// The one post-sign-in path check (it refuses what normalises to another site).
 import { safeLocalPath } from "@/lib/safe-return-path";
+
 
 export function MagicVerifyClient() {
   const [token, setToken] = React.useState<string | null>(null);
-  const [next, setNext] = React.useState<string | null>(null);
   const [ready, setReady] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    const fragmentParams = new URLSearchParams(window.location.hash.slice(1));
-    const fragment = fragmentParams.get("token");
-    const requestedNext = fragmentParams.get("next");
-    if (requestedNext) setNext((captured) => captured ?? safeLocalPath(requestedNext));
+    const fragment = new URLSearchParams(window.location.hash.slice(1)).get("token");
     const query = new URLSearchParams(window.location.search).get("token");
     const candidate = fragment || query;
     // Remove both fragment and legacy query tokens immediately. The token stays
@@ -46,12 +40,9 @@ export function MagicVerifyClient() {
         setError(authErrorMessage(res.status, data, "Magic link invalid or expired."));
         return;
       }
-      // A part held from sign-in checks itself first; then the page they came from.
-      const heldPart = await peekPendingPart(browserPendingPartStore());
-      const redirect = heldPart ? "/verify" : next ?? safeLocalPath(data?.two_step ? null : data?.redirect);
+      const redirect = safeLocalPath(data?.redirect);
       window.history.replaceState(null, "", "/magic/verify");
-      // Two-step sign-in: the link was right; the code comes next.
-      window.location.href = data?.two_step ? twoStepHref(redirect) : redirect;
+      window.location.href = redirect;
     } catch {
       setError("Could not establish a secure session. Please try again.");
     } finally {
@@ -75,7 +66,7 @@ export function MagicVerifyClient() {
               {error}
             </p>
           )}
-          <AuthSubmit loading={loading}>Continue to ScaleCAD</AuthSubmit>
+          <AuthSubmit loading={loading}>Continue to ScaleCad</AuthSubmit>
         </form>
       ) : (
         <p role="alert" style={{ margin: 0, color: "#f08f86", fontSize: 13 }}>

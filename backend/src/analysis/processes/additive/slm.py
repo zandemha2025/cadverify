@@ -3,7 +3,6 @@
 from src.analysis.context import GeometryContext
 from src.analysis.models import Issue, ProcessType
 from src.analysis.processes.base import register
-from src.profiles.envelopes import common_envelope
 from src.analysis.processes.checks import (
     check_build_volume,
     check_overhangs,
@@ -31,8 +30,8 @@ class SLMAnalyzer:
                  cite="SLM 45° support threshold."))
         i.extend(check_small_features(ctx, 0.15, self.process,
                  cite="SLM 500: ~90µm beam, 150µm feature."))
-        i.extend(check_build_volume(ctx, common_envelope(self.process), self.process,
-                 cite="Common size; e.g. SLM 280."))
+        i.extend(check_build_volume(ctx, (500, 280, 365), self.process,
+                 cite="SLM 500."))
         i.extend(check_trapped_volumes(ctx, self.process, min_drain_mm=5.0))
         i.extend(check_residual_stress(ctx, self.process,
                  cite="Stress relief required per AMS 7003."))

@@ -1,13 +1,10 @@
 import posthog from "posthog-js";
-import { LEGACY_KEY, effectiveChoices } from "./privacy-choices.ts";
 
-/** The bundled v2 key; the three separate choices live in ./privacy-choices. */
-export const ANALYTICS_CONSENT = LEGACY_KEY;
-/** Dispatch on window to open the privacy choices (the footer's "Privacy choices", the account menu). */
-export const ANALYTICS_PREFERENCES_EVENT = "scalecad:analytics-preferences";
-/** Product analytics (PostHog) is allowed: chosen, and no Do Not Track. */
+// Ask again because the choice now also covers RB2B visitor identification.
+export const ANALYTICS_CONSENT = "scalecad_analytics_consent_v2";
 export function analyticsAllowed(): boolean {
-  return effectiveChoices().analytics;
+  try { return localStorage.getItem(ANALYTICS_CONSENT) === "yes" && navigator.doNotTrack !== "1"; }
+  catch { return false; }
 }
 
 export function track(event: string, properties: Record<string, string | number | boolean> = {}) {

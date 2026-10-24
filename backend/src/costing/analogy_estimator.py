@@ -168,8 +168,6 @@ def analogy_estimate(
         if vec is None:
             continue
         cost = getattr(r, "actual_unit_cost_usd", None)
-        if cost is None:
-            continue                                  # float(None) is skipped below too
         try:
             cost = float(cost)
         except (TypeError, ValueError):

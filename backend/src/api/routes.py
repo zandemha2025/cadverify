@@ -10,7 +10,7 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional, cast
+from typing import Optional
 
 import structlog
 import numpy as np
@@ -42,9 +42,8 @@ from src.api.admission import admit_analysis
 from src.auth.kill_switch import require_kill_switch_open
 from src.auth.org_limits import enforce_org_limits
 from src.auth.validation_caps import MeteredRoute, enforce_validation_caps, paid_access_required
-from src.auth.free_tool_limits import limit_free_fit, limit_free_fit_previews, limit_free_repair
 from src.auth.rate_limit import limiter
-from src.auth.rbac import Role, org_role_allows_writes, require_org_checker, require_role
+from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.costing.units import mesh_source_units
 from src.db.engine import get_db_session
@@ -53,12 +52,7 @@ from src.parsers import mesh_cache, parse_pool
 from src.parsers.step_mesher import is_step_supported, step_to_trimesh_from_bytes
 from src.parsers.stl_parser import parse_stl_from_bytes
 from src.profiles.database import MACHINES, MATERIALS, get_all_processes
-from src.services import analysis_service, compute_budget, repair_service
-
-if TYPE_CHECKING:
-    import trimesh
-
-    from src.parsers.assembly_mesher import AssemblyModel
+from src.services import analysis_service, repair_service
 
 logger = logging.getLogger("cadverify.routes")
 
@@ -80,15 +74,7 @@ _CHUNK = 1024 * 1024  # 1 MiB
 
 
 def _max_upload_bytes() -> int:
-    """Read limit lazily so tests can override via monkeypatch.
-
-    A big file checked on the worker carries its own (src.config.check_limits).
-    """
-    from src.config import check_limits
-
-    larger = check_limits.current()
-    if larger is not None:
-        return larger.max_bytes
+    """Read limit lazily so tests can override via monkeypatch."""
     try:
         mb = int(os.getenv("MAX_UPLOAD_MB", "100"))
     except ValueError:
@@ -97,15 +83,7 @@ def _max_upload_bytes() -> int:
 
 
 def _analysis_timeout_sec() -> float:
-    """Read ANALYSIS_TIMEOUT_SEC lazily so tests can override via monkeypatch.
-
-    A big file checked on the worker carries its own (src.config.check_limits).
-    """
-    from src.config import check_limits
-
-    larger = check_limits.current()
-    if larger is not None:
-        return larger.budget_sec
+    """Read ANALYSIS_TIMEOUT_SEC lazily so tests can override via monkeypatch."""
     try:
         return max(0.1, float(os.getenv("ANALYSIS_TIMEOUT_SEC", "60")))
     except ValueError:
@@ -128,46 +106,10 @@ async def _read_capped(file: UploadFile) -> bytes:
             )
     if not buf:
         raise HTTPException(status_code=400, detail="Empty file uploaded")
-    data = bytes(buf)
-    refuse_over_memory_budget(data, file.filename or "")
-    return data
+    return bytes(buf)
 
 
-# Where a file too heavy for a web request can still be sent: the big-file
-# check, which uploads to storage and sizes the file on the worker.
-BIG_FILE_CHECK = {"upload": "/api/v1/uploads/multipart", "check": "/api/v1/checks"}
-
-
-def refuse_over_memory_budget(data: bytes, filename: str) -> None:
-    """413 CHECK_TOO_LARGE when checking ``data`` needs more memory than this
-    process gives one check (the worker's measured model and budget, and its
-    message). A big file checked on the worker is sized there instead.
-    """
-    from src.config import check_limits
-    from src.services import stored_check_service as sizing
-
-    if check_limits.current() is not None or not sizing.sized_format(filename):
-        return
-    need, basis = sizing.estimate_memory_bytes_for_data(data, filename)
-    budget = sizing.check_memory_budget_bytes()
-    if need <= budget:
-        return
-    logger.info("Refused a web check over the memory budget: need %d, budget %d", need, budget)
-    raise HTTPException(
-        status_code=413,
-        detail={
-            "code": "CHECK_TOO_LARGE",
-            "message": sizing.too_heavy_message(need, basis, budget),
-            "memory": {"need_bytes": need, "budget_bytes": budget},
-            "big_file_check": dict(BIG_FILE_CHECK),
-            "doc_url": error_doc_url("CHECK_TOO_LARGE"),
-        },
-    )
-
-
-def _parse_setup(
-    data: bytes, filename: str
-) -> tuple[str, Optional[mesh_cache.MeshParseCache], Optional[tuple[str, str]]]:
+def _parse_setup(data: bytes, filename: str):
     """MAIN-process prelude: suffix gate, magic validation, cache handles.
 
     Runs in EVERY path (in-thread and pooled). ``validate_magic`` is the
@@ -199,9 +141,7 @@ def _parse_setup(
     return suffix, cache, cache_key
 
 
-def _cache_hit(
-    cache: Optional[mesh_cache.MeshParseCache], cache_key: Optional[tuple[str, str]]
-) -> Optional[trimesh.Trimesh]:
+def _cache_hit(cache, cache_key):
     """Return a deep copy of the cached mesh on a HIT (cap re-enforced), else None.
 
     The cache stores only the PARSE. The triangle cap is a per-REQUEST policy
@@ -210,7 +150,7 @@ def _cache_hit(
     parse would. ``enforce_triangle_cap`` only ever raises HTTPException(400),
     which propagates unchanged.
     """
-    if cache is None or cache_key is None:  # set together by _parse_setup
+    if cache is None:
         return None
     cached = cache.get(cache_key)
     if cached is None:
@@ -219,7 +159,7 @@ def _cache_hit(
     return cached
 
 
-def _raw_tessellate_in_thread(data: bytes, suffix: str, filename: str) -> trimesh.Trimesh:
+def _raw_tessellate_in_thread(data: bytes, suffix: str, filename: str):
     """In-thread raw parse of already-validated bytes -> mesh, with the exact
     HTTPException mapping the route has always used. NO cache, NO post-parse cap
     (the caller applies ``enforce_triangle_cap``). This is (a) the kill-switch /
@@ -245,7 +185,7 @@ def _raw_tessellate_in_thread(data: bytes, suffix: str, filename: str) -> trimes
         raise HTTPException(status_code=400, detail="Failed to parse mesh file")
 
 
-def _parse_mesh(data: bytes, filename: str) -> tuple[trimesh.Trimesh, str]:
+def _parse_mesh(data: bytes, filename: str):
     """Fully synchronous parse (today's behavior, in-thread tessellation).
 
     Used directly by tests, by the process-pool kill switch, and as the pool's
@@ -257,7 +197,7 @@ def _parse_mesh(data: bytes, filename: str) -> tuple[trimesh.Trimesh, str]:
         return cached, suffix
     mesh = _raw_tessellate_in_thread(data, suffix, filename)
     enforce_triangle_cap(mesh)  # 400 if tessellation exceeded MAX_TRIANGLES
-    if cache is not None and cache_key is not None:  # set together by _parse_setup
+    if cache is not None:
         cache.put(cache_key, mesh)
     return mesh, suffix
 
@@ -288,7 +228,7 @@ def _inflight_parses():
     return reg
 
 
-async def _parse_mesh_async(data: bytes, filename: str) -> tuple[trimesh.Trimesh, str]:
+async def _parse_mesh_async(data: bytes, filename: str):
     """SINGLE-FLIGHT front door: dedupe concurrent parses of the SAME upload.
 
     All async callers (``/validate``, ``/validate/cost``, ``/validate/preview-
@@ -316,8 +256,7 @@ async def _parse_mesh_async(data: bytes, filename: str) -> tuple[trimesh.Trimesh
     # Disabled cache => no coordination: today's exact behavior (N concurrent =
     # N independent parses). Keeps the switch a full escape hatch.
     if mesh_cache.is_disabled():
-        async with compute_budget.hold_for_data(data, filename, label="parse"):
-            return await _parse_mesh_async_uncoordinated(data, filename)
+        return await _parse_mesh_async_uncoordinated(data, filename)
 
     loop = asyncio.get_event_loop()
 
@@ -329,18 +268,6 @@ async def _parse_mesh_async(data: bytes, filename: str) -> tuple[trimesh.Trimesh
     )
     if cached is not None:
         return cached, suffix
-    # A real parse holds room in the compute budget (joining the caller's hold,
-    # when it has one), so the mesh it builds is counted while it is built.
-    async with compute_budget.hold_for_data(data, filename, label="parse"):
-        return await _parse_mesh_async_shared(data, filename, loop, cache, cache_key)
-
-
-async def _parse_mesh_async_shared(
-    data: bytes, filename: str, loop, cache, cache_key
-) -> tuple[trimesh.Trimesh, str]:
-    """The single-flight half of ``_parse_mesh_async`` (a cold cache)."""
-    import asyncio
-
     if cache is None or cache_key is None:  # defensive; disabled handled above
         return await _parse_mesh_async_uncoordinated(data, filename)
 
@@ -392,7 +319,7 @@ async def _parse_mesh_async_shared(
                     pass
 
 
-async def _parse_mesh_async_uncoordinated(data: bytes, filename: str) -> tuple[trimesh.Trimesh, str]:
+async def _parse_mesh_async_uncoordinated(data: bytes, filename: str):
     """Parse off the event loop, bounded by ANALYSIS_TIMEOUT_SEC -> 504.
 
     Default: STEP/IGES raw tessellation is dispatched to a spawn ProcessPool so
@@ -418,36 +345,39 @@ async def _parse_mesh_async_uncoordinated(data: bytes, filename: str) -> tuple[t
 
     loop = asyncio.get_event_loop()
     timeout = _analysis_timeout_sec()
-    # A pool slot first: waiting behind other parts' parses isn't this part's time.
-    async with parse_pool.pool_slot():
-        try:
-            return await asyncio.wait_for(
-                _parse_mesh_pooled(data, filename, loop),
-                timeout=timeout,
-            )
-        except asyncio.TimeoutError:
-            # future.cancel() cannot stop a running gmsh C call. No untrusted
-            # parser may outlive its abandoned request (a timeout or a client
-            # gone): the ladder retires the shared pool, so its stuck worker is
-            # killed once the other requests' parses on it have finished (never
-            # theirs with it), and kills its own single-use rung processes.
-            raise HTTPException(
-                status_code=504,
-                detail=f"File parsing exceeded {timeout:.0f}s timeout.",
-            )
+    try:
+        return await asyncio.wait_for(
+            _parse_mesh_pooled(data, filename, loop),
+            timeout=timeout,
+        )
+    except asyncio.TimeoutError:
+        # future.cancel() cannot stop a running gmsh C call. Hard-kill the shared
+        # pool so adversarial CAD cannot keep consuming CPU after the request has
+        # returned 504; sibling requests recover through the existing broken-pool
+        # fallback and the next dispatch gets a fresh pool.
+        parse_pool.recycle_pool(kill=True)
+        raise HTTPException(
+            status_code=504,
+            detail=f"File parsing exceeded {timeout:.0f}s timeout.",
+        )
+    except asyncio.CancelledError:
+        # Client disconnect / server cancellation has the same ownership rule as
+        # a timeout: no untrusted parser child may outlive its abandoned request.
+        parse_pool.recycle_pool(kill=True)
+        raise
 
 
-async def _parse_mesh_in_thread_async(data: bytes, filename: str) -> tuple[trimesh.Trimesh, str]:
+async def _parse_mesh_in_thread_async(data: bytes, filename: str):
     """Today's exact path: run the fully-synchronous _parse_mesh in the default
     thread executor under the timeout. The process-pool kill-switch target."""
     import asyncio
 
+    loop = asyncio.get_event_loop()
     timeout = _analysis_timeout_sec()
     try:
-        # The thread keeps its room in the compute budget until it really ends.
-        return await compute_budget.run_within_budget(
-            _parse_mesh, data, filename, timeout=timeout, label="parse",
-            need_bytes=compute_budget.need_for_data(data, filename),
+        return await asyncio.wait_for(
+            loop.run_in_executor(None, _parse_mesh, data, filename),
+            timeout=timeout,
         )
     except asyncio.TimeoutError:
         raise HTTPException(
@@ -456,7 +386,7 @@ async def _parse_mesh_in_thread_async(data: bytes, filename: str) -> tuple[trime
         )
 
 
-async def _parse_mesh_pooled(data: bytes, filename: str, loop) -> tuple[trimesh.Trimesh, str]:
+async def _parse_mesh_pooled(data: bytes, filename: str, loop):
     """Process-pool path for STEP/IGES only (STL is filtered out upstream).
 
     MAIN process: magic + cache + cap. WORKER: raw tessellation only. Composes
@@ -478,22 +408,20 @@ async def _parse_mesh_pooled(data: bytes, filename: str, loop) -> tuple[trimesh.
     mesh = await _tessellate_step_via_pool(data, suffix, filename)
 
     enforce_triangle_cap(mesh)  # per-request policy, MAIN process
-    if cache is not None and cache_key is not None:  # set together by _parse_setup
+    if cache is not None:
         # cache.put deep-copies (a few ms for a 185k-face mesh) — off the loop.
         await loop.run_in_executor(None, cache.put, cache_key, mesh)
     return mesh, suffix
 
 
-def _pooled_prelude(data: bytes, filename: str) -> tuple[
-    str, Optional[mesh_cache.MeshParseCache], Optional[tuple[str, str]], Optional[trimesh.Trimesh]
-]:
+def _pooled_prelude(data: bytes, filename: str):
     """_parse_setup + cache lookup, packaged for a single executor hop."""
     suffix, cache, cache_key = _parse_setup(data, filename)
     cached = _cache_hit(cache, cache_key)
     return suffix, cache, cache_key, cached
 
 
-async def _tessellate_step_via_pool(data: bytes, suffix: str, filename: str) -> trimesh.Trimesh:
+async def _tessellate_step_via_pool(data: bytes, suffix: str, filename: str):
     """Dispatch STEP/IGES raw tessellation to the process pool, mapping worker
     exceptions to the route's usual codes. parse_pool.submit_async already
     handles BrokenProcessPool internally (recycle + in-thread fallback), so a
@@ -502,9 +430,6 @@ async def _tessellate_step_via_pool(data: bytes, suffix: str, filename: str) -> 
         return await parse_pool.submit_async(data, suffix)
     except HTTPException:
         raise
-    except parse_pool.ParseBusy as e:
-        # A rung ran out of wall time on a saturated box: busy, not a bad file.
-        raise compute_budget.MeshBusy() from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception:
@@ -530,7 +455,7 @@ def _resolve_target_processes(processes: Optional[str]) -> list[ProcessType]:
 # ──────────────────────────────────────────────────────────────
 # Cost decision engine + options parsing (POST /validate/cost)
 # ──────────────────────────────────────────────────────────────
-def _run_cost_engine_ctx(mesh, filename: str, orientation=None):
+def _run_cost_engine_ctx(mesh, filename: str):
     """Score every registered process for the cost decision layer (mirrors
     cli._run_engine but from an already-parsed in-memory mesh; no narrowing,
     no persistence, no network).
@@ -566,15 +491,10 @@ def _run_cost_engine_ctx(mesh, filename: str, orientation=None):
     if dec_issue is not None:
         universal.append(dec_issue)
     scores = [
-        score_process(analyzer.analyze(ctx), geometry, p)
+        score_process(get_analyzer(p).analyze(ctx), geometry, p)
         for p in pbase._REGISTRY
-        if (analyzer := get_analyzer(p))
+        if get_analyzer(p)
     ]
-    if orientation is not None:
-        # ``mesh`` is the turned part; report region centres in file coordinates.
-        from src.analysis.orientation import all_issues, turn_points_to_file
-
-        turn_points_to_file(orientation, all_issues(universal, scores))
     result = AnalysisResult(
         filename=filename,
         file_type="stl",
@@ -687,11 +607,8 @@ def _resolve_shop_param(shop: Optional[str]) -> Optional[str]:
     )
 
 
-async def _resolve_governed_shop(session, user_id, shop, org_id: Optional[str] = None):
+async def _resolve_governed_shop(session, user_id, shop):
     """Governed (DB) shop binding for the caller's org + slug, or None (W4 slice 2).
-
-    ``org_id``: the organization to read it in (a worker job's own); else the
-    caller's active one.
 
     When ``SHOP_LIBRARY_ENABLED`` is on AND the caller's org has a PUBLISHED shop
     profile for the requested slug in effect now, return a ShopProfile-like
@@ -714,8 +631,7 @@ async def _resolve_governed_shop(session, user_id, shop, org_id: Optional[str] =
     from src.auth.org_context import resolve_org
     from src.costing.shop_profile import _slug
 
-    if org_id is None:
-        org_id = await resolve_org(session, user_id)
+    org_id = await resolve_org(session, user_id)
     if not isinstance(org_id, str) or not org_id:
         return None
     slug = _slug(raw)
@@ -822,18 +738,6 @@ def _parse_qty_list(qty: str) -> list[int]:
 # ──────────────────────────────────────────────────────────────
 # Routes
 # ──────────────────────────────────────────────────────────────
-def _parse_orientation_param(raw: Optional[str]):
-    """The requested orientation (None for the file's own), or a 400 saying what's wrong."""
-    from src.analysis.orientation import OrientationError, parse_orientation
-
-    if raw is not None and len(raw) > 2000:
-        raise HTTPException(status_code=400, detail="The orientation is too long.")
-    try:
-        return parse_orientation(raw)
-    except OrientationError as exc:
-        raise HTTPException(status_code=400, detail=f"Orientation: {exc}")
-
-
 @router.post("/validate", dependencies=[Depends(require_kill_switch_open)])
 @limiter.limit("60/hour;500/day")
 async def validate_file(
@@ -868,18 +772,7 @@ async def validate_file(
             "before geometry and DFM analysis. STEP/IGES use their embedded units."
         ),
     ),
-    orientation: Optional[str] = Query(
-        None,
-        description=(
-            "Turn the part before the check (its +Z is the build direction for "
-            "printing and the opening direction for molding): turns:x90,z-90 "
-            "(90° steps about the placed axes), down:x,y,z (that file direction "
-            "on the plate), rotation:r00,…,r22, or the same as JSON. Unset => the "
-            "file's own axes. Same file, so it uses no extra check; the result "
-            "says which orientation it used."
-        ),
-    ),
-    user: AuthedUser = Depends(require_org_checker),
+    user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
     _org_limit: None = Depends(enforce_org_limits),
     _validation_cap: None = Depends(enforce_validation_caps),
@@ -899,7 +792,6 @@ async def validate_file(
             status_code=400,
             detail=f"Unknown units '{units}'. Use one of {sorted(_SOURCE_UNITS)}",
         )
-    placed = _parse_orientation_param(orientation)
 
     upload_started = time.perf_counter()
     data = await _read_capped(file)
@@ -914,7 +806,6 @@ async def validate_file(
         include_thickness=include_thickness,
         source_units=units,
         return_persisted_id=True,
-        orientation=placed,
     )
     # The authenticated public path exposes only fixed stage names + durations.
     # This is response metadata, not persisted analysis evidence, and contains no
@@ -1011,40 +902,15 @@ async def _parse_fit_mesh_async(data: bytes, filename: str):
         return await _parse_mesh_async(data, filename)
     timeout = _analysis_timeout_sec()
     try:
-        mesh = await compute_budget.run_within_budget(
+        mesh = await asyncio.wait_for(asyncio.to_thread(
             parse_supplementary_mesh, data, filename, max_expanded_bytes=_max_upload_bytes(),
-            timeout=timeout, label="fit parse", need_bytes=compute_budget.need_for_data(data, filename),
-        )
+        ), timeout=timeout)
     except FitGeometryError as exc:
         raise HTTPException(status_code=422, detail={"code": "FIT_GEOMETRY_UNAVAILABLE", "message": str(exc)}) from exc
     except asyncio.TimeoutError as exc:
         raise HTTPException(status_code=504, detail=f"File parsing exceeded {timeout:.0f}s timeout.") from exc
     enforce_triangle_cap(mesh)
     return mesh, suffix
-
-
-@router.get("/validate/fit/capability")
-async def validate_fit_capability(user: AuthedUser = Depends(require_role(Role.viewer))):
-    """Whether Fit in context can run for this caller, asked before any file moves.
-
-    Reads the caller's role and the server setting only: no upload, no preview
-    mesh, no check is reserved. POST /validate/fit still enforces both; this
-    lets the browser show the viewer or the off state up front instead of
-    spending two preview meshes on a pair it can't measure. Fit in context is
-    on every plan, so ``paid_access`` is always true (kept for older clients).
-    """
-    from src.services.fit_service import context_fit_enabled
-
-    paid_access = True
-    # The same rule POST /validate/fit enforces: platform analyst and org member.
-    can_submit = await org_role_allows_writes(user)
-    enabled = context_fit_enabled()
-    return {
-        "enabled": enabled,
-        "paid_access": paid_access,
-        "can_submit": can_submit,
-        "available": enabled and paid_access and can_submit,
-    }
 
 
 @router.post("/validate/fit", dependencies=[Depends(require_kill_switch_open)])
@@ -1060,38 +926,19 @@ async def validate_fit(
     nudge_x_mm: float = Query(0.0, allow_inf_nan=False),
     nudge_y_mm: float = Query(0.0, allow_inf_nan=False),
     nudge_z_mm: float = Query(0.0, allow_inf_nan=False),
-    user: AuthedUser = Depends(require_org_checker),
+    user: AuthedUser = Depends(require_role(Role.analyst)),
     _org_limit: None = Depends(enforce_org_limits),
     _validation_cap: None = Depends(enforce_validation_caps),
-    _free_limit: None = Depends(limit_free_fit),
     _admission: None = Depends(admit_analysis),
 ):
-    """Measure real collision and sampled clearance for two submitted meshes.
-
-    On every plan and never a check; free accounts have a per-user ceiling
-    (src.auth.free_tool_limits).
-    """
-    from src.services.fit_service import context_fit_enabled
+    """Measure real collision and sampled clearance for two submitted meshes."""
+    from src.services.fit_service import FitGeometryError, analyze_fit, context_fit_enabled
 
     if not context_fit_enabled():
         raise HTTPException(status_code=404, detail="Not found")
     data_a, data_b = await __import__("asyncio").gather(
         _read_capped(part_a), _read_capped(part_b)
     )
-    # Both parts are in memory at once: one hold for the pair.
-    need = (compute_budget.need_for_data(data_a, part_a.filename or "part-a")
-            + compute_budget.need_for_data(data_b, part_b.filename or "part-b"))
-    async with compute_budget.hold(need, label="fit"):
-        return await _validate_fit_pair(
-            data_a, data_b, part_a, part_b, part_a_units, part_b_units, seating, nudge_x_mm, nudge_y_mm, nudge_z_mm,
-        )
-
-
-async def _validate_fit_pair(data_a, data_b, part_a, part_b, part_a_units, part_b_units, seating,
-                             nudge_x_mm, nudge_y_mm, nudge_z_mm):
-    """The measurement half of POST /validate/fit, inside its compute hold."""
-    from src.services.fit_service import FitGeometryError, analyze_fit
-
     try:
         (mesh_a, _), (mesh_b, _) = await __import__("asyncio").gather(
             _parse_fit_mesh_async(data_a, part_a.filename or "part-a"),
@@ -1104,7 +951,7 @@ async def _validate_fit_pair(data_a, data_b, part_a, part_b, part_a_units, part_
             raise HTTPException(status_code=400, detail="seating must be shared_frame or auto")
         from src.services.fit_seating import apply_seating, propose_auto_seating
         if seating == "auto":
-            seating_report = await compute_budget.run_within_budget(propose_auto_seating, mesh_a, mesh_b, label="fit seating")
+            seating_report = await __import__("asyncio").to_thread(propose_auto_seating, mesh_a, mesh_b)
         else:
             seating_report = {
                 "accepted": True,
@@ -1117,7 +964,7 @@ async def _validate_fit_pair(data_a, data_b, part_a, part_b, part_a_units, part_
         nudge[:3, 3] = [nudge_x_mm, nudge_y_mm, nudge_z_mm]
         final_transform = nudge @ np.asarray(seating_report["transform"], dtype=float)
         seated_b = apply_seating(mesh_b, final_transform.tolist())
-        result = await compute_budget.run_within_budget(analyze_fit, mesh_a, seated_b, label="fit")
+        result = await __import__("asyncio").to_thread(analyze_fit, mesh_a, seated_b)
         result["coordinate_frame"] = "part_a_source_frame"
         if seating == "shared_frame":
             result["limits"].append("Shared-frame seating assumes both files were exported in the same assembly coordinate frame.")
@@ -1126,11 +973,9 @@ async def _validate_fit_pair(data_a, data_b, part_a, part_b, part_a_units, part_
         else:
             result["limits"].append("Automatic seating was ambiguous or high-residual; original file coordinates were retained before any manual offset.")
         if any(value != 0 for value in (nudge_x_mm, nudge_y_mm, nudge_z_mm)):
-            part_move = ", ".join(f"{(-v if v else 0.0):g}" for v in (nudge_x_mm, nudge_y_mm, nudge_z_mm))
             result["limits"].append(
                 f"Manual XYZ offset ({nudge_x_mm:g}, {nudge_y_mm:g}, {nudge_z_mm:g}) mm "
-                "is applied to the assembly after seating, in your part's coordinate frame: "
-                f"the same as moving your part ({part_move}) mm."
+                "is applied to the assembly after seating, in your part's coordinate frame."
             )
         for label, file, units in [("Your part", part_a, part_a_units), ("Assembly", part_b, part_b_units)]:
             source = f"source coordinates interpreted as {units}" if Path(file.filename or "").suffix.lower() in {".stl", ".obj"} else "embedded CAD units"
@@ -1183,19 +1028,6 @@ def _preview_faces_max() -> int:
         return 150000
 
 
-def _without_cad_arrays(mesh):
-    """The mesh to export: a GLB writes ``metadata`` into its JSON, and the STEP
-    mesher's per-triangle B-rep arrays would make the preview several MB larger."""
-    from src.parsers.step_mesher import CAD_FACES_KEY, CAD_NORMALS_KEY
-
-    if not any(key in (mesh.metadata or {}) for key in (CAD_FACES_KEY, CAD_NORMALS_KEY)):
-        return mesh
-    lean = mesh.copy(include_cache=True)
-    for key in (CAD_FACES_KEY, CAD_NORMALS_KEY):
-        lean.metadata.pop(key, None)
-    return lean
-
-
 def _build_preview_glb(mesh, filename: str, *, for_analysis: bool = False) -> tuple[bytes, int, int, bool, str]:
     """Decimate the tessellated shell to the browser budget and export GLB bytes.
 
@@ -1220,7 +1052,7 @@ def _build_preview_glb(mesh, filename: str, *, for_analysis: bool = False) -> tu
         if reduced is not None and 0 < len(reduced.faces) < original:
             out = reduced
             decimated = True
-    glb = cast(bytes, _without_cad_arrays(out).export(file_type="glb"))  # GLB export is binary
+    glb = out.export(file_type="glb")
     return bytes(glb), original, int(len(out.faces)), decimated, analysis_mesh_hash(out)
 
 
@@ -1229,12 +1061,11 @@ def _build_preview_glb(mesh, filename: str, *, for_analysis: bool = False) -> tu
 async def validate_preview_mesh(
     request: Request,
     file: UploadFile = File(...),
-    purpose: str = Query("preview", pattern="^(preview|analysis|fit)$"),
+    purpose: str = Query("preview", pattern="^(preview|analysis)$"),
     units: str = Query("mm", pattern="^(mm|inch)$"),
-    user: AuthedUser = Depends(require_org_checker),
+    user: AuthedUser = Depends(require_role(Role.analyst)),
     _org_limit: None = Depends(enforce_org_limits),
     _validation_cap: None = Depends(enforce_validation_caps),
-    _fit_preview_limit: None = Depends(limit_free_fit_previews),
     _admission: None = Depends(admit_analysis),
 ):
     """Return a decimated, browser-renderable GLB of the part's REAL tessellated
@@ -1245,30 +1076,22 @@ async def validate_preview_mesh(
     other data call. Zero-egress + mesh-level caveat: see the section header.
     """
     data = await _read_capped(file)
-    # ``fit``: Fit in assembly's previews, which reserve no check (see
-    # validation_caps); they take the same file kinds as Fit.
-    parse = _parse_fit_mesh_async if purpose in {"preview", "fit"} else _parse_mesh_async
-    # Shared with the check's other calls on this file; a STEP or IGES takes
-    # room for its parse, then what its mesh needs.
-    async with compute_budget.hold_for_data(data, file.filename or "upload", label="preview mesh",
-                                            provisional=True):
-        mesh, suffix = await parse(data, file.filename or "upload")
-        await compute_budget.size_to_mesh(mesh, data, file.filename or "upload")
-        from src.costing.units import scale_mesh_to_mm
+    parse = _parse_fit_mesh_async if purpose == "preview" else _parse_mesh_async
+    mesh, suffix = await parse(data, file.filename or "upload")
+    from src.costing.units import scale_mesh_to_mm
 
-        mesh = scale_mesh_to_mm(mesh, mesh_source_units(file.filename or "upload", units))
-        try:
-            glb, original_faces, preview_faces, decimated, face_hash = await compute_budget.run_within_budget(
-                _build_preview_glb, mesh, file.filename or "upload", for_analysis=purpose == "analysis",
-                label="preview mesh",
-            )
-        except HTTPException:
-            raise
-        except Exception:
-            logger.exception("Preview mesh export failed for %s", file.filename)
-            raise HTTPException(
-                status_code=400, detail="Could not build a preview mesh for this file."
-            )
+    mesh = scale_mesh_to_mm(mesh, mesh_source_units(file.filename or "upload", units))
+    try:
+        glb, original_faces, preview_faces, decimated, face_hash = _build_preview_glb(
+            mesh, file.filename or "upload", for_analysis=purpose == "analysis"
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Preview mesh export failed for %s", file.filename)
+        raise HTTPException(
+            status_code=400, detail="Could not build a preview mesh for this file."
+        )
 
     headers = {
         "X-Mesh-Original-Faces": str(original_faces),
@@ -1307,11 +1130,10 @@ def _assembly_glb_target_faces() -> int:
         return 300000
 
 
-async def _extract_assembly_async(data: bytes, filename: str, *, mesh_single_part: bool = True) -> AssemblyModel:
+async def _extract_assembly_async(data: bytes, filename: str):
     """Extract an AssemblyModel off the loop, bounded by ANALYSIS_TIMEOUT_SEC ->
     504. MAIN process keeps the untrusted-bytes gate (magic) + suffix policy; the
-    CPU-bound multi-solid gmsh extraction runs in the shared spawn pool.
-    ``mesh_single_part=False`` reads a file of one solid without meshing it."""
+    CPU-bound multi-solid gmsh extraction runs in the shared spawn pool."""
     import asyncio
 
     from src.parsers.assembly_mesher import (
@@ -1342,44 +1164,28 @@ async def _extract_assembly_async(data: bytes, filename: str, *, mesh_single_par
             detail="STEP/IGES parsing is unavailable on this server (gmsh not installed).",
         )
 
-    # The check's calls (json, then glb and analysis) extract the model once.
-    from src.parsers import assembly_model_cache
-
-    check = compute_budget.check_key()
-    model = await asyncio.to_thread(assembly_model_cache.get, check, suffix, meshed=mesh_single_part)
-    if model is not None:
-        return model
+    loop = asyncio.get_event_loop()
     timeout = _analysis_timeout_sec()
     try:
-        # Room in the compute budget, then a pool slot, then the timer: the
-        # probe's 60 s are its own extraction's, not its wait behind others.
-        async with compute_budget.hold_for_data(data, filename, label="assembly parse"):
-            async with parse_pool.pool_slot():
-                model = await asyncio.wait_for(
-                    parse_pool.submit_assembly_async(data, suffix, mesh_single_part=mesh_single_part),
-                    timeout=timeout,
-                )
+        return await asyncio.wait_for(
+            parse_pool.submit_assembly_async(data, suffix), timeout=timeout
+        )
     except asyncio.TimeoutError:
-        # The extraction retired its pool (its worker dies once the others' are done).
+        parse_pool.recycle_pool(kill=True)
         raise HTTPException(
             status_code=504,
             detail=f"Assembly parsing exceeded {timeout:.0f}s timeout.",
         )
+    except asyncio.CancelledError:
+        parse_pool.recycle_pool(kill=True)
+        raise
     except HTTPException:
         raise
-    except parse_pool.ParseBusy as e:
-        # A rung ran out of wall time on a saturated box: busy, not a bad file.
-        raise compute_budget.MeshBusy() from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception:
         logger.exception("Assembly extraction failed for %s", filename)
         raise HTTPException(status_code=400, detail="Failed to parse assembly file")
-    try:
-        await asyncio.to_thread(assembly_model_cache.put, check, suffix, model, mesh_single_part=mesh_single_part)
-    except Exception:
-        logger.warning("Assembly model not kept for %s", filename, exc_info=True)
-    return model
 
 
 async def _run_assembly_analysis(
@@ -1408,17 +1214,20 @@ async def _run_assembly_analysis(
     timeout = _analysis_timeout_sec()
     # Internal budget slightly under the route budget so the honest degrade wins.
     internal_budget = max(1.0, timeout - 2.0)
+    loop = asyncio.get_event_loop()
     try:
-        analysis = await compute_budget.run_within_budget(
-            lambda: analyze_assembly_sync(
-                model,
-                material_class=material_class,
-                region=region,
-                assemblies_per_year=assemblies_per_year,
-                time_budget_sec=internal_budget,
+        analysis = await asyncio.wait_for(
+            loop.run_in_executor(
+                None,
+                lambda: analyze_assembly_sync(
+                    model,
+                    material_class=material_class,
+                    region=region,
+                    assemblies_per_year=assemblies_per_year,
+                    time_budget_sec=internal_budget,
+                ),
             ),
             timeout=timeout,
-            label="assembly analysis",
         )
     except asyncio.TimeoutError:
         raise HTTPException(
@@ -1458,7 +1267,7 @@ async def validate_assembly(
         "each part is costed at annual = per-assembly-count × this (labelled "
         "user-declared); unset => costed at the per-assembly FACT count only.",
     ),
-    user: AuthedUser = Depends(require_org_checker),
+    user: AuthedUser = Depends(require_role(Role.analyst)),
     _org_limit: None = Depends(enforce_org_limits),
     _validation_cap: None = Depends(enforce_validation_caps),
     _admission: None = Depends(admit_analysis),
@@ -1497,27 +1306,9 @@ async def validate_assembly(
             )
 
     data = await _read_capped(file)
-    # The probe (json) is the check's first call: room for its parse, shared with
-    # the check's next calls on this file. glb and analysis are then sized from
-    # the parts' meshes.
-    label = f"assembly {fmt}" if fmt in ("json", "glb") else "assembly"
-    async with compute_budget.hold_for_data(data, file.filename or "upload.step", label=label, provisional=True):
-        return await _validate_assembly_model(request, data, file, fmt, format, material_class, region,
-                                              assemblies_per_year)
-
-
-async def _validate_assembly_model(request, data, file, fmt, format, material_class, region, assemblies_per_year):
-    """POST /validate/assembly after its upload is read, inside its compute hold."""
-    # The probe (json) asks how many bodies there are: a single part is not meshed
-    # here, /validate meshes it with its own capped ladder. An assembly's bodies are.
-    model = await _extract_assembly_async(data, file.filename or "upload.step",
-                                          mesh_single_part=fmt != "json")
+    model = await _extract_assembly_async(data, file.filename or "upload.step")
     if model.part_count > 1 and getattr(request.state, "trial_check", None):
         raise paid_access_required()
-    if fmt in ("glb", "analysis"):
-        # Work on the parts' meshes: sized by their triangles (the probe only reads the model).
-        faces = sum(len(p.mesh.faces) for p in model.parts if p.mesh is not None)
-        await compute_budget.size_to_mesh(faces, data, file.filename or "upload.step")
 
     if fmt == "analysis":
         return await _run_assembly_analysis(
@@ -1531,8 +1322,7 @@ async def _validate_assembly_model(request, data, file, fmt, format, material_cl
         from src.parsers.assembly_mesher import assembly_to_glb
 
         try:
-            glb = await compute_budget.run_within_budget(
-                assembly_to_glb, model, target_faces=_assembly_glb_target_faces(), label="assembly glb")
+            glb = assembly_to_glb(model, target_faces=_assembly_glb_target_faces())
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except Exception:
@@ -1557,7 +1347,7 @@ async def validate_quick(
     request: Request,
     response: Response,
     file: UploadFile = File(...),
-    user: AuthedUser = Depends(require_org_checker),
+    user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
     _org_limit: None = Depends(enforce_org_limits),
     _validation_cap: None = Depends(enforce_validation_caps),
@@ -1591,7 +1381,7 @@ async def validate_demo(
             "responses lean."
         ),
     ),
-    user: AuthedUser = Depends(require_org_checker),
+    user: AuthedUser = Depends(require_role(Role.analyst)),
     _org_limit: None = Depends(enforce_org_limits),
     _validation_cap: None = Depends(enforce_validation_caps),
     _admission: None = Depends(admit_analysis),
@@ -1622,55 +1412,58 @@ async def validate_demo(
             status_code=413,
             subject="Public demo STL",
         )
-    async with compute_budget.hold_for_data(data, filename, label="demo"):
-        mesh, suffix = await _parse_mesh_async(data, filename)
-        enforce_triangle_cap(
-            mesh,
-            limit=demo_max_triangles(),
-            limit_name="DEMO_MAX_TRIANGLES",
-            status_code=413,
-            subject="Public demo mesh",
+    mesh, suffix = await _parse_mesh_async(data, filename)
+    enforce_triangle_cap(
+        mesh,
+        limit=demo_max_triangles(),
+        limit_name="DEMO_MAX_TRIANGLES",
+        status_code=413,
+        subject="Public demo mesh",
+    )
+    target_processes = _resolve_target_processes(processes)
+
+    start = time.time()
+
+    def _run():
+        geometry = analyze_geometry(mesh)
+        ctx = GeometryContext.build(mesh, geometry)
+        # ctx.mesh == mesh unless build() decimated an oversize mesh; detect on
+        # ctx.mesh so feature indices align with the context per-face arrays.
+        features = detect_features(ctx.mesh)
+        ctx.features = features
+        universal_issues = run_universal_checks(mesh)
+        # Honestly surface to the user when the mesh was decimated for analysis.
+        dec_issue = decimation_issue(ctx)
+        if dec_issue is not None:
+            universal_issues.append(dec_issue)
+        process_scores = []
+        for proc in target_processes:
+            analyzer = get_analyzer(proc)
+            if analyzer is None:
+                continue
+            try:
+                proc_issues = analyzer.analyze(ctx)
+            except Exception:
+                logger.exception("Demo analyzer failed for %s", proc.value)
+                continue
+            ps = score_process(proc_issues, geometry, proc)
+            process_scores.append(ps)
+        return geometry, ctx, features, universal_issues, process_scores
+
+    timeout = _analysis_timeout_sec()
+    loop = asyncio.get_event_loop()
+    try:
+        geometry, ctx, features, universal_issues, process_scores = (
+            await asyncio.wait_for(
+                loop.run_in_executor(None, _run),
+                timeout=timeout,
+            )
         )
-        target_processes = _resolve_target_processes(processes)
-
-        start = time.time()
-
-        def _run():
-            geometry = analyze_geometry(mesh)
-            ctx = GeometryContext.build(mesh, geometry)
-            # ctx.mesh == mesh unless build() decimated an oversize mesh; detect on
-            # ctx.mesh so feature indices align with the context per-face arrays.
-            features = detect_features(ctx.mesh)
-            ctx.features = features
-            universal_issues = run_universal_checks(mesh)
-            # Honestly surface to the user when the mesh was decimated for analysis.
-            dec_issue = decimation_issue(ctx)
-            if dec_issue is not None:
-                universal_issues.append(dec_issue)
-            process_scores = []
-            for proc in target_processes:
-                analyzer = get_analyzer(proc)
-                if analyzer is None:
-                    continue
-                try:
-                    proc_issues = analyzer.analyze(ctx)
-                except Exception:
-                    logger.exception("Demo analyzer failed for %s", proc.value)
-                    continue
-                ps = score_process(proc_issues, geometry, proc)
-                process_scores.append(ps)
-            return geometry, ctx, features, universal_issues, process_scores
-
-        timeout = _analysis_timeout_sec()
-        try:
-            geometry, ctx, features, universal_issues, process_scores = (
-                await compute_budget.run_within_budget(_run, timeout=timeout, label="demo analysis")
-            )
-        except asyncio.TimeoutError:
-            raise HTTPException(
-                status_code=504,
-                detail=f"Analysis exceeded {timeout:.0f}s timeout.",
-            )
+    except asyncio.TimeoutError:
+        raise HTTPException(
+            status_code=504,
+            detail=f"Analysis exceeded {timeout:.0f}s timeout.",
+        )
 
     duration_ms = round((time.time() - start) * 1000, 1)
 
@@ -1699,19 +1492,7 @@ async def validate_demo(
     return resp
 
 
-async def _run_cost_decision(**kwargs) -> dict:
-    """The should-cost compute (``_cost_decision``), within the compute budget.
-
-    It holds room in the process's compute budget from the moment its upload is
-    read until it returns (``src.services.compute_budget``): a web request waits
-    at most ``COMPUTE_WAIT_SECONDS`` for it, then answers 429 ``server_busy``.
-    Inside a caller's hold (a catalog part, a big file's check) it joins that one.
-    """
-    async with compute_budget.deferred_hold(label="cost") as room:
-        return await _cost_decision(**kwargs, room=room)
-
-
-async def _cost_decision(
+async def _run_cost_decision(
     *,
     file: UploadFile,
     qty: str,
@@ -1726,26 +1507,9 @@ async def _cost_decision(
     units: Optional[str] = None,
     user: Optional[AuthedUser] = None,
     session: Optional[AsyncSession] = None,
-    response: Optional[Response] = None,
-    orientation: Optional[str] = None,
-    material_name: Optional[str] = None,
-    org_id: Optional[str] = None,
-    room: "compute_budget.DeferredHold | None" = None,
 ) -> dict:
     """Shared should-cost / make-vs-buy compute for the authed and public-demo
     cost routes.
-
-    ``org_id`` (worker callers: a big file's check, a kept part's re-price, a
-    catalog part): the job's own organization. Every org read and every save
-    here (machines, shop, rates, materials, calibration, analogy records, the
-    kept source, the cost decision, identity) uses it, never the person's
-    active organization, which may have changed while the job waited. A web
-    request passes none: the caller's active organization, as before.
-
-    ``material_name`` (internal callers only, the catalog run): the material a
-    parts list names; each route is priced in that grade where it runs it
-    (``EstimateOptions.material_name``). Its family may then be ``nickel``,
-    which the public routes don't take as a class on its own.
 
     Validates options (fail fast), parses the mesh, runs the cost engine off
     the event loop, emits exactly one structured outcome event, and returns the
@@ -1782,7 +1546,7 @@ async def _cost_decision(
             status_code=400,
             detail=f"Unknown complexity '{complexity}'. Use one of {sorted(_COMPLEXITY)}",
         )
-    if material_class not in _MATERIAL_CLASSES and not (material_name and material_class == "nickel"):
+    if material_class not in _MATERIAL_CLASSES:
         raise HTTPException(
             status_code=400,
             detail=f"Unknown material_class '{material_class}'. Use one of {sorted(_MATERIAL_CLASSES)}",
@@ -1826,7 +1590,7 @@ async def _cost_decision(
     # path (and its 400 on an unknown shop) is used unchanged.
     governed_shop = None
     if user is not None and session is not None:
-        governed_shop = await _resolve_governed_shop(session, user.user_id, shop, org_id=org_id)
+        governed_shop = await _resolve_governed_shop(session, user.user_id, shop)
     if governed_shop is not None:
         shop_slug = governed_shop.slug           # string slug for logging / params_hash
         shop_binding = governed_shop             # ShopProfile-like object bound to engine
@@ -1836,26 +1600,19 @@ async def _cost_decision(
     rate_overrides = _parse_overrides(overrides)  # 400 on bad JSON/value
     _validate_overrides(rate_overrides)           # 400 on unknown key (fail fast)
     owned = _parse_owned_processes(owned_processes)  # 400 on unknown process id
-    placed = _parse_orientation_param(orientation)    # 400 on a bad orientation
 
     # material_class: capture the caller's ORIGINAL declaration BEFORE any CAD
     # fill below. The existing material_class_is_user heuristic (!= "polymer")
     # must be computed off this original value — filling a non-polymer class
     # FROM the CAD file must never get flagged USER (that would misrepresent an
     # unconfirmed CAD annotation as a buyer declaration).
-    material_class_is_user = material_class != "polymer" or bool(material_name)
+    material_class_is_user = material_class != "polymer"
     material_class_from_cad = False
 
     # Span 1/4 — mesh parse: read the upload, tessellate/parse to a trimesh,
     # and rescale into mm. No-op context when tracing is off.
     with tracing.span("cost.parse_mesh") as _sp_parse:
         data = await _read_capped(file)  # 413 on size, 400 on empty
-        if room is not None:
-            # Room for the parse and the price; their time limits start after it.
-            # The shop lookup's connection goes back to the pool before the wait;
-            # a STEP or IGES takes room for its parse, then what its mesh needs.
-            await analysis_service.release_read_connection(session)
-            await room.take_for_data(data, file.filename or "", provisional=True)
 
         # ── honest "material read from CAD" slice (no-kernel text scan) ──────
         # Only fill from the CAD file when the caller left material_class at its
@@ -1879,42 +1636,19 @@ async def _cost_decision(
                 material_class = cad_class
                 material_class_from_cad = True
 
-        # ── analysed-geometry reuse (re-pricing the same file) ───────────────
-        # Pricing depends on the material, quantities, rates and machines; the
-        # parse + geometry analysis below depends only on the file. When THIS
-        # account just analysed these exact bytes (same filename and units) in
-        # this process — its /validate or an earlier price — reuse those objects
-        # and go straight to costing. Same objects => the same price as a fresh
-        # run; a miss runs the full analysis exactly as before.
-        from src.services import part_geometry_cache
-
-        geometry_key = (
-            part_geometry_cache.key(user.user_id, data, file.filename or "unknown", effective_units,
-                                    orientation=placed.key if placed is not None else None)
-            if user is not None else None
+        mesh, suffix = await _parse_mesh_async(  # 400/413/501, 504 on parse timeout
+            data, file.filename or "unknown"
         )
-        reused = part_geometry_cache.get(geometry_key) if geometry_key else None
-        if reused is not None:
-            mesh, suffix = reused.mesh, reused.suffix
-        else:
-            mesh, suffix = await _parse_mesh_async(  # 400/413/501, 504 on parse timeout
-                data, file.filename or "unknown"
-            )
-            # ── B5 units landmine: rescale the mesh into mm EXACTLY ONCE, here at the parse
-            # seam, BEFORE any geometry/DFM/cost extraction. mm (default/unset) => the SAME
-            # mesh object untouched => byte-identical; inch => a ×25.4 copy so volume
-            # (×25.4³ ≈ 16,387×), area, bbox and wall thickness all stay coherent and every
-            # downstream consumer (DFM, machine-fit, cost, analogy) reads the ONE real part.
-            # This is the SINGLE geometry-scaling site: nothing downstream rescales
-            # (EstimateOptions.units is declarative only), so there is exactly one
-            # conversion, never a double.
-            from src.costing.units import scale_mesh_to_mm
-            mesh = scale_mesh_to_mm(mesh, effective_units)
-            if placed is not None:
-                # Price the part as placed (a cached entry for this key is already turned).
-                mesh = placed.apply(mesh)
-        # Sized from the mesh (reused or parsed); a busy 429 when it can't grow in time.
-        await compute_budget.size_to_mesh(mesh, data, file.filename or "")
+        # ── B5 units landmine: rescale the mesh into mm EXACTLY ONCE, here at the parse
+        # seam, BEFORE any geometry/DFM/cost extraction. mm (default/unset) => the SAME
+        # mesh object untouched => byte-identical; inch => a ×25.4 copy so volume
+        # (×25.4³ ≈ 16,387×), area, bbox and wall thickness all stay coherent and every
+        # downstream consumer (DFM, machine-fit, cost, analogy) reads the ONE real part.
+        # This is the SINGLE geometry-scaling site: nothing downstream rescales
+        # (EstimateOptions.units is declarative only), so there is exactly one
+        # conversion, never a double.
+        from src.costing.units import scale_mesh_to_mm
+        mesh = scale_mesh_to_mm(mesh, effective_units)
         tracing.set_attr(_sp_parse, "cadverify.file.suffix", suffix)
         tracing.set_attr(_sp_parse, "cadverify.file.bytes", len(data))
         tracing.set_attr(_sp_parse, "cadverify.units", effective_units)
@@ -1926,7 +1660,6 @@ async def _cost_decision(
         material_class=material_class,
         material_class_is_user=material_class_is_user,
         material_class_from_cad=material_class_from_cad,
-        material_name=material_name or None,
         region=effective_region,
         region_is_user=region_is_user,
         shop=shop_binding,
@@ -1958,12 +1691,11 @@ async def _cost_decision(
     # (demo route, flag off, or an unprovisioned session).
     analogy_records = None
     cal_org_id = None
-    rate_card = None  # the org's published card in effect, {"payload", "version"}
     if user is not None and session is not None:
         from src.auth.org_context import resolve_org
         from src.services.groundtruth_service import load_served_calibration
 
-        cal_org_id = org_id if org_id is not None else await resolve_org(session, user.user_id)
+        cal_org_id = await resolve_org(session, user.user_id)
         # resolve_org's contract is Optional[str]; guard on the concrete type so
         # a mocked/unprovisioned session (no real org_id) is treated as "no
         # calibration" — leaving behaviour byte-identical to pre-W5.
@@ -2005,13 +1737,6 @@ async def _cost_decision(
                 )
                 if _env:
                     options.service_environment = _env
-                # The part's declared specs (finish, heat treatment, inspection,
-                # certifications) price and gate the routes; none → no-op.
-                from src.costing.part_specs import stored_specs as _stored_specs
-
-                _specs = _stored_specs(_ctx)
-                if _specs:
-                    options.part_specs = _specs
             except Exception:
                 logger.warning(
                     "machine-inventory feed failed for org %s; decision proceeds "
@@ -2032,15 +1757,15 @@ async def _cost_decision(
             # If RATE_LIBRARY_ENABLED is on AND the org has a PUBLISHED rate card
             # in effect now, use it as the base DEFAULT table under shop/user
             # overrides. Flag off / no published card => None => hardcoded
-            # RATE_CARD_V0 => byte-identical to pre-W4. Never validated; the values
-            # the org changed tag their lines as its own (rate_card_basis, below).
+            # RATE_CARD_V0 => byte-identical to pre-W4. A governed card is a table
+            # of DEFAULT assumptions — provenance stays DEFAULT, never validated.
             from src.services.rate_library_service import (
-                resolve_rate_card_for_org,
+                resolve_rate_table_for_org,
             )
 
-            rate_card = await resolve_rate_card_for_org(session, cal_org_id)
-            if rate_card is not None:
-                options.base_rate_table = rate_card["payload"]
+            base_table = await resolve_rate_table_for_org(session, cal_org_id)
+            if base_table is not None:
+                options.base_rate_table = base_table
 
             # ── W4 governed materials library ───────────────────────────────
             # If MATERIAL_LIBRARY_ENABLED is on AND the org has a PUBLISHED
@@ -2120,40 +1845,27 @@ async def _cost_decision(
     # is off. _otel_ctx is captured below, inside the cost.compute span.
     _otel_ctx = None
 
-    analysed: dict = {}
-
-    def _price(result, m, features):
-        # Span 3/4 — should-cost decision (make-vs-buy costing).
-        with tracing.span("cost.should_cost") as _sp_cost:
-            rep = estimate_decision(result, m, features, options)
-            tracing.set_attr(_sp_cost, "cadverify.status", rep.status)
-        unc = None
-        if run_ensemble and rep.status != "GEOMETRY_INVALID":
-            with tracing.span("cost.ensemble"):
-                unc = _run_ensemble_band(
-                    result, m, features, options, analogy_records
-                )
-        return rep, unc
-
     def _run():
         _otel_tok = tracing.attach_context(_otel_ctx)
         try:
-            if reused is not None:
-                # The analysed part this account just produced from these bytes.
-                with reused.lock:
-                    rep, unc = _price(reused.result, reused.mesh, reused.features)
-                return rep, unc, (reused.identity_vec if identity_wanted else None)
             # Span 2/4 — DFM / geometry analysis (the cost engine's mesh pass).
             with tracing.span("cost.dfm_analysis") as _sp_dfm:
-                _t_geo = time.perf_counter()
                 result, m, ctx = _run_cost_engine_ctx(
-                    mesh, file.filename or "unknown", orientation=placed
+                    mesh, file.filename or "unknown"
                 )
                 features = ctx.features
                 geo = result.geometry if isinstance(result.geometry, dict) else {}
                 tracing.set_attr(_sp_dfm, "cadverify.face_count", geo.get("face_count"))
-                analysed["geometry_ms"] = round((time.perf_counter() - _t_geo) * 1000, 1)
-            rep, unc = _price(result, m, features)
+            # Span 3/4 — should-cost decision (make-vs-buy costing).
+            with tracing.span("cost.should_cost") as _sp_cost:
+                rep = estimate_decision(result, m, features, options)
+                tracing.set_attr(_sp_cost, "cadverify.status", rep.status)
+            unc = None
+            if run_ensemble and rep.status != "GEOMETRY_INVALID":
+                with tracing.span("cost.ensemble"):
+                    unc = _run_ensemble_band(
+                        result, m, features, options, analogy_records
+                    )
             # F2: compute the identity query signature by REUSING the geometry the
             # cost engine already analysed (result.geometry + ctx) rather than
             # re-running a SECOND full geometry pass (vector_for_mesh -> geometry_
@@ -2165,11 +1877,6 @@ async def _cost_decision(
             if identity_wanted:
                 from src.eval import similarity
                 id_vec = similarity.feature_vector(m, result.geometry, ctx)
-            if geometry_key is not None and rep.status != "GEOMETRY_INVALID":
-                analysed["entry"] = part_geometry_cache.AnalysedPart(
-                    result=result, mesh=m, features=features, identity_vec=id_vec,
-                    suffix=suffix, faces=int(len(m.faces)),
-                )
             return rep, unc, id_vec
         finally:
             tracing.detach_context(_otel_tok)
@@ -2214,16 +1921,14 @@ async def _cost_decision(
         return ens.to_dict()
 
     timeout = _analysis_timeout_sec()
-    # The org reads above are done: their connection goes back to the pool for the compute.
-    await analysis_service.release_read_connection(session)
+    loop = asyncio.get_event_loop()
     # Parent span for the off-loop compute; capture the OTel context INSIDE it so
     # the executor-thread DFM / should-cost child spans nest here. No-op when off.
     with tracing.span("cost.compute"):
         _otel_ctx = tracing.capture_context()
         try:
-            # On a timeout the thread runs on; it keeps its room until it ends.
-            report, uncertainty, identity_vec = await compute_budget.run_within_budget(
-                _run, timeout=timeout, label="cost", need_bytes=compute_budget.need_for_data(data, "part" + suffix),
+            report, uncertainty, identity_vec = await asyncio.wait_for(
+                loop.run_in_executor(None, _run), timeout=timeout
             )
         except asyncio.TimeoutError:
             # Bounded compute that ran over budget — structured warning, then 504.
@@ -2264,14 +1969,7 @@ async def _cost_decision(
         material_class=material_class,
         shop=shop_slug,
         duration_ms=round((time.perf_counter() - t0) * 1000, 1),
-        geometry_reused=reused is not None,
     )
-    if response is not None:
-        # Fixed stage names only (no file name, tenant or hash), as /validate does.
-        response.headers["Server-Timing"] = (
-            'geometry;desc="reused";dur=0' if reused is not None
-            else f'geometry;desc="analysed";dur={analysed.get("geometry_ms", 0)}'
-        )
 
     # Observability: the compute finished, so record its duration (both outcomes)
     # and the decision outcome. Real timings/counts only; no PII enters a label.
@@ -2312,59 +2010,21 @@ async def _cost_decision(
             suffix,
             data,
         )
-        def _export_costable():
-            # The derivative is the file's own geometry, never a turned copy.
-            def own(m):
-                return placed.unapply(m) if placed is not None else m
-            if reused is None:
-                return own(mesh).export(file_type="stl")
-            with reused.lock:  # shared with a concurrent re-price of this part
-                return own(mesh).export(file_type="stl")
-
-        from src.services.source_artifact_service import costable_mesh_exists
-
-        if placed is None or not await costable_mesh_exists(
-                cal_org_id, source_hash, source_units=effective_units):
-            costable_stl = await compute_budget.run_within_budget(
-                _export_costable, label="costable stl", need_bytes=compute_budget.need_for_data(data, "part" + suffix))
-            if not isinstance(costable_stl, (bytes, bytearray, memoryview)) or not costable_stl:
-                raise HTTPException(
-                    status_code=500,
-                    detail="Costable source derivative could not be persisted.",
-                )
-            await save_costable_mesh_artifact(
-                cal_org_id,
-                source_hash,
-                bytes(costable_stl),
-                source_units=effective_units,
+        costable_stl = await asyncio.to_thread(mesh.export, file_type="stl")
+        if not isinstance(costable_stl, (bytes, bytearray, memoryview)) or not costable_stl:
+            raise HTTPException(
+                status_code=500,
+                detail="Costable source derivative could not be persisted.",
             )
+        await save_costable_mesh_artifact(
+            cal_org_id,
+            source_hash,
+            bytes(costable_stl),
+            source_units=effective_units,
+        )
     # Span 4/4 — serialize the glass-box decision to the response dict.
     with tracing.span("cost.serialize"):
         result_dict = report_to_dict(report)
-    # The org's published rate card: the record says which version priced it, and
-    # the lines that use the org's own rates say so (ce-10, ce-16). No card in
-    # effect => unchanged.
-    if rate_card is not None:
-        from src.services.rate_card_basis import apply_rate_card
-
-        result_dict = apply_rate_card(result_dict, rate_card["version"], rate_card["payload"])
-    # The org's calibration from its own actuals (if one is applied); unchanged otherwise.
-    from src.services.calibration_service import apply_org_calibration
-
-    result_dict = await apply_org_calibration(session, cal_org_id, result_dict)
-    if placed is not None:
-        # The record says which way the part was turned for this price.
-        result_dict = dict(result_dict)
-        result_dict["orientation"] = placed.record()
-
-    # A price with ad-hoc overrides or a shop's rates is a what-if: saved and listed with
-    # its label ("What if: overhead 15%"), never the part's current price by itself.
-    from src.services.cost_decision_service import what_if_block
-
-    _what_if = what_if_block(rate_overrides, shop_slug,
-                             getattr(governed_shop, "name", None) if governed_shop is not None else None)
-    if _what_if is not None:
-        result_dict = {**result_dict, "what_if": _what_if}
 
     # ---- persist for authenticated callers (Phase 2 gap #3) --------------
     # Turns the flagship decision into a durable artifact (list/export/share/
@@ -2391,8 +2051,6 @@ async def _cost_decision(
                 shop=shop_slug,
                 overrides=rate_overrides,
                 source_units=effective_units,
-                orientation=placed.key if placed is not None else None,
-                material=material_name or None,
             )
             mesh_hash = compute_mesh_hash(data)
             try:
@@ -2405,7 +2063,6 @@ async def _cost_decision(
                     filename=file.filename or "unknown",
                     file_type=suffix.lstrip("."),
                     result_json=result_dict,
-                    org_id=org_id,
                 )
                 # Non-destructive: the decision JSON is unchanged; we only add a
                 # pointer to the saved artifact so the caller can open/export it.
@@ -2419,7 +2076,7 @@ async def _cost_decision(
                 # sees (graceful degrade, unchanged) — but the failure must
                 # be observable, not silent: warning log + usage_events row.
                 await record_persist_failure(
-                    session, user, mesh_hash=mesh_hash, error=exc, org_id=org_id
+                    session, user, mesh_hash=mesh_hash, error=exc
                 )
 
     # RESPONSE-ONLY: attach the ensemble band (when the flag produced one) after
@@ -2443,7 +2100,7 @@ async def _cost_decision(
     if user is not None and session is not None:
         from src.auth.org_context import resolve_org
 
-        _identity_org = org_id if org_id is not None else await resolve_org(session, user.user_id)
+        _identity_org = await resolve_org(session, user.user_id)
         if isinstance(_identity_org, str) and _identity_org:
             try:
                 from src.services import identity_retrieval_service
@@ -2478,9 +2135,6 @@ async def _cost_decision(
     result_dict = dict(result_dict)
     result_dict["identity"] = identity_payload
 
-    # Keep this request's analysed part for the next price of the same file.
-    if analysed.get("entry") is not None and geometry_key is not None:  # an entry is only made with a key
-        part_geometry_cache.put(geometry_key, analysed["entry"])
     return result_dict
 
 
@@ -2537,14 +2191,7 @@ async def validate_cost(
                     "decision reads the real part. STATED input; a plausibility WARNING "
                     "still fires if the mm-interpreted size looks wrong.",
     ),
-    orientation: Optional[str] = Form(
-        None,
-        description="Turn the part before costing, as for POST /validate "
-                    "(turns:x90,z-90 | down:x,y,z | rotation:r00,…,r22 | JSON). "
-                    "Unset => the file's own axes. Same file: no extra check. "
-                    "The decision records the orientation it used.",
-    ),
-    user: AuthedUser = Depends(require_org_checker),
+    user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
     _org_limit: None = Depends(enforce_org_limits),
     _validation_cap: None = Depends(enforce_validation_caps),
@@ -2577,8 +2224,6 @@ async def validate_cost(
         units=units,
         user=user,
         session=session,
-        response=response,
-        orientation=orientation,
     )
 
 
@@ -2620,7 +2265,7 @@ async def validate_cost_demo(
                     "Inch-authored meshes are scaled ×25.4 into mm ONCE before costing; "
                     "otherwise an inch part read as mm mis-costs by ~16,000×.",
     ),
-    user: AuthedUser = Depends(require_org_checker),
+    user: AuthedUser = Depends(require_role(Role.analyst)),
     _org_limit: None = Depends(enforce_org_limits),
     _validation_cap: None = Depends(enforce_validation_caps),
     _admission: None = Depends(admit_analysis),
@@ -2654,17 +2299,12 @@ async def validate_repair(
         None,
         description="Industry rule pack: aerospace, automotive, oil_gas, medical.",
     ),
-    user: AuthedUser = Depends(require_org_checker),
+    user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
     _validation_cap: None = Depends(enforce_validation_caps),
-    _free_limit: None = Depends(limit_free_repair),
     _admission: None = Depends(admit_analysis),
 ):
-    """Upload an STL, STEP/STP, or IGES/IGS file, attempt mesh repair, and get before/after analysis.
-
-    On every plan and never a check; free accounts have a per-user ceiling
-    (src.auth.free_tool_limits).
-    """
+    """Upload an STL, STEP/STP, or IGES/IGS file, attempt mesh repair, and get before/after analysis."""
     if rule_pack:
         pack = get_rule_pack(rule_pack)
         if pack is None:
@@ -2674,10 +2314,6 @@ async def validate_repair(
             )
 
     data = await _read_capped(file)
-    from src.auth.org_context import resolve_org
-
-    # One organization for both saved checks and the copy's derived-from link.
-    org_id = await resolve_org(session, user.user_id)
     return await repair_service.repair_mesh(
         file_bytes=data,
         filename=file.filename or "unknown",
@@ -2685,7 +2321,6 @@ async def validate_repair(
         rule_pack=rule_pack,
         user=user,
         session=session,
-        org_id=org_id,
     )
 
 
@@ -2828,8 +2463,6 @@ def _to_response(
                 for c in result.geometry.center_of_mass
             ],
             "units": result.geometry.units,
-            # A STEP/IGES's own faces (its CAD tool's count); "faces" is mesh triangles.
-            **({"cad_faces": result.geometry.cad_face_count} if result.geometry.cad_face_count else {}),
         },
         "segments": [
             {

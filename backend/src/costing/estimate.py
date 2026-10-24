@@ -9,22 +9,18 @@ It NEVER mutates `result`, the engine, or the registry.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING, Optional, cast
+from typing import Optional
 
 from src.analysis.models import Severity
 from src.costing.confidence import confidence_interval
 from src.costing.decision import Decision, make_vs_buy
 from src.costing.drivers import extract_drivers
-from src.costing.cost_model import BuildEnvelopeError, check_process_size_floor, cost_breakdown
+from src.costing.cost_model import BuildEnvelopeError, cost_breakdown
 from src.costing.leadtime import lead_time
 from src.costing.provenance import Driver, Provenance
 from src.costing.rates import COSTED_PROCESSES, RateCard, build_rate_card
-from src.analysis.process_names import join_labels, process_phrase
-from src.costing.routing import eligible_processes, recommend_routing, sheet_stock_gap
+from src.costing.routing import eligible_processes, recommend_routing
 from src.costing.shop_profile import resolve_shop
-
-if TYPE_CHECKING:
-    from _typeshed import DataclassInstance
 
 
 @dataclass
@@ -44,13 +40,6 @@ class EstimateOptions:
     # declaration always wins upstream and this stays False in that case.
     # Default False => byte-identical to pre-CAD-material behaviour.
     material_class_from_cad: bool = False
-    # The material a parts list names, as written ("4140 steel", "Delrin"). Each
-    # route is priced in that grade where the engine has it for the route; a
-    # metal route without it is priced in the cheapest grade of the same metal
-    # (the estimate names the grade used), a plastic route without it isn't
-    # priced (routing.select_material). None (default) => the class rule,
-    # byte-identical. Implies material_class_is_user.
-    material_name: Optional[str] = None
     region_is_user: bool = False             # set True when the caller explicitly chose a region
     # Per-shop calibration (bucket #1): a ShopProfile, a stored profile name, a
     # path, a dict, or None. When bound, every default it covers flips to SHOP.
@@ -117,11 +106,6 @@ class EstimateOptions:
     # Feeds the environment gate (drops env-invalid materials/routes with a cited
     # exclusion). None (default) => the gate is a no-op => byte-identical.
     service_environment: "dict | None" = None
-    # The part's DECLARED specs (part_context.part_specs; costing.part_specs):
-    # finishes + Ra, heat treatments, inspection, certifications. Each op adds a
-    # cost line and lead time; a route that can't deliver them is flagged
-    # spec_excluded. None (default) => no-op => byte-identical.
-    part_specs: "dict | None" = None
     # ── declared CAD source units (B5 units landmine) ────────────────────────
     # STL carries NO units; the engine interprets vertex coordinates as MILLIMETRES.
     # An inch-authored STL therefore silently mis-costs by 25.4**3 (~16,387x). The
@@ -165,9 +149,6 @@ class DecisionReport:
     # NO key => byte-identical. Populated only when the plausibility net fires;
     # each entry is provenance-honest (MEASURED geometry vs ASSUMED units).
     unit_warnings: list = field(default_factory=list)
-    # Declared part specs block (costing.part_specs.SpecSession.block). None =>
-    # no specs declared => report_to_dict adds NO key => byte-identical.
-    specs: Optional[dict] = None
 
 
 def _geo_summary(g) -> dict:
@@ -200,34 +181,12 @@ def _unit_plausibility_warnings(g, options: "EstimateOptions") -> list:
     return [w] if w is not None else []
 
 
-_CLASS_WORDS = {"polymer": "plastic", "aluminum": "aluminum", "steel": "steel",
-                "stainless": "stainless steel", "titanium": "titanium", "nickel": "nickel alloy",
-                "copper": "copper", "cobalt": "cobalt-chrome"}
-
-
-def _material_class_source(options: "EstimateOptions") -> str:
-    """What material the prices assume, and why, in plain words (M19)."""
-    cls = options.material_class
-    words = _CLASS_WORDS.get(cls, cls)
-    if options.material_name:
-        return (f"priced in {options.material_name} where a process runs it, as the parts list "
-                f"names it; a metal process that doesn't is priced in the nearest {words} grade "
-                f"it runs, and says which")
-    if options.material_class_is_user:
-        return f"priced in {words}, as you set it"
-    if options.material_class_from_cad:
-        return f"priced in {words}, read from the material named in the CAD file"
-    return (f"No material was given, so prices assume {words}. Set the material to "
-            f"price it in metal or another plastic.")
-
-
 def _global_assumptions(rates: RateCard, options: EstimateOptions, region: str) -> list:
     g = rates.data["global"]
     rl, rm, rt = (rates.region_labor(region), rates.region_material(region),
                   rates.region_tooling(region))
     region_prov = rates.region_prov(region)
-    shop_note = (f" [shop: {rates.shop_name}]" if rates.shop_name else "")  # outbound cuts this clause
-    typical = " (typical value, not confirmed by a shop)"
+    shop_note = (f" [shop: {rates.shop_name}]" if rates.shop_name else "")
     out = [
         Driver("labor_rate", g["labor_rate"], "$/hr", rates.prov_tag("labor_rate"),
                "loaded shop-floor labor" + shop_note),
@@ -238,47 +197,43 @@ def _global_assumptions(rates: RateCard, options: EstimateOptions, region: str) 
         Driver("region_tooling", rt, "×", region_prov,
                f"region {region}: tooling ×{rt:g} (offshore toolmaking labor)"),
         Driver("margin", g["margin"], "frac", rates.prov_tag("margin"),
-               "markup on cost: price = cost × (1 + margin); 0.25 adds 25%, not a 25% gross margin"
-               + ("; at 0 the prices are should-costs, what making it costs a shop, not a supplier's "
-                  "quote, which adds its margin (ce-18)" if not g["margin"] else "") + shop_note),
+               "markup on cost: price = cost × (1 + margin); 0.25 adds 25%, not a 25% gross margin" + shop_note),
         Driver("overhead", g["overhead"], "frac", rates.prov_tag("overhead"),
-               "indirect burden on conversion cost, the work done on the shop floor: machine (and the tools line, a share of it), "
-               "labor, setup, programming, inspection, and finish machining, sintering, metal-printing post "
-               "work or declared hand operations where the process has them; not material, tooling, EDM wire "
-               "or outside finishing; price = cost × (1 + overhead) on those lines"
-               + ("; at 0 none is added, while a supplier's quote carries its overhead" if not g["overhead"] else "")
-               + shop_note),
+               "indirect burden on conversion cost (machine+labor+setup)" + shop_note),
         Driver("utilization", g["utilization"], "frac", rates.prov_tag("utilization"),
                "machine utilization (idle-recovery on machine cost)" + shop_note),
         Driver("stock_allowance", g["stock_allowance"], "×", rates.prov_tag("stock_allowance"),
                "CNC stock volume allowance (milling: on bounding box; turning: on enclosing cylinder)"),
         Driver("machine_labor_frac", g["machine_labor_frac"], "frac",
                rates.prov_tag("machine_labor_frac"),
-               "operator-labor share of the machine rate, the part that changes with region "
-               "(the machine and building cost the same everywhere)" + typical),
+               "operator-labor share of the machine rate that scales with region "
+               "(capital/facility stays global) [assumption, not shop-validated]"),
         Driver("perishable_frac", g["perishable_frac"], "frac",
                rates.prov_tag("perishable_frac"),
-               "cutting tools and consumables as a share of CNC machine cost" + typical),
+               "perishable tooling/consumables as a fraction of CNC machine cost "
+               "[assumption, not shop-validated]"),
         Driver("daily_machine_hours", g["daily_machine_hours"], "hr/day",
                rates.prov_tag("daily_machine_hours"),
                "fallback daily capacity; process-specific machine hours take precedence" + shop_note),
         Driver("n_cavities", float(options.n_cavities), "cav",
                Provenance.USER if options.n_cavities_is_user else Provenance.DEFAULT,
-               (f"{options.n_cavities} cavities per mold or die, as you set it"
-                if options.n_cavities_is_user
-                else "1 cavity per mold or die, the usual starting point for a should-cost; "
-                     "set more for high volume")),
+               f"formative tooling cavities = {options.n_cavities} "
+               + ("(buyer-supplied)" if options.n_cavities_is_user
+                  else "(DEFAULT single-cavity should-cost)")),
         Driver("complexity", 0.0, options.complexity,
                Provenance.USER if options.complexity_is_user else Provenance.DEFAULT,
-               (f"tool complexity {options.complexity.replace('_', ' ')}, as you set it"
-                if options.complexity_is_user
-                else "moderate tool complexity, the usual starting point; raise it for "
-                     "slides or side actions")),
+               f"tooling complexity = {options.complexity} "
+               + ("(buyer-supplied)" if options.complexity_is_user
+                  else "(DEFAULT moderate; raise for slides/side-actions)")),
         Driver("material_class", 0.0, options.material_class,
                Provenance.USER if options.material_class_is_user
                else (Provenance.CAD if options.material_class_from_cad
                      else Provenance.DEFAULT),
-               _material_class_source(options)),
+               f"material class = {options.material_class} "
+               + ("(buyer-supplied)" if options.material_class_is_user
+                  else "(read from the CAD file's material annotation)"
+                  if options.material_class_from_cad
+                  else "(DEFAULT: these are polymer automotive parts; override for metal)")),
     ]
     # ── owned-equipment assumption (only when a process is declared OWNED and
     # the capital fraction is live) — the DECLARATION is USER (shown per-estimate
@@ -286,13 +241,13 @@ def _global_assumptions(rates: RateCard, options: EstimateOptions, region: str) 
     # assumption. Gated so the default (nothing owned) and the off-switch
     # (machine_capital_frac=0) both stay byte-identical.
     if options.owned_processes and rates.g("machine_capital_frac") > 0:
-        owned_names = join_labels(sorted(options.owned_processes, key=lambda p: p.value))
+        owned_names = ", ".join(sorted(p.value for p in options.owned_processes))
         out.append(Driver(
             "machine_capital_frac", g["machine_capital_frac"], "frac",
             rates.prov_tag("machine_capital_frac"),
-            f"share of the machine rate that pays for the machine itself, left out "
-            f"for machines the shop has ({owned_names}): that cost is already paid"
-            + typical))
+            f"capital/amortization share of the loaded machine rate removed for "
+            f"OWNED, in-house processes ({owned_names}) — sunk on gear the org "
+            f"already owns [assumption, not shop-validated]"))
     # ── declared CAD source units (B5) — only when the caller EXPLICITLY declared
     # them (units_is_user). STL carries no units; a declaration is USER-tagged and
     # the geometry was scaled into mm before costing. Unset/default mm => no line
@@ -308,8 +263,9 @@ def _global_assumptions(rates: RateCard, options: EstimateOptions, region: str) 
         if scale != 1.0:
             out.append(Driver(
                 "source_units", scale, "×", Provenance.USER,
-                f"file units set to {options.units}: the geometry was scaled ×{scale:g} "
-                f"into mm before pricing (volume ×{scale**3:g})"))
+                f"CAD source units declared '{options.units}' (USER) — geometry "
+                f"scaled ×{scale:g} into mm at the parse seam before costing "
+                f"(volume ×{scale**3:g})"))
     return out
 
 
@@ -321,7 +277,7 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
     shop_overrides = shop.to_shop_overrides() if shop is not None else None
     shop_region = shop.region if shop is not None else None
     # a bound shop selects its own region unless the caller explicitly chose one
-    region = (shop.region if (shop is not None and not options.region_is_user)
+    region = (shop_region if (shop is not None and not options.region_is_user)
               else options.region)
     rates = build_rate_card(options.rate_overrides, shop_overrides=shop_overrides,
                             shop_name=(shop.name if shop is not None else None),
@@ -373,8 +329,7 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
     ]
     elig = eligible_processes(result, drivers, options.material_class, rates,
                               strict_dfm=options.strict_dfm,
-                              env=options.service_environment,
-                              prefer=options.material_name)
+                              env=options.service_environment)
 
     # ── Phase C: machine-inventory verification (additive; no-op when unused) ──
     # Only engaged when the org DECLARED machines OR a service environment. When
@@ -382,31 +337,19 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
     # empty, so every cost_breakdown call below gets machine_override=None and the
     # whole report is byte-identical to pre-Phase-C.
     verification = None
-    from src.costing.part_specs import session_for as _spec_session
-    specs = _spec_session(options, rates, region, drivers)   # None without declared specs
     machine_override_by_pv: dict = {}
     env_excluded: dict = {}
-    if options.inventory:
-        # A route a machine you own runs is priced in a material that machine
-        # is declared for (the part's class), not the class's cheapest row.
-        elig = _prefer_owned_materials(elig, options)
     if options.inventory or options.service_environment:
         verification, machine_override_by_pv, env_excluded = _build_verification(
-            elig, drivers, options, rates, specs=specs)
+            elig, drivers, options, rates)
     if options.inventory and verification is not None:
-        # The inventory decides what is owned: a route a machine of yours clears
-        # is priced as owned (capital sunk), declared or not; a declared process
-        # cannot grant in-house savings when no machine of yours establishes fit.
+        # A declared process cannot grant in-house savings when the actual
+        # inventory fails (or cannot establish) fit for this part and material.
         options = replace(options, owned_processes=frozenset(
-            item["process"] for item in elig
-            if verification["per_route"].get(item["process"].value, {}).get("verdict")
+            p for p in options.owned_processes
+            if verification["per_route"].get(p.value, {}).get("verdict")
             in {"makeable_in_house", "makeable_with_secondary_op"}
         ))
-
-    # Routes a machine the shop owns clears (§0 per-route in-house verdicts):
-    # their lead time runs on the shop's own machines and the decision weighs
-    # them against the cheapest outside route. Empty without inventory.
-    in_house_by_pv = _in_house_routes(verification, options.inventory)
 
     estimates_serialized = []
     estimates_by_pq = {}             # (process_value, qty) -> CostEstimate (real per-qty)
@@ -414,21 +357,10 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
     elig_by_pv = {}                  # process_value -> eligible item (for arbitrary-qty costing)
 
     cost_exclusions = {}
-    sheet_gap = sheet_stock_gap(options.material_class) if drivers.sheet_like else None
-    if sheet_gap and not any(item["process"].value == "sheet_metal" for item in elig):
-        cost_exclusions["sheet_metal"] = sheet_gap
     for item in elig:
         process = item["process"]
         material = item["material"]
         ps = item["score"]
-        try:
-            # Wire-arc and metal deposition are large near-net routes: a 20 mm block
-            # gets no price from them (its reason is the exclusion), like a part
-            # that fits no setup.
-            check_process_size_floor(process, drivers, rates)
-        except BuildEnvelopeError as exc:
-            cost_exclusions[process.value] = str(exc)
-            continue
         for q in options.quantities:
             try:
                 est = cost_breakdown(process, drivers, material, options.material_class,
@@ -447,10 +379,7 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
             elig_by_pv[process.value] = item
             # cycle_hr from the estimate keeps lead time consistent with cost
             cycle_hr = next((d.value for d in est.drivers if d.name == "cycle_time"), 0.0)
-            lt = lead_time(process, cycle_hr, q, rates,
-                           in_house=in_house_by_pv.get(process.value))
-            if specs:
-                est, lt = specs.price(est, lt, process, material, options.material_class)
+            lt = lead_time(process, cycle_hr, q, rates)
             leadtimes_by_key[(process.value, q)] = lt
             estimates_by_pq[(process.value, q)] = est
             estimates_serialized.append(
@@ -458,11 +387,10 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
                            options.calibration))
 
     costed_processes = {e["process"] for e in estimates_serialized}
-    spec_excluded = specs.annotate(estimates_serialized, options.material_class) if specs else set()
     rec = recommend_routing(drivers, options.material_class,
                             dfm_failed=dfm_failed, dfm_clean=dfm_clean,
                             available_processes=costed_processes
-                            - set(env_excluded.get("excluded_pv") or ()) - spec_excluded)
+                            - set(env_excluded.get("excluded_pv") or ()))
     routing_info = {
         "archetype": rec.archetype,
         "recommended_process": rec.process,
@@ -487,12 +415,6 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
         row["costed"] = row["process"] in costed_processes
         if row["process"] in cost_exclusions:
             row["cost_exclusion_reason"] = cost_exclusions[row["process"]]
-        elif not row["costed"]:
-            # ce-19: why a process the geometry allows has no price in this material
-            # class: it can't run the class at all, or no grade of the class is on file.
-            why = _not_priced_reason(row["process"], options.material_class)
-            if why:
-                row["not_priced_reason"], row["runs_class"] = why
 
     # ── env-excluded cost entries stay in the list, but carry an inline flag +
     # the SAME cited reason the verdict shows (Phase C coherence fix) so the cost
@@ -522,38 +444,12 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
                              tolerance_class=options.tolerance_class,
                              machine_override=machine_override_by_pv.get(
                                  item["process"].value))
-        if specs:
-            est = specs.price(est, None, item["process"], item["material"],
-                              options.material_class)[0]
         return est.unit_cost_usd
 
-    range_by_key = {
-        (e["process"], e["quantity"]): (e["confidence"].get("low_usd"),
-                                        e["confidence"].get("high_usd"))
-        for e in estimates_serialized
-        if isinstance(e.get("confidence"), dict)
-        and e["confidence"].get("low_usd") is not None
-    } if in_house_by_pv else None
-    # A process a machine of yours runs is also bought outside: a job shop mills
-    # a flat plate on its own 3-axis mill at its own fully loaded rate. Those
-    # prices are the outside side's candidates too, so in-house is never compared
-    # only with routes nobody would send it out for (a 5-axis mill for a plate).
-    # They live only in the decision's comparison; the estimates list keeps one
-    # price per process (yours, at your machine's rate).
-    outside_twins = _outside_twins(
-        in_house_by_pv, elig_by_pv, options, drivers, rates, region, specs,
-        set(env_excluded.get("excluded_pv") or ()) | spec_excluded) if in_house_by_pv else None
     decision = make_vs_buy(estimates_by_pq, options.quantities, leadtimes_by_key,
                            unit_cost_fn=_unit_cost_fn,
-                           excluded_pv=(set(env_excluded.get("excluded_pv") or ()) | spec_excluded)
-                           or None,
-                           env_note="; ".join(n for n in (env_excluded.get("note"),
-                                                          specs.note(spec_excluded) if specs else None)
-                                              if n) or None,
-                           in_house=in_house_by_pv,
-                           range_by_key=range_by_key,
-                           outside_twins=outside_twins,
-                           env_regraded={item["process"].value for item in elig if item.get("env_replaced")} or None)
+                           excluded_pv=env_excluded.get("excluded_pv"),
+                           env_note=env_excluded.get("note"))
 
     notes = list(cost_exclusions.values())
     if shop is not None:
@@ -569,32 +465,31 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
                           if not e["dfm_ready"]})
         if flagged:
             notes.append(
-                "Priced, but can't make the part as drawn: " + join_labels(flagged) + ". "
-                "Their prices show what the part would cost if it were redesigned for "
-                "them; each one's findings say what stops it.")
+                "DFM note: processes " + ", ".join(flagged) + " are costed but flagged "
+                "NOT DFM-ready as-modeled (see their process-specific blockers). "
+                "Their cost shows the tooling economics *if* the part is redesigned for "
+                "that process. Set strict_dfm=True to exclude them entirely.")
     # geometric routing recommendation, and reconciliation with the cost pick
     if rec is None:
-        notes.append("No eligible process suits this shape and can make it as drawn in the "
-                     "declared material. See each process's findings.")
+        notes.append("No eligible DFM-ready geometric route is available under the "
+                     "declared material and route constraints. Review process findings.")
     else:
-        notes.append(f"Shape suggests {process_phrase(rec.process)}. {rec.reasoning}")
+        notes.append(
+            f"Geometric routing: this part reads as a '{rec.archetype}' → "
+            f"{rec.process}. {rec.reasoning}")
     if rec is not None and decision is not None and decision.make_now_process != rec.process:
         in_shortlist = any(e["process"] == rec.process for e in estimates_serialized)
-        lo_pick = (decision.recommendation.get(min(options.quantities)) or {}) if options.quantities else {}
-        if in_shortlist and lo_pick.get("in_house"):
+        if in_shortlist:
             notes.append(
-                f"{OWNED_PICK_NOTE_PREFIX}{process_phrase(decision.make_now_process)} on "
-                f"machine '{lo_pick.get('machine')}'; the shape suggests "
-                f"{process_phrase(rec.process)}. {_CHOOSE_ON_INTENT}")
-        elif in_shortlist:
-            notes.append(
-                f"At low quantity the cheapest way to make it as drawn is "
-                f"{process_phrase(decision.make_now_process)}; the shape suggests "
-                f"{process_phrase(rec.process)}. {_CHOOSE_ON_INTENT}")
+                f"Note: the cost-cheapest make-as-is pick at low qty is "
+                f"{decision.make_now_process}, but the geometry-recommended process is "
+                f"{rec.process} — both are costed above; pick on intent, "
+                f"not just the marginal $.")
         else:
             notes.append(
-                f"The shape suggests {process_phrase(rec.process)}, which ScaleCAD doesn't "
-                f"price; the prices above are the processes it does.")
+                f"Note: geometry recommends {rec.process}, which is "
+                f"feasibility-only (not in the costed set) — the dollar options above "
+                f"are the costable alternatives.")
     notes.append(
         "Prices and crossover quantities are assumption-based and can shift with "
         "cycle times, tooling, batch sizes and shop rates. Validate against actual "
@@ -607,11 +502,6 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
         notes.append(
             "Decision: no environment-valid make-as-is option — "
             + env_excluded["note"] + ".")
-    elif decision is None and spec_excluded:
-        spec_note = specs.note(spec_excluded) if specs is not None else None
-        if spec_note is None:  # spec_excluded is non-empty only under a spec session
-            raise RuntimeError("declared specs ruled out routes with no spec session to name them")
-        notes.append("Decision: no route meets the declared specs; " + spec_note + ".")
 
     geo = _geo_summary(g)
     return DecisionReport(
@@ -628,148 +518,7 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
         routing=routing_info,
         verification=verification,
         unit_warnings=_unit_plausibility_warnings(g, options),
-        specs=specs.block(estimates_serialized) if specs else None,
     )
-
-
-_IN_HOUSE_VERDICTS = ("makeable_in_house", "makeable_with_secondary_op")
-
-
-def _prefer_owned_materials(elig: list, options) -> list:
-    """Price a route your machine runs in a material that machine is declared for.
-
-    The shortlist prices each route in the cheapest registry material of the
-    part's class (PLA for plastic on a filament printer). When the shop owns
-    machines for that route and none is declared for that material, the route is
-    re-priced in the cheapest material of the same class that one of them is
-    declared for (ABS on a Stratasys F900), so the fit and the price are about
-    the material the shop would actually use. No such material: unchanged, and
-    the fit says the machine isn't declared for it.
-    """
-    from src.costing.makeability import material_declared
-    from src.costing.rates import MATERIAL_FAMILY
-    from src.costing.routing import _env_preferred_materials
-    from src.analysis.models import ProcessType as _PT
-    from src.profiles.database import get_materials_for_process
-
-    out = []
-    cls = options.material_class
-    for item in elig:
-        process = item["process"]
-        machines = [m for m in options.inventory
-                    if getattr(m.process, "value", m.process) == process.value and m.materials]
-        mat = item["material"]
-        named = getattr(options, "material_name", None)
-        if named:
-            from src.costing.material_grades import same_grade
-
-            if same_grade(mat.name, named):
-                # The grade the parts list names stays: a machine not declared for it
-                # says so in its fit instead of the route moving to another grade.
-                out.append(item)
-                continue
-        if (not machines or process == _PT.SHEET_METAL
-                or any(material_declared(mat.name, MATERIAL_FAMILY.get(mat.name, ""), m.materials)
-                       for m in machines)):
-            out.append(item)
-            continue
-        cands = [m for m in get_materials_for_process(process)
-                 if MATERIAL_FAMILY.get(m.name) == cls and m.density and m.cost_per_kg
-                 and any(material_declared(m.name, cls, mc.materials) for mc in machines)]
-        if options.service_environment and cands:
-            cands = _env_preferred_materials(process, cands, options.service_environment)
-        # cands keep only grades with a cost_per_kg
-        out.append({**item, "material": min(cands, key=lambda m: cast(float, m.cost_per_kg))} if cands else item)
-    return out
-_CLASS_WORD = {"polymer": "plastic", "stainless": "stainless steel", "nickel": "nickel alloy",
-               "cobalt": "cobalt-chrome"}
-
-
-def _not_priced_reason(process_value: str, material_class: str) -> Optional[tuple]:
-    """``(reason, runs_class)`` for a process with no price in ``material_class``:
-    it runs no material of that kind at all (an FDM printer and steel), or it runs
-    other metals but no grade of this class is on file (investment casting and steel).
-    None when the process isn't one ScaleCAD prices."""
-    from src.analysis.models import ProcessType as _PT
-    from src.costing.rates import MATERIAL_FAMILY
-    from src.profiles.database import get_materials_for_process
-
-    try:
-        process = _PT(process_value)
-    except ValueError:
-        return None
-    if process not in COSTED_PROCESSES:
-        return None
-    from src.costing.routing import _DED_FEEDSTOCK_PROCS, DIE_CAST_CLASSES
-
-    word = _CLASS_WORD.get(material_class, material_class)
-    name = process_phrase(process) or process_value
-    # Deposition buys the metal printers' alloys (routing.select_material).
-    pool = _DED_FEEDSTOCK_PROCS if process in (_PT.DED, _PT.WAAM) else (process,)
-    families = {MATERIAL_FAMILY.get(m.name) for p in pool for m in get_materials_for_process(p)}
-    metal_class = material_class != "polymer"
-    cannot = ((metal_class and families <= {"polymer", None}) or (not metal_class and "polymer" not in families)
-              or (process == _PT.INJECTION_MOLDING and metal_class)
-              or (process == _PT.DIE_CASTING and material_class not in DIE_CAST_CLASSES))
-    if cannot:
-        return f"{name[:1].upper()}{name[1:]} can't run {word}.", False
-    if material_class not in families:
-        return (f"No {word} grade is on file for {name}, so ScaleCAD doesn't price it in {word}; "
-                f"pick another material class or name a grade it runs."), True
-    return None
-
-
-# A note that names the shop's own machine starts with this (public shares drop it).
-OWNED_PICK_NOTE_PREFIX = "On a machine you own, the cheapest way to make it as drawn at low quantity is "
-_CHOOSE_ON_INTENT = "Both are priced above; choose on what the part is for, not on price alone."
-
-
-def _in_house_routes(verification, inventory) -> dict:
-    """``{process_value: {"machine", "count"}}`` for each route a machine the
-    shop owns clears, read off the serialized §0 verdict. ``count`` is the
-    fitted machine's declared count (1 when undeclared)."""
-    if not verification or not inventory:
-        return {}
-    out = {}
-    for pv, info in (verification.get("per_route") or {}).items():
-        if info.get("verdict") not in _IN_HOUSE_VERDICTS:
-            continue
-        name = info.get("best_machine")
-        cap = next((m for m in inventory
-                    if getattr(m.process, "value", m.process) == pv and m.name == name), None)
-        count = getattr(cap, "count", None)
-        out[pv] = {"machine": name or pv,
-                   "count": count if isinstance(count, int) and count > 0 else 1}
-    return out
-
-
-def _outside_twins(in_house_by_pv, elig_by_pv, options, drivers, rates, region, specs,
-                   excluded_pv) -> dict:
-    """``{(process_value, qty): (estimate, lead_time, (low, high))}``: each route a
-    machine of yours clears, priced as an outside shop would run it (its fully
-    loaded rate, no machine of yours), at every quantity. Engine numbers only."""
-    out: dict = {}
-    for pv in in_house_by_pv or {}:
-        item = elig_by_pv.get(pv)
-        if item is None or pv in excluded_pv:
-            continue
-        process, material = item["process"], item["material"]
-        for q in options.quantities:
-            try:
-                est = cost_breakdown(process, drivers, material, options.material_class, q, rates, region,
-                                     n_cavities=options.n_cavities, complexity=options.complexity,
-                                     process_score=item["score"], owned=False,
-                                     tolerance_class=options.tolerance_class, machine_override=None)
-            except BuildEnvelopeError:
-                break
-            cycle_hr = next((d.value for d in est.drivers if d.name == "cycle_time"), 0.0)
-            lt = lead_time(process, cycle_hr, q, rates, in_house=None)
-            if specs:
-                est, lt = specs.price(est, lt, process, material, options.material_class)
-            ci = _serialize(est, lt, drivers, options.residual_model, options.ci_level,
-                            options.calibration).get("confidence") or {}
-            out[(pv, q)] = (est, lt, (ci.get("low_usd"), ci.get("high_usd")))
-    return out
 
 
 def _serialize(est, lt, drivers, residual_model=None, ci_level: float = 0.80,
@@ -791,8 +540,7 @@ def _serialize(est, lt, drivers, residual_model=None, ci_level: float = 0.80,
         point_usd = point_usd * calibration.factor_for(est.process)
     ci = confidence_interval(
         point_usd, assumption_band_pct=est.est_error_band_pct,
-        residual_provider=residual_model, process=est.process, level=ci_level,
-        band_basis=getattr(est, "band_basis", None))
+        residual_provider=residual_model, process=est.process, level=ci_level)
     d = {
         "process": est.process,
         "material": est.material,
@@ -828,15 +576,6 @@ def _serialize(est, lt, drivers, residual_model=None, ci_level: float = 0.80,
     # the default / off-switch paths stay byte-identical.
     if getattr(est, "owned_in_house", False):
         d["owned_in_house"] = True
-    if getattr(est, "material_mass", None):
-        # Mass and density as fields: readers stop parsing "= X kg × $Y/kg".
-        d["material_mass"] = dict(est.material_mass)
-    if getattr(est, "finish_excluded", None):
-        d["finish_machining_excluded"] = dict(est.finish_excluded)
-    if getattr(est, "qty_model", None):
-        # ce-06: how each line moves with the quantity, so the price at any other
-        # quantity is the model's own (src.costing.quantity_model.unit_cost_at).
-        d["qty_model"] = est.qty_model
     return d
 
 
@@ -890,7 +629,7 @@ def _env_decision_note(env, excluded_materials, excluded_routes=()) -> str:
             f"decision computed over {over}")
 
 
-def _build_verification(elig, drivers, options, rates, specs=None):
+def _build_verification(elig, drivers, options, rates):
     """Compute the §0 makeability verdict + per-process marginal-rate overrides.
 
     Returns ``(verification_dict, machine_override_by_pv, env_excluded)`` where
@@ -927,29 +666,21 @@ def _build_verification(elig, drivers, options, rates, specs=None):
         # reads (nace_mr0175/sour_service under 'compliance', max_temperature at
         # top level). asdict is the loader-faithful shape the real-profile
         # integration test pins.
-        props = asdict(cast("DataclassInstance", mat)) if is_dataclass(mat) else {
+        props = asdict(mat) if is_dataclass(mat) else {
             "name": getattr(mat, "name", str(mat)),
             "density": getattr(mat, "density", None),
         }
-        # The route's own DFM score rides along so a design-blocked route can
-        # never read makeable on a machine fit alone (same verdict as dfm_ready).
         preq = part_req_from_drivers(process, drivers, mat,
                                      options.tolerance_class,
-                                     material_props=props, env=env,
-                                     process_score=item.get("score"))
+                                     material_props=props, env=env)
         if process.value == "binder_jetting":
             scale = 1 + rates.p(process, "shrinkage_linear")
-            # The green part is printed oversize so it shrinks to size when
-            # sintered: that larger part is what has to fit the machine.
             preq = replace(preq, bbox_mm=tuple(d * scale for d in preq.bbox_mm),
-                           print_oversize=scale - 1,
                            geometry_precision_mm=preq.geometry_precision_mm * scale,
                            geometry_tolerance_mm=preq.geometry_tolerance_mm * scale,
                            minimum_width_bound_mm=preq.minimum_width_bound_mm * scale,
                            enclosing_cylinder_mm=(tuple(d * scale for d in preq.enclosing_cylinder_mm)
                                                   if preq.enclosing_cylinder_mm else None))
-        if specs:
-            preq = specs.part_req(preq, process, mat, options.material_class)
         part_req_by_route[process.value] = preq
         if preq.material_name:
             material_props[preq.material_name] = props
@@ -963,21 +694,11 @@ def _build_verification(elig, drivers, options, rates, specs=None):
     # exclusions directly. When inventory IS present, verify_part already ran the
     # SAME gate, so verdict.env_exclusions is authoritative and used as-is.
     routes = list(part_req_by_route.keys())
-    # Sorted, as verify_part orders them (and the note names them), never by hash seed.
-    materials = sorted({p.material_name for p in part_req_by_route.values()
-                        if p.material_name})
+    materials = list({p.material_name for p in part_req_by_route.values()
+                      if p.material_name})
     _gate, direct_exclusions = environment_gate(routes, materials, env,
                                                 material_props)
     env_exclusions = verdict.env_exclusions or direct_exclusions
-    # The class's own grade the environment ruled out before pricing (routing re-ranked
-    # the route into a grade it allows): still cited, with the same words.
-    replaced = {item["env_replaced"].name: item["env_replaced"] for item in elig if item.get("env_replaced")}
-    if replaced:
-        rprops = {n: (asdict(cast("DataclassInstance", m)) if is_dataclass(m) else {"name": n})
-                  for n, m in replaced.items()}
-        _g2, extra = environment_gate([], list(replaced), env, rprops)
-        have = {f.axis for f in env_exclusions}
-        env_exclusions = tuple(env_exclusions) + tuple(f for f in extra if f.axis not in have)
 
     # Per-process marginal-rate override from each PASSING route's fitted machine.
     machine_override_by_pv: dict = {}
@@ -986,16 +707,12 @@ def _build_verification(elig, drivers, options, rates, specs=None):
         if not res:
             continue
         rate = res.get("hourly_rate_usd")
-        if (res.get("build_env_mm") or res.get("blank_outside")
-                or (isinstance(rate, (int, float)) and not isinstance(rate, bool))):
+        if res.get("build_env_mm") or (isinstance(rate, (int, float)) and not isinstance(rate, bool)):
             machine_override_by_pv[pv] = {
                 "hourly_rate_usd": rate,
                 "capital_frac": res.get("capital_frac"),
                 "machine_name": res.get("machine"),
                 **({"build_env_mm": res["build_env_mm"]} if res.get("build_env_mm") else {}),
-                # me-02 (D1): a press brake with no cutting machine in the shop bends
-                # in-house and has the blank cut outside (cost_model prices that line).
-                **({"blank_outside": True} if res.get("blank_outside") else {}),
                 # Persistence does not turn a user declaration into calibration.
                 "provenance": Provenance.USER,
             }
@@ -1020,9 +737,9 @@ def _build_verification(elig, drivers, options, rates, specs=None):
     env_excluded = {
         "reason_by_pv": reason_by_pv,
         "excluded_pv": set(reason_by_pv.keys()),
-        "note": (_env_decision_note(env, sorted(set(excluded_materials) | set(replaced)),
+        "note": (_env_decision_note(env, sorted(excluded_materials),
                                     sorted(excluded_routes))
-                 if reason_by_pv or replaced else None),
+                 if reason_by_pv else None),
     }
 
     verification = _serialize_verification(verdict, options, env_exclusions)
@@ -1034,10 +751,9 @@ def _serialize_verification(verdict, options, env_exclusions=()) -> dict:
 
     Honest by construction: negative/unknown verdicts are FIRST-CLASS (``unknown``
     when no inventory is declared, ``makeable_not_on_owned`` with a concrete gap,
-    ``makeable_outsource_only``, ``environment_excluded``, ``not_makeable`` — incl.
-    a route whose own DFM verdict is fail, with its ``dfm`` blockers); a machine
-    fit is a MEASURED-geometry × USER-capability comparison, never a fabricated
-    pass.
+    ``makeable_outsource_only``, ``environment_excluded``, ``not_makeable``); a
+    machine fit is a MEASURED-geometry × USER-capability comparison, never a
+    fabricated pass.
     """
     per_route: dict = {}
     for pv, info in verdict.per_route.items():
@@ -1052,22 +768,6 @@ def _serialize_verification(verdict, options, env_exclusions=()) -> dict:
             entry["machine_rate_usd"] = res.get("hourly_rate_usd")
             entry["capital_frac"] = res.get("capital_frac")
             entry["secondary_ops"] = list(res.get("secondary_ops", ()))
-            if res.get("maker_spec"):
-                # The fit used the maker's published values for these fields
-                # (a catalog machine kept unedited), not the shop's own.
-                entry["maker_spec"] = {"catalog": res["maker_spec"]["catalog"],
-                                       "fields": list(res["maker_spec"]["fields"])}
-            if res.get("assumed_in_house"):
-                # The machine's own post-processing (stress relief, sintering)
-                # assumed done in-house: Your shop never said it's sent out.
-                entry["assumed_in_house"] = list(res["assumed_in_house"])
-            if res.get("sent_out"):
-                entry["sent_out"] = list(res["sent_out"])
-            if res.get("notes"):
-                # What the fit didn't check or assumed, said plainly, e.g. a printer
-                # with no plate load: "weight: no plate load published or declared;
-                # build volume governs".
-                entry["notes"] = list(res["notes"])
         per_route[pv] = entry
     return {
         "verdict": verdict.verdict,
@@ -1082,15 +782,12 @@ def _serialize_verification(verdict, options, env_exclusions=()) -> dict:
         # "fits" verdict on the envelope is MEASURED-geometry × USER-capability.
         "provenance": "user",
         "note": (
-            "Machine fit compares the part's measured size and features with what was "
-            "declared for each machine. It reads \"can't confirm\" when a machine's "
-            "capabilities aren't declared or no fitting setup is established. The one "
-            "thing it assumes, and says on the fit: a shop that owns a metal printer or "
-            "binder jetter does that machine's own stress relief or sintering, unless Your "
-            "shop says it's sent out. A process that fails its design checks can't make the part "
-            "as drawn, whatever machine fits. Material exclusions cite the property or "
-            "standard. Not checked here: whether the part needs 5-axis or undercut access "
-            "comes from the process checks, not a new measurement; press force (tonnage, "
-            "taper) needs a declared force."
+            "Machine fit is a MEASURED-geometry × USER-declared-capability "
+            "comparison. 'unknown' when inventory/capabilities are undeclared or "
+            "a fitting setup remains unverified — never a fabricated pass. Environment "
+            "exclusions cite the material property/standard. Known limitations: "
+            "the 5-axis/undercut need is inherited from the upstream process "
+            "router (not re-derived from geometry); force gates (tonnage/taper) "
+            "require a declared force."
         ),
     }

@@ -114,11 +114,9 @@ async def test_log_action_propagates_commit_failure():
 
 @pytest.mark.asyncio
 async def test_api_key_creation_does_not_commit_when_audit_append_fails():
-    """The key secret is never committed without its durable creation event.
-
-    Google sign-in's key is stored and audited by ``provisioning.insert_login_key``
-    (the sign-in key rules), so the append that fails is the one it calls."""
-    from src.auth import models, provisioning
+    """The key secret is never committed without its durable creation event."""
+    from src.auth import models
+    from src.services import audit_service
 
     session = AsyncMock()
     insert_result = MagicMock()
@@ -132,7 +130,7 @@ async def test_api_key_creation_does_not_commit_when_audit_append_fails():
         "src.auth.org_context.resolve_org",
         new=AsyncMock(return_value="org-1"),
     ), patch.object(
-        provisioning,
+        audit_service,
         "append_audit_entry",
         new=AsyncMock(side_effect=RuntimeError("audit append failed")),
     ):
@@ -402,94 +400,3 @@ def test_audit_export_90_day_limit():
         )
     assert resp.status_code == 400
     assert "90" in resp.text
-
-
-# ---------------------------------------------------------------------------
-# Ordering + cursor pagination against a real (in-memory SQLite) table
-# ---------------------------------------------------------------------------
-
-
-async def _sqlite_audit_sessionmaker():
-    """In-memory SQLite with the real ``audit_log`` table shape;
-    ``query_audit_log``'s own ``select(AuditLog)`` runs unmodified against it."""
-    from src.db.models import AuditLog, Organization, User
-    from tests.sqlite_tables import sqlite_sessionmaker
-
-    return await sqlite_sessionmaker(Organization, User, AuditLog)
-
-
-async def _seed_audit(maker, n: int, base: datetime):
-    from src.db.models import AuditLog
-
-    async with maker() as s:
-        for i in range(1, n + 1):
-            s.add(
-                AuditLog(
-                    id=i,
-                    timestamp=base + timedelta(minutes=i),
-                    user_email="auditor@example.com",
-                    action=f"event.{i}",
-                    resource_type="test",
-                )
-            )
-        await s.commit()
-
-
-@pytest.mark.asyncio
-async def test_query_audit_log_returns_newest_entries_first():
-    """The JSON audit read leads with the NEWEST entries, so a bounded first page
-    (the Calibration screen shows the first 40 of a 50-row page) is the most
-    recent activity, not the oldest rows in the window."""
-    from src.services.audit_service import query_audit_log
-
-    engine, maker = await _sqlite_audit_sessionmaker()
-    try:
-        base = datetime(2026, 10, 1, tzinfo=timezone.utc)
-        await _seed_audit(maker, 5, base)
-        async with maker() as s:
-            result = await query_audit_log(
-                start=base, end=base + timedelta(days=1), limit=3, session=s
-            )
-    finally:
-        await engine.dispose()
-
-    assert [e["id"] for e in result["entries"]] == [5, 4, 3]
-    assert result["has_more"] is True
-    assert result["next_cursor"] == "3"
-
-
-@pytest.mark.asyncio
-async def test_query_audit_log_cursor_pages_back_to_the_oldest_entry():
-    """Following ``next_cursor`` walks strictly OLDER pages and reaches every entry
-    in the window exactly once, ending with has_more=False / next_cursor=None."""
-    from src.services.audit_service import query_audit_log
-
-    engine, maker = await _sqlite_audit_sessionmaker()
-    try:
-        base = datetime(2026, 10, 1, tzinfo=timezone.utc)
-        await _seed_audit(maker, 7, base)
-        pages = []
-        cursor = None
-        async with maker() as s:
-            for _ in range(10):  # bounded: a cursor bug must not loop forever
-                page = await query_audit_log(
-                    start=base,
-                    end=base + timedelta(days=1),
-                    cursor=cursor,
-                    limit=3,
-                    session=s,
-                )
-                pages.append(page)
-                cursor = page["next_cursor"]
-                if not page["has_more"]:
-                    break
-    finally:
-        await engine.dispose()
-
-    assert [[e["id"] for e in p["entries"]] for p in pages] == [
-        [7, 6, 5],
-        [4, 3, 2],
-        [1],
-    ]
-    assert [p["has_more"] for p in pages] == [True, True, False]
-    assert pages[-1]["next_cursor"] is None

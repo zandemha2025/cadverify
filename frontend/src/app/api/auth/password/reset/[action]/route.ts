@@ -2,13 +2,10 @@ import { NextResponse } from "next/server";
 import { backendUrl } from "@/lib/api-base";
 import { signedAuthProxyHeaders } from "@/lib/auth-proxy";
 import { clearSession } from "@/lib/session";
-import { crossSiteRefusal } from "@/lib/same-origin-request";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request, { params }: { params: Promise<{ action: string }> }) {
-  const crossSite = crossSiteRefusal(req);
-  if (crossSite) return crossSite;
   const { action } = await params;
   if (action !== "start" && action !== "complete") {
     return NextResponse.json({ detail: { message: "Unknown recovery action." } }, { status: 404 });
