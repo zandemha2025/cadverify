@@ -2,7 +2,9 @@
 
 The management + read surface for the versioned, effective-dated, PER-SLUG
 shop-profile asset that replaces the read-only ``data/shop_profiles/*.json`` flat
-files. Org admins draft → edit → PUBLISH a shop profile with an effective date;
+files. Org admins draft → edit a shop profile, propose it for review, and an
+admin's approval PUBLISHES it with an effective date (``governance.py``; the
+direct ``/{id}/publish`` here refuses with 403 ``review_required``, C2);
 the costing engine then binds the version in effect at estimate time for the
 requested slug as that shop's SHOP-provenance overrides (gated by
 ``SHOP_LIBRARY_ENABLED`` + a published profile for the caller's org + slug).
@@ -36,7 +38,7 @@ from src.auth.rbac import (
 )
 from src.auth.require_api_key import AuthedUser
 from src.db.engine import get_db_session
-from src.services import cost_decision_service
+from src.services import governance_service
 from src.services import shop_library_service as svc
 
 logger = logging.getLogger("cadverify.shop_library")
@@ -146,6 +148,9 @@ async def update_shop_profile_draft(
     session: AsyncSession = Depends(get_db_session),
 ):
     org_id = await _write_org(ctx, session)
+    await governance_service.refuse_edit_under_review(
+        session, org_id, governance_service.ASSET_SHOP_PROFILE, version_id
+    )
     try:
         row = await svc.update_draft(
             session,
@@ -154,6 +159,7 @@ async def update_shop_profile_draft(
             name=body.name,
             change_note=body.change_note,
             payload=body.payload,
+            edited_by=ctx.user_id,
             slug=body.slug,
         )
     except ValueError as exc:
@@ -206,24 +212,18 @@ async def publish_shop_profile(
     ctx: OrgAuthContext = Depends(require_org_role(OrgRole.admin)),
     session: AsyncSession = Depends(get_db_session),
 ):
+    """Refused: a version is published only by approving its change request
+    (``POST /api/v1/governance/change-requests`` then ``.../{id}/approve``), as
+    on the screens (C2). 404 when the version isn't in the caller's org, 409
+    when it is no longer a draft, otherwise 403 ``review_required``."""
     org_id = await _write_org(ctx, session)
-    row = await svc.publish_version(
-        session, org_id, version_id, effective_from=body.effective_from
+    row = await svc.get_version(session, org_id, version_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="version not found")
+    if row.status == "published":
+        raise HTTPException(status_code=409, detail="version already published")
+    if row.status != "draft":
+        raise HTTPException(status_code=409, detail="only draft versions can be published")
+    raise await governance_service.review_required_refusal(
+        session, org_id, governance_service.ASSET_SHOP_PROFILE, version_id, ctx.user_id
     )
-    await cost_decision_service.mark_org_decisions_stale(
-        session,
-        org_id,
-        reason=f"shop_profile_published:{getattr(row, 'slug', '')}:v{row.version}",
-        stale_at=row.effective_from,
-    )
-    from src.services.audit_service import emit_event
-
-    await emit_event(
-        session, ctx.user_id, "library.version_published", "shop_profile",
-        str(row.id),
-        {"org_id": org_id, "library": "shop", "version": row.version,
-         "slug": getattr(row, "slug", None)},
-        org_id=org_id,
-    )
-    await session.commit()
-    return svc.serialize_version(row, include_payload=True)

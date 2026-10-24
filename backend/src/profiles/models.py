@@ -27,6 +27,37 @@ class MaterialProfile:
     machinability_index: Optional[float] = None
     thermal_conductivity: Optional[float] = None  # W/m·K
     hardness_hrc: Optional[float] = None
+    # USD/kg by the form the alloy or polymer is bought in ("wrought", "powder",
+    # "sheet", "filament", ...), as the material file lists them. A process is
+    # priced at the form it consumes: src.profiles.pricing.priced_for sets
+    # ``cost_per_kg`` to that price and ``price_form`` to the form.
+    cost_per_kg_by_form: dict[str, float] = field(default_factory=dict)
+    price_form: Optional[str] = None
+
+
+# How a catalog machine's ``materials`` were read from its maker.
+MAKER_SPEC = "maker_spec"            # the maker's own list or statement
+MAKER_DESCRIBED = "maker_described"  # mapped conservatively from what the maker says it's for
+
+
+@dataclass(frozen=True)
+class MakerSpec:
+    """What the maker publishes for a catalog machine, and where it says so.
+
+    ``max_workpiece_kg`` is the maker's rated table, workpiece or chuck load.
+    ``None`` means the maker publishes none (most printers): it is never
+    estimated, and ``kg_note`` says so. ``materials_basis`` says how the
+    profile's ``materials`` were read (``MAKER_SPEC`` or ``MAKER_DESCRIBED``),
+    with the page in ``materials_url`` (else ``source_url``).
+    """
+
+    source_url: str
+    max_workpiece_kg: Optional[float] = None
+    kg_note: str = ""
+    materials_basis: Optional[str] = None
+    materials_url: Optional[str] = None
+    materials_note: str = ""
+    checked: str = ""  # ISO date the maker's page was read
 
 
 @dataclass
@@ -40,6 +71,7 @@ class MachineProfile:
     resolution_xy: Optional[float] = None     # mm
     materials: list[str] = field(default_factory=list)
     notes: str = ""
+    spec: Optional[MakerSpec] = None
 
 
 @dataclass

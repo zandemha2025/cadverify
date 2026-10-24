@@ -36,11 +36,13 @@ def _build_app():
     from fastapi import FastAPI
 
     from src.api.shop_library import router as shop_library_router
+    from src.api.governance import router as governance_router
     from src.auth.rate_limit import limiter
 
     app = FastAPI()
     app.state.limiter = limiter
     app.include_router(shop_library_router, prefix="/api/v1/shop-library")
+    app.include_router(governance_router, prefix="/api/v1/governance")
     return app
 
 
@@ -50,6 +52,21 @@ def _act_as(app, user_id: int) -> None:
     app.dependency_overrides[require_api_key] = lambda: AuthedUser(
         user_id=user_id, api_key_id=0, key_prefix="session", role="analyst"
     )
+
+
+async def _publish(c, vid: int) -> dict:
+    """Publish through review, the only way in (C2): a direct publish is refused,
+    then the org's only admin proposes and approves it (self-approved)."""
+    r = await c.post(f"/api/v1/shop-library/{vid}/publish", json={})
+    assert r.status_code == 403, r.text
+    assert r.json()["detail"]["code"] == "review_required"
+    r = await c.post("/api/v1/governance/change-requests",
+                     json={"asset_type": "shop_profile", "target_version_id": vid})
+    assert r.status_code == 200, r.text
+    r = await c.post(f"/api/v1/governance/change-requests/{r.json()['id']}/approve")
+    assert r.status_code == 200, r.text
+    assert r.json()["change_request"]["self_approved"] is True
+    return r.json()["published_version"]
 
 
 @_requires_pg
@@ -131,10 +148,9 @@ async def test_shop_library_lifecycle_isolation_and_honesty(monkeypatch):
         r = await c.patch(f"/api/v1/shop-library/{v1_id}", json={"payload": payload})
         assert r.status_code == 200, r.text
 
-        r = await c.post(f"/api/v1/shop-library/{v1_id}/publish", json={})
-        assert r.status_code == 200, r.text
-        assert r.json()["status"] == "published"
-        assert r.json()["effective_from"] is not None
+        published = await _publish(c, v1_id)
+        assert published["status"] == "published"
+        assert published["effective_from"] is not None
 
         # now the governed profile resolves for slug1 with the edited rate
         async with eng.get_session_factory()() as s:
@@ -150,8 +166,7 @@ async def test_shop_library_lifecycle_isolation_and_honesty(monkeypatch):
         assert r.status_code == 200, r.text
         v2_id = r.json()["id"]
         assert r.json()["version"] == 2 and r.json()["slug"] == slug2
-        r = await c.post(f"/api/v1/shop-library/{v2_id}/publish", json={})
-        assert r.status_code == 200, r.text
+        await _publish(c, v2_id)
 
         async with eng.get_session_factory()() as s:
             # slug1 and slug2 resolve to their OWN payloads (no cross-slug leak)
@@ -173,8 +188,7 @@ async def test_shop_library_lifecycle_isolation_and_honesty(monkeypatch):
         )
         v3_id = r.json()["id"]
         assert r.json()["slug"] == slug1  # inherits the source slug
-        r = await c.post(f"/api/v1/shop-library/{v3_id}/publish", json={})
-        assert r.status_code == 200, r.text
+        await _publish(c, v3_id)
 
         r = await c.get("/api/v1/shop-library")
         by_id = {v["id"]: v for v in r.json()["versions"]}

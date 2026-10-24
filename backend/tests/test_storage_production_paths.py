@@ -87,8 +87,13 @@ async def test_parts_master_zip_requests_use_isolated_object_namespaces(tmp_path
 
     first = tmp_path / "first.zip"
     second = tmp_path / "second.zip"
-    first.write_bytes(b"zip")
-    second.write_bytes(b"zip")
+    # Real (empty) archives: onboarding reads the ZIP directory for its caps
+    # before anything is extracted.
+    import zipfile
+
+    for path in (first, second):
+        with zipfile.ZipFile(path, "w"):
+            pass
 
     with (
         patch(

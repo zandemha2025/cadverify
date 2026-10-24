@@ -323,7 +323,7 @@ def post_label(body: LabelIn, request: Request):
     )
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    record = {
+    record: dict[str, Union[str, float]] = {
         "part_id": body.part_id,
         "label": body.label,
         "labeler": labeler,

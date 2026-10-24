@@ -74,7 +74,11 @@ services:
       - "6379:6379"
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        # Set NEXT_PUBLIC_UI_V4=1 in .env to build the v4 screens at /app (off by default).
+        NEXT_PUBLIC_UI_V4: ${NEXT_PUBLIC_UI_V4:-}
     ports:
       - "3000:3000"
     # Same .env as the backend so shared auth material (AUTH_PROXY_SECRET) and

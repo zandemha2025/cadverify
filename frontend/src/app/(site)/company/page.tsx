@@ -2,11 +2,11 @@ import type { Metadata } from "next";
 import { DocumentPage } from "@/components/site/document-page";
 import { PilotForm } from "./pilot-form";
 
-export const metadata: Metadata = {"title": "Company & contact — ScaleCad", "description": "ScaleCad brings manufacturing evidence into the working conversation: what can be made, what needs attention, and what resources a decision depends on.", "alternates": {"canonical": "/company"}};
+export const metadata: Metadata = {"title": "Company & contact — ScaleCAD", "description": "ScaleCAD brings manufacturing evidence into the working conversation: what can be made, what needs attention, and what resources a decision depends on.", "alternates": {"canonical": "/company"}};
 
 export default async function Page({ searchParams }: { searchParams: Promise<{ workflow?: string }> }) {
   const { workflow } = await searchParams;
-  return <DocumentPage label="Company & contact" title="Make the decision easier to explain." intro="ScaleCad brings manufacturing evidence into the working conversation: what can be made, what needs attention, and what resources a decision depends on." sections={[
+  return <DocumentPage label="Company & contact" title="Make the decision easier to explain." intro="ScaleCAD brings manufacturing evidence into the working conversation: what can be made, what needs attention, and what resources a decision depends on." sections={[
   {
     "id": "approach",
     "title": "Built around the questions teams actually ask.",
@@ -28,7 +28,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ w
   {
     "id": "human",
     "title": "Nazeem Ahmed · Founder",
-    "body": "I’m Nazeem Ahmed, the founder of ScaleCad. Talk with me about your manufacturing decisions, the data behind them and whether a pilot fits your plant. Reach me at nazeem@scalecad.ai.",
+    "body": "I’m Nazeem Ahmed, the founder of ScaleCAD. Talk with me about your manufacturing decisions, the data behind them and whether a pilot fits your plant. Reach me at nazeem@scalecad.ai.",
     "href": "mailto:nazeem@scalecad.ai",
     "link": "Email Nazeem"
   }

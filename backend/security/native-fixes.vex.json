@@ -2,8 +2,8 @@
   "@context": "https://openvex.dev/ns/v0.2.0",
   "@id": "https://github.com/zandemha2025/cadverify/blob/main/backend/security/native-fixes.vex.json",
   "author": "ScaleCad",
-  "timestamp": "2026-10-08T23:28:00Z",
-  "version": 3,
+  "timestamp": "2026-10-23T22:30:00Z",
+  "version": 4,
   "statements": [
     {
       "vulnerability": {
@@ -58,6 +58,18 @@
       ],
       "status": "fixed",
       "status_notes": "Debian libxrender 1:0.9.12-1 rebuilt with upstream patch 0564bce5446550c1b1681f3d8a933c20ea1455f7. Patch SHA256 565e816e88ca223cebc6f833cfcfa63d20aaa22c8293d878bdd059910c4a66fc is enforced before compilation; XRenderQueryFormats rejects numSubpixel greater than numScreens."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-111497"
+      },
+      "products": [
+        {
+          "@id": "pkg:deb/debian/libbrotli1@1.1.0-2%2Bdeb13u1"
+        }
+      ],
+      "status": "fixed",
+      "status_notes": "The runtime image installs Debian's security update libbrotli1 1.1.0-2+deb13u1 (trixie-security), whose quilt series applies the upstream decoder fix da980636 (Detect-and-report-invalid-stream-earlier.patch). The installed libbrotlidec.so carries the new _ERROR_FORMAT_BLOCK_SWITCH error code, i.e. the fix is present. Trivy still reports CVE-2026-111497 as affected with no fixed version because its vulnerability DB has not yet recorded the Debian fix for this freshly published CVE; this statement asserts the installed version is fixed. Remove once Trivy's Debian data lists the fixed version. Debian tracker: https://security-tracker.debian.org/tracker/CVE-2026-111497."
     }
   ]
 }

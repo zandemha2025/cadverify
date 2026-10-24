@@ -74,7 +74,8 @@ function humanizeDriver(name: string): string {
     material_cost: "Material price",
     cycle_time: "Cycle time",
     finishing_cost: "Finishing",
-    tooling_cost: "Tooling",
+    tooling_cost: "Tooling, the whole tool",
+    tooling_per_part: "Tooling, a part",
   };
   if (known[name]) return known[name];
   return name

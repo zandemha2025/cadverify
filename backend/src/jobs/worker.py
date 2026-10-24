@@ -12,20 +12,25 @@ from src.jobs.batch_tasks import (
     BATCH_ITEM_MAX_ATTEMPTS,
     DIRECT_UPLOAD_PREP_MAX_TRIES,
     DIRECT_UPLOAD_PREP_TIMEOUT_SECONDS,
+    JOB_TIMEOUT_SECONDS,
     direct_upload_prep_concurrency,
     dispatch_webhook,
     prepare_direct_upload_batch,
     reconcile_terminal_batch_items,
+    rekick_batch_coordinators,
     run_batch_coordinator,
     run_batch_item,
     sweep_expired_direct_uploads,
     sweep_orphaned_batches,
 )
 from src.jobs.heartbeat import worker_heartbeat, write_heartbeat
-from src.jobs.arq_backend import reconcile_queued_jobs
+from src.jobs.arq_backend import job_deserializer, job_serializer, reconcile_queued_jobs
 from src.jobs.reconstruction_tasks import run_reconstruction_job
 from src.jobs.design_tasks import run_design_generation_job
+from src.jobs.data_deletion_tasks import run_data_deletion, sweep_data_deletions
 from src.jobs.tasks import run_sam3d_job
+from src.jobs.stored_check_tasks import run_stored_check, sweep_stalled_stored_checks
+from src.services.stored_check_service import STORED_CHECK_JOB_TIMEOUT_SECONDS
 from src.config.production import assert_production_operations
 from src.services.customer_sync import sync_customer_accounts
 
@@ -38,6 +43,18 @@ assert_production_operations()
 
 async def startup(ctx: dict) -> None:
     """Worker startup: load SAM-3D model into memory and init DB."""
+    # First: a default thread pool sized for every blocking call the worker can
+    # have running, so a DB host lookup never queues behind parses (executor.py).
+    from src.jobs.executor import install_worker_executor
+
+    install_worker_executor(asyncio.get_running_loop())
+    # CAD work waits for room in the compute budget; in the worker it never fails for it.
+    from src.services import compute_budget
+
+    compute_budget.worker_process()
+    _cb = compute_budget.budget().snapshot()
+    logger.info("compute budget: %d MB, %d slots", _cb["capacity_bytes"] // (1024 * 1024), _cb["slots"])
+
     from src.segmentation.sam3d.config import SAM3DConfig
     from src.segmentation.sam3d.pipeline import _get_backbone
 
@@ -79,6 +96,15 @@ async def startup(ctx: dict) -> None:
 
     await init_engine()
     ctx["db_engine"] = True
+    # Batches stored before webhook signing secrets were sealed: seal them once.
+    try:
+        from src.services.webhook_service import seal_plaintext_webhook_secrets
+
+        sealed_secrets = await seal_plaintext_webhook_secrets()
+        if sealed_secrets:
+            logger.info("sealed %d stored webhook signing secrets", sealed_secrets)
+    except Exception:  # pragma: no cover - never block boot; deliveries re-save them
+        logger.exception("could not seal stored webhook signing secrets")
     try:
         design_concurrency = int(os.getenv("DESIGN_GENERATION_CONCURRENCY", "2"))
     except ValueError:
@@ -129,6 +155,10 @@ class WorkerSettings:
         dispatch_webhook,
         run_reconstruction_job,
         run_design_generation_job,
+        run_data_deletion,
+        # A big file checked from its stored upload: its own ceiling, one try
+        # (a retry would re-download and re-parse the whole file).
+        func(run_stored_check, timeout=STORED_CHECK_JOB_TIMEOUT_SECONDS, max_tries=1),
     ]
     # Periodic orphan sweep (F-ARCH-1): reap batches stuck in pending/processing.
     # Runs every 5 minutes and once at worker startup as a backstop.
@@ -148,6 +178,14 @@ class WorkerSettings:
             minute=set(range(0, 60, 5)),
             run_at_startup=True,
         ),
+        # A running batch whose coordinator chain stopped ticking (its next job
+        # was lost with Redis, or could not be queued) gets a new coordinator.
+        cron(
+            rekick_batch_coordinators,
+            minute=set(range(60)),
+            second={30},
+            run_at_startup=True,
+        ),
         cron(
             reconcile_terminal_batch_items,
             minute=set(range(0, 60, 5)),
@@ -158,6 +196,21 @@ class WorkerSettings:
         cron(
             sweep_expired_direct_uploads,
             minute=set(range(0, 60, 5)),
+            run_at_startup=True,
+        ),
+        # Finish removing stored files of deletions the API couldn't finish,
+        # and give each deleted organization's prefixes their final pass.
+        cron(
+            sweep_data_deletions,
+            minute=set(range(0, 60, 5)),
+            run_at_startup=True,
+        ),
+        # A big file's check whose worker died (restart, out of memory) ends
+        # as interrupted instead of "checking" forever.
+        cron(
+            sweep_stalled_stored_checks,
+            minute=set(range(60)),
+            second={50},
             run_at_startup=True,
         ),
         # Lightweight worker liveness heartbeat (every minute) so /health/deep
@@ -172,6 +225,10 @@ class WorkerSettings:
     on_startup = startup
     on_shutdown = shutdown
     redis_settings = RedisSettings.from_dsn(os.getenv("REDIS_URL", "redis://localhost:6379"))
+    # The same JSON encoding as the API's enqueue pool (arq_backend): a payload
+    # that is not JSON, such as a pickle, fails to decode and never runs.
+    job_serializer = job_serializer
+    job_deserializer = job_deserializer
     max_jobs = 12
     # 10 min per-job ceiling (SAM-07). arq wraps every job in
     # asyncio.wait_for(task, job_timeout) and CANCELS it at the deadline, so no
@@ -180,7 +237,7 @@ class WorkerSettings:
     # loop -- each tick finishes in milliseconds, well inside this ceiling, and a
     # long batch is driven by the chain of ticks. A dead chain is reaped by the
     # heartbeat-based orphan sweeper.
-    job_timeout = 600
+    job_timeout = JOB_TIMEOUT_SECONDS
     health_check_interval = 30
     health_check_key = os.getenv("ARQ_HEALTH_KEY", "arq:queue:health-check")
     retry_jobs = True

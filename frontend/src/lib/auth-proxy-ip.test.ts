@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { cloudFrontViewerIp, requestClientIp } from "./auth-proxy-ip.ts";
+import { cloudFrontViewerIp, requestClientIp, requestUserAgent } from "./auth-proxy-ip.ts";
 
 function request(headers: Record<string, string>): Pick<Request, "headers"> {
   return { headers: new Headers(headers) };
@@ -60,3 +60,17 @@ test("a released web server may name render as its client-IP source", async () =
   assert.match(source, /new Set\(\["fly", "nginx", "cloudfront", "render"\]\)/);
 });
 
+test("auth requests carry the browser's user agent so a sign-in row names the browser", () => {
+  const ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6) AppleWebKit/605.1.15 Safari/605.1.15";
+  assert.deepEqual(requestUserAgent(request({ "user-agent": ua })), { "user-agent": ua });
+  assert.deepEqual(requestUserAgent(request({})), {});
+  assert.equal(requestUserAgent(request({ "user-agent": "x".repeat(900) }))["user-agent"].length, 500);
+});
+
+test("the signed auth proxy headers include the browser's user agent, with or without the secret", async () => {
+  const { readFileSync } = await import("node:fs");
+  const source = readFileSync(new URL("./auth-proxy.ts", import.meta.url), "utf8");
+  assert.match(source, /const browser = requestUserAgent\(req\);/);
+  assert.match(source, /if \(!secret \|\| !ip\) return browser;/);
+  assert.match(source, /return \{\n    \.\.\.browser,/);
+});

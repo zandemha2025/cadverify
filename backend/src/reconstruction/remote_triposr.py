@@ -83,13 +83,14 @@ def _mesh_output_url(output: object) -> str:
     """Extract one provider mesh URL without accepting arbitrary nested data."""
     if isinstance(output, str):
         return _trusted_output_url(output)
+    candidates: list[str]
     if isinstance(output, list):
         candidates = [item for item in output if isinstance(item, str)]
     elif isinstance(output, dict):
         candidates = [
-            output.get(key)
+            value
             for key in ("mesh", "model", "stl", "obj", "glb", "output")
-            if isinstance(output.get(key), str)
+            if isinstance(value := output.get(key), str)
         ]
     else:
         candidates = []

@@ -17,6 +17,7 @@ against live Postgres and asserts cross-tenant isolation.
 """
 from __future__ import annotations
 
+import itertools
 import json
 import os
 import uuid
@@ -105,8 +106,9 @@ def _row(part_key, *, analysis=None, cost=None):
 
 
 def test_process_label_known_and_fallback():
-    assert svc.process_label("cnc_3axis") == "CNC Milling (3-axis)"
-    assert svc.process_label("injection_molding") == "Injection Molding"
+    assert svc.process_label("cnc_3axis") == "3-axis milling"
+    assert svc.process_label("injection_molding") == "Injection molding"
+    assert svc.process_label("fdm") == "Filament printing (FDM/FFF)"
     # unknown id → titleized fallback, never dropped
     assert svc.process_label("some_new_proc") == "Some New Proc"
     assert svc.process_label(None) == "Unrouted"
@@ -193,10 +195,10 @@ def test_rollup_counts_per_process_are_correct():
     by = {p["process"]: p for p in out["by_process"]}
     # cnc_3axis: m-mk-cnc + m-nr-cnc + m-unk-costed = 3 routed
     assert by["cnc_3axis"]["count"] == 3
-    assert by["cnc_3axis"]["label"] == "CNC Milling (3-axis)"
+    assert by["cnc_3axis"]["label"] == "3-axis milling"
     # injection_molding: m-mk-im = 1 routed
     assert by["injection_molding"]["count"] == 1
-    assert by["injection_molding"]["label"] == "Injection Molding"
+    assert by["injection_molding"]["label"] == "Injection molding"
     # the no-route unknown contributes to no process
     assert set(by) == {"cnc_3axis", "injection_molding"}
     # sorted by count desc then id
@@ -263,8 +265,23 @@ def test_rollup_program_grouping_is_additive_and_honest():
 # ---------------------------------------------------------------------------
 
 
+_ROW_IDS = itertools.count(1)
+
+
+def _table_read(stmt_text: str, rows: list):
+    """Answer the fold's three reads of a table: its rows (no result_json), the
+    slim result inputs of the kept ids, and for costs whether each is a what-if
+    (``current_price_clause``: no ``what_if`` key in the result)."""
+    if "result_json" not in stmt_text:
+        return rows
+    if "is null" in stmt_text:
+        return [(r.id, r.ulid, not (isinstance(r.result_json, dict) and "what_if" in r.result_json)) for r in rows]
+    return [(r.id, r.ulid, r.result_json) for r in rows]
+
+
 class _Row:
     def __init__(self, mesh, result_json, *, ulid=None, ts=None):
+        self.id = next(_ROW_IDS)
         self.mesh_hash = mesh
         self.ulid = ulid or f"ul-{mesh}"
         self.filename = f"{mesh}.stl"
@@ -297,8 +314,8 @@ class _FakeSession:
         if "part_contexts" in s:
             return _FakeResult([])
         if "cost_decisions" in s:
-            return _FakeResult(self._cost)
-        return _FakeResult(self._an)
+            return _FakeResult(_table_read(s, self._cost))
+        return _FakeResult(_table_read(s, self._an))
 
 
 @pytest.mark.asyncio

@@ -1,0 +1,33 @@
+/* A supplier's view of a share link (./shared-cost.tsx, ./shared-package.tsx, ./shared-frame.tsx). */
+.ob .h-sent{margin-left:auto;color:var(--ink3);font-size:12.5px}
+.ob .sp-note{margin:4px 12px 8px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:13.5px;color:var(--ink)}
+.ob .sp-specs{margin:2px 0 8px;padding:0 12px 0 30px;display:flex;flex-direction:column;gap:3px;font-size:13.5px}
+.ob .sp-specs li{overflow-wrap:anywhere}
+.ob .sp-line{margin:2px 12px 8px;color:var(--ink3);font-size:12.5px}
+.ob .sp-dl{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:6px 12px 10px}
+.ob .sp-dl b{display:block;font-weight:600;font-size:13.5px;overflow-wrap:anywhere}
+.ob .sp-dl small{display:block;color:var(--ink3);font-size:12.5px}
+.ob .sp-page{height:auto;min-height:calc(100dvh - 56px)}
+.ob .sp-wrap{width:min(860px,100%);margin:0 auto;padding:24px 16px 48px;display:flex;flex-direction:column;gap:14px}
+.ob .sp-head{padding:18px 20px}
+.ob .sp-head h1{margin:0 0 2px;font-family:var(--v4-disp);font-size:24px;font-weight:600;letter-spacing:-.01em}
+.ob .sp-head .figs{margin:12px 0}
+.ob .sp-kv{display:grid;grid-template-columns:minmax(96px,auto) minmax(0,1fr);gap:4px 12px;font-size:13.5px;margin:4px 0 8px}
+.ob .sp-kv span{color:var(--ink3)}
+.ob .sp-kv b{font-weight:600;overflow-wrap:anywhere}
+.ob .sp-head .sp-note{margin:8px 0;padding:10px 12px;border-radius:12px;background:#F4F5F7}
+.ob .sp-acts{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:6px}
+.ob .sp-acts .sp-line{margin:0}
+.ob .sp-part{padding:10px 12px;border-top:1px solid rgba(20,24,31,.07)}
+.ob .sp-part:first-of-type{border-top:0}
+.ob .sp-ph{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;margin-bottom:4px}
+.ob .sp-ph b{display:block;font-weight:600;font-size:14px;overflow-wrap:anywhere}
+.ob .sp-ph small{display:block;color:var(--ink3);font-size:12.5px}
+.ob .sp-part .sp-specs{padding-left:18px;margin:2px 0 4px}
+.ob .sp-part .sp-line{margin:2px 0}
+@media (max-width:560px){
+  .ob .sp-wrap{padding:12px 10px 32px}
+  .ob .sp-head{padding:14px}
+  .ob .sp-head h1{font-size:20px}
+  .ob .sp-ph{grid-template-columns:minmax(0,1fr)}
+}

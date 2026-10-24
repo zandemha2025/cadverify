@@ -209,6 +209,9 @@ async def test_deep_production_storage_is_a_real_health_gate(monkeypatch):
         "expected": True,
         "backend": "s3",
         "error": "RuntimeError",
+        # Region and per-write KMS encryption come from configuration (neither set here).
+        "region": None,
+        "encryption": None,
     }
 
 

@@ -35,11 +35,13 @@ def _build_app():
     from fastapi import FastAPI
 
     from src.api.rate_library import router as rate_library_router
+    from src.api.governance import router as governance_router
     from src.auth.rate_limit import limiter
 
     app = FastAPI()
     app.state.limiter = limiter
     app.include_router(rate_library_router, prefix="/api/v1/rate-library")
+    app.include_router(governance_router, prefix="/api/v1/governance")
     return app
 
 
@@ -49,6 +51,21 @@ def _act_as(app, user_id: int) -> None:
     app.dependency_overrides[require_api_key] = lambda: AuthedUser(
         user_id=user_id, api_key_id=0, key_prefix="session", role="analyst"
     )
+
+
+async def _publish(c, vid: int) -> dict:
+    """Publish through review, the only way in (C2): a direct publish is refused,
+    then the org's only admin proposes and approves it (self-approved)."""
+    r = await c.post(f"/api/v1/rate-library/{vid}/publish", json={})
+    assert r.status_code == 403, r.text
+    assert r.json()["detail"]["code"] == "review_required"
+    r = await c.post("/api/v1/governance/change-requests",
+                     json={"asset_type": "rate_card", "target_version_id": vid})
+    assert r.status_code == 200, r.text
+    r = await c.post(f"/api/v1/governance/change-requests/{r.json()['id']}/approve")
+    assert r.status_code == 200, r.text
+    assert r.json()["change_request"]["self_approved"] is True
+    return r.json()["published_version"]
 
 
 @_requires_pg
@@ -126,10 +143,9 @@ async def test_rate_library_lifecycle_isolation_and_honesty(monkeypatch):
         )
         assert r.status_code == 200, r.text
 
-        r = await c.post(f"/api/v1/rate-library/{v1_id}/publish", json={})
-        assert r.status_code == 200, r.text
-        assert r.json()["status"] == "published"
-        assert r.json()["effective_from"] is not None
+        published = await _publish(c, v1_id)
+        assert published["status"] == "published"
+        assert published["effective_from"] is not None
 
         # now the engine consumes it
         r = await c.get("/api/v1/rate-library/effective")
@@ -143,8 +159,7 @@ async def test_rate_library_lifecycle_isolation_and_honesty(monkeypatch):
         r = await c.post("/api/v1/rate-library", json={"from_version_id": v1_id})
         v2_id = r.json()["id"]
         assert r.json()["version"] == 2
-        r = await c.post(f"/api/v1/rate-library/{v2_id}/publish", json={})
-        assert r.status_code == 200, r.text
+        await _publish(c, v2_id)
 
         r = await c.get("/api/v1/rate-library")
         versions = {v["version"]: v for v in r.json()["versions"]}
@@ -269,8 +284,7 @@ async def test_rate_library_governance_discard_archive_diff(monkeypatch):
         payload1 = v1["payload"]
         payload1["global"]["labor_rate"] = 35.0
         await c.patch(f"/api/v1/rate-library/{v1_id}", json={"payload": payload1})
-        r = await c.post(f"/api/v1/rate-library/{v1_id}/publish", json={})
-        assert r.status_code == 200, r.text
+        await _publish(c, v1_id)
 
         # discarding a PUBLISHED version is a 409 (audit trail)
         r = await c.delete(f"/api/v1/rate-library/{v1_id}")
@@ -287,8 +301,7 @@ async def test_rate_library_governance_discard_archive_diff(monkeypatch):
         r = await c.post(f"/api/v1/rate-library/{v1_id}/archive", json={})
         assert r.status_code == 409, r.text
 
-        r = await c.post(f"/api/v1/rate-library/{v2_id}/publish", json={})
-        assert r.status_code == 200, r.text  # closes v1's effective_to
+        await _publish(c, v2_id)  # closes v1's effective_to
 
         # v1 is now superseded (closed) — archiving it is fine
         r = await c.post(f"/api/v1/rate-library/{v1_id}/archive", json={})

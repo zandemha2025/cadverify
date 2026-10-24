@@ -25,7 +25,7 @@ import secrets
 import time
 from dataclasses import dataclass
 from functools import lru_cache
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 import redis.asyncio as aioredis
 import resend
@@ -33,7 +33,7 @@ from fastapi import APIRouter, Form, HTTPException, Query, Request, Response
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
-from src.auth.client_ip import client_ip, require_auth_proxy_if_enabled
+from src.auth.client_ip import client_ip, client_user_agent, require_auth_proxy_if_enabled
 from src.auth.dashboard_session import session_cookie_domain, set_session_cookie, sign
 from src.auth.disposable import classify, normalize_email
 from src.auth.disposable_list import get_soft_flag_set
@@ -49,6 +49,7 @@ from src.auth.signup_limits import (
     ip_signup_limit_enabled,
     per_email_magic_link_limit,
     per_ip_signup_limit,
+    release_slots,
 )
 from src.auth.turnstile import verify_turnstile
 
@@ -56,6 +57,28 @@ router = APIRouter()
 TTL = 15 * 60  # 15 minutes per D-03
 logger = logging.getLogger(__name__)
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+# Where to land after sign-in: a same-site path only (no scheme, host, "//",
+# backslash or fragment), so the emailed link can never redirect off-site.
+_NEXT_RE = re.compile(r"^/(?![/\\])[A-Za-z0-9\-._~/?=&%]{0,511}$")
+
+
+def _safe_next(raw: object) -> str:
+    """A plain local path, or "" (the link then carries no ``next``).
+
+    The web page runs ``next`` through the WHATWG URL parser, which removes dot
+    segments and decodes ``%2e``: ``/.//evil.example`` and ``/a/..//x`` become
+    ``//evil.example``, another site. So "//", a backslash or a dot segment
+    anywhere in the path, raw or percent-decoded, refuses the value.
+    """
+    # Direct (non-HTTP) callers pass FastAPI's Form() default object.
+    value = raw.strip() if isinstance(raw, str) else ""
+    if not _NEXT_RE.match(value):
+        return ""
+    path = value.split("?", 1)[0]
+    for form in (path, unquote(path)):
+        if "//" in form or "\\" in form or any(seg in (".", "..") for seg in form.split("/")):
+            return ""
+    return value
 
 
 def _err(status: int, code: str, message: str) -> HTTPException:
@@ -80,6 +103,36 @@ class MagicLogin:
     redirect: str
     key_prefix: str | None = None
     mint_once: str | None = None
+    # Two-step sign-in owed: "verify" or "setup", with its signed challenge.
+    two_step: str | None = None
+    challenge: str | None = None
+
+
+async def _two_step_login(email_norm: str) -> MagicLogin | None:
+    """An existing account that owes a code gets a challenge, not provisioning.
+
+    Such an account already has its org and keys, so nothing is provisioned
+    (no key is minted whose secret could only be shown before the code), and
+    auth.login is written once the code is checked.
+    """
+    from src.auth.models import _account_deactivated
+    from src.auth.two_step import make_challenge, requirement_for_email
+
+    found = await requirement_for_email(email_norm)
+    if found is None:
+        return None
+    user_id, active, version, purpose = found
+    if not active:
+        raise _account_deactivated()
+    if purpose is None:
+        return None
+    return MagicLogin(
+        user_id=user_id,
+        session_version=version,
+        redirect="/login/two-step",
+        two_step=purpose,
+        challenge=make_challenge(user_id, version, purpose, "email_link"),
+    )
 
 
 def _secret() -> bytes:
@@ -240,8 +293,9 @@ def _dashboard_url(path: str) -> str:
     return f"{os.environ['DASHBOARD_ORIGIN'].rstrip('/')}{path}"
 
 
-async def _consume(token: str) -> MagicLogin:
-    """Atomically consume a token and provision its user/session once."""
+async def _consume(token: str, request: Request | None = None) -> MagicLogin:
+    """Atomically consume a token and provision its user/session once. The
+    sign-in row records where it came from (``request``), never the token."""
     email_norm = _verify(token)
     if email_norm is None:
         raise _err(400, "magic_link_invalid", "Magic link invalid or expired.")
@@ -266,11 +320,16 @@ async def _consume(token: str) -> MagicLogin:
         logger.warning("Could not clear consumed magic-link active pointer")
 
     try:
+        owed = await _two_step_login(email_norm)
+        if owed is not None:
+            return owed
         login = await provision_authenticated_login(
             email=email_norm,
             provider="magic_link",
             key_name="Default",
             default_role="analyst",
+            ip_address=client_ip(request) if request is not None else None,
+            user_agent=client_user_agent(request),
         )
         if login.key_token is None:
             return MagicLogin(
@@ -314,34 +373,42 @@ async def magic_start(
     request: Request,
     email: str = Form(..., max_length=320),
     cf_turnstile_response: str = Form(..., min_length=1, max_length=4096),
+    next_path: str = Form("", alias="next", max_length=512),
 ):
     # AUTH-08: cheapest check first (per-IP window), then Turnstile, then
     # per-email window. Hard-reject throwaway domains; soft-flag disposables
-    # into a tighter 1/7d cap (D-11 override).
+    # into a tighter 1/7d cap (D-11 override). Only a link that goes out
+    # counts: a refusal by any later check, or a failed send, gives the
+    # network and email slots back.
     email_clean = (email or "").strip()
     if len(email_clean) > 320 or not _EMAIL_RE.match(email_clean):
         raise _err(400, "invalid_email", "Enter a valid email address.")
+    counted: list[str] = []
     if ip_signup_limit_enabled():
-        await per_ip_signup_limit(request)
-    await verify_turnstile(
-        cf_turnstile_response,
-        client_ip(request),
-    )
-    email_norm = normalize_email(email_clean)
-    soft_set = await get_soft_flag_set()
-    verdict = classify(email_norm, soft_set)
-    if verdict == "hard_reject":
-        raise HTTPException(
-            400,
-            detail={
-                "code": "email_domain_blocked",
-                "message": "Signups from this email domain are not allowed.",
-                "doc_url": error_doc_url("email_domain_blocked"),
-            },
+        counted.append(await per_ip_signup_limit(request))
+    try:
+        await verify_turnstile(
+            cf_turnstile_response,
+            client_ip(request),
         )
-    await per_email_magic_link_limit(
-        email_norm, soft_flagged=(verdict == "soft_flag")
-    )
+        email_norm = normalize_email(email_clean)
+        soft_set = await get_soft_flag_set()
+        verdict = classify(email_norm, soft_set)
+        if verdict == "hard_reject":
+            raise HTTPException(
+                400,
+                detail={
+                    "code": "email_domain_blocked",
+                    "message": "Signups from this email domain are not allowed.",
+                    "doc_url": error_doc_url("email_domain_blocked"),
+                },
+            )
+        counted.append(await per_email_magic_link_limit(
+            email_norm, soft_flagged=(verdict == "soft_flag")
+        ))
+    except HTTPException:
+        await release_slots(counted)
+        raise
     token = _mint(email_norm)
     key = _token_key(token, email_norm)
     active_key = _active_token_key(email_norm)
@@ -352,27 +419,34 @@ async def magic_start(
     # Keep the bearer token in the URL fragment: browsers do not send fragments
     # to the web server or in referrers. The landing page requires a deliberate
     # button press, so basic corporate email scanners do not burn the token.
-    link = _dashboard_url(f"/magic/verify#token={token}")
+    next_path = _safe_next(next_path)
+    link = _dashboard_url(
+        f"/magic/verify#token={token}" + (f"&next={quote(next_path, safe='')}" if next_path else "")
+    )
+    # The link signs into the account for ``email_norm`` (lowercased, "+tag"
+    # dropped), so it is mailed to that address, never the one as typed: a link
+    # mailed to victim+x@corp would otherwise sign into victim@corp, and whoever
+    # reads the "+x" mailbox (a catch-all, a literal-"+" mail system) owns the
+    # account (security review R1-1).
     payload: resend.Emails.SendParams = {
         "from": os.environ["RESEND_FROM"],
-        # The link signs into the normalized address's account, so only that
-        # address may receive it: mailing the typed "name+tag@" variant would
-        # let whoever reads that mailbox sign into "name@"'s account.
         "to": email_norm,
-        "subject": "Your ScaleCad login link",
+        "subject": "Your ScaleCAD login link",
         "html": (
             f'<a href="{html.escape(link, quote=True)}">'
-            "Sign in to ScaleCad (expires in 15 minutes)</a>"
+            "Sign in to ScaleCAD (expires in 15 minutes)</a>"
         ),
-        "text": f"Sign in to ScaleCad (expires in 15 minutes): {link}",
+        "text": f"Sign in to ScaleCAD (expires in 15 minutes): {link}",
     }
     try:
         # The Resend SDK is synchronous; keep network I/O off the event loop.
         await asyncio.to_thread(resend.Emails.send, payload)
     except Exception:
-        # Let the person retry after provider failure. Keep the IP attempt (it
-        # still consumed resources), but roll back both the unusable token and
-        # per-email send window without logging the email or bearer token.
+        # Let the person retry after provider failure: no link went out, so
+        # give back the network and email slots, and roll back both the
+        # unusable token and per-email send window without logging the email
+        # or bearer token.
+        await release_slots(counted)
         try:
             await _cleanup_failed_send(
                 r,
@@ -388,7 +462,8 @@ async def magic_start(
             "email_delivery_unavailable",
             "Email delivery is temporarily unavailable. Please try again.",
         )
-    return {"status": "sent"}
+    # The address the link really went to, so "sent to" is never the typed one.
+    return {"status": "sent", "sent_to": email_norm}
 
 
 @router.post("/magic/exchange")
@@ -397,8 +472,14 @@ async def magic_exchange(
 ) -> dict:
     """Exchange a one-time token without putting a session in browser JS."""
     require_auth_proxy_if_enabled(request)
-    result = await _consume(body.token)
+    result = await _consume(body.token, request)
     response.headers["Cache-Control"] = "no-store"
+    if result.challenge is not None:
+        return {
+            "two_step": result.two_step,
+            "challenge": result.challenge,
+            "redirect": result.redirect,
+        }
     return {
         "session": sign(
             result.user_id,
@@ -410,8 +491,24 @@ async def magic_exchange(
     }
 
 
+async def _owes_two_step(token: str) -> bool:
+    """Whether this (unconsumed) link's account owes a code before a session.
+
+    This legacy GET sets the session cookie itself, so such a link is sent to
+    the dashboard fragment flow instead, which asks for the code.
+    """
+    email_norm = _verify(token)
+    if email_norm is None:
+        return False
+    from src.auth.two_step import requirement_for_email
+
+    found = await requirement_for_email(email_norm)
+    return found is not None and found[3] is not None
+
+
 @router.get("/magic/verify")
 async def magic_verify(
+    request: Request,
     token: str = Query(..., min_length=32, max_length=4096),
 ):
     """Compatibility for pre-deploy ``?token=`` emails.
@@ -424,7 +521,7 @@ async def magic_verify(
         "true",
         "yes",
         "on",
-    }:
+    } or await _owes_two_step(token):
         # Old links carried the token in a backend query string. With host-only
         # first-party cookies, consuming it here would set a cookie on the API
         # host and then redirect an unauthenticated browser to the dashboard.
@@ -436,7 +533,13 @@ async def magic_verify(
             status_code=303,
         )
 
-    result = await _consume(token)
+    result = await _consume(token, request)
+    if result.challenge is not None:
+        # The account owes a two-step code (its state changed after the check
+        # above, or the check was wrong). This host can't hold the challenge for
+        # the dashboard, and a session must never come without the code: no
+        # cookie, back to sign in (security review R1-5).
+        return RedirectResponse(url=_dashboard_url("/login"), status_code=303)
     resp = RedirectResponse(
         url=_dashboard_url(result.redirect), status_code=303
     )

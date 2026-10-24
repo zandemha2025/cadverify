@@ -120,7 +120,7 @@ def test_bbox_billet_direction_and_offswitch():
 
     # provenance + honest caveat on the material driver source (DEFAULT-tagged billet)
     md = _driver(on, "material_cost")
-    assert "bounding-box billet" in md.source and "not shop-validated" in md.source
+    assert "bounding-box billet" in md.source and "not confirmed by a shop" in md.source
 
 
 def test_bbox_billet_untouched_for_turning():
@@ -173,7 +173,7 @@ def test_milling_stock_bounds_source_rounding_and_labels_fallback(monkeypatch):
     monkeypatch.setattr(trimesh.bounds, 'oriented_bounds', unavailable)
     fallback = extract_drivers(analyze_geometry(mesh), mesh)
     assert fallback.billet_volume_cm3(1.1) == pytest.approx(12.002**2 * 80.002 / 1000 * 1.1)
-    assert 'file-axis fallback' in fallback.billet_source(2.7, 1.1, 'Aluminum')
+    assert "a box along the file's axes" in fallback.billet_source(2.7, 1.1, 'Aluminum')
 
 
 def test_build_cost_and_declared_machine_fit_follow_the_same_rotated_part():
@@ -269,7 +269,7 @@ def test_machine_region_split_direction_and_offswitch():
     # glass-box driver present + DEFAULT + caveat
     d = _driver(cn_split, "machine_region_split")
     assert d is not None and d.provenance.value == "DEFAULT"
-    assert "not shop-validated" in d.source
+    assert "not confirmed by a shop" in d.source
 
     # (b) byte-identical off-switch: the machine multiplier collapses to raw rl
     os.environ["CADVERIFY_MACHINE_CAPITAL_SPLIT"] = "0"
@@ -309,7 +309,7 @@ def test_nre_inspection_direction_qty1_beats_floor():
     # DEFAULT + caveats on the new drivers
     for name in ("nre_cost", "inspection_cost"):
         d = _driver(on, name)
-        assert d is not None and "not shop-validated" in d.source
+        assert d is not None and "not confirmed by a shop" in d.source
         assert d.provenance.value in ("DEFAULT", "USER")
 
 
@@ -356,7 +356,7 @@ def test_perishable_consumables_direction_and_offswitch():
     frac = rates.g("perishable_frac")
     assert abs(_li(on, "consumables") - frac * _li(on, "machine")) < 1e-6   # exactly % of machine
     d = _driver(on, "consumables_cost")
-    assert d is not None and d.provenance.value == "DEFAULT" and "not shop-validated" in d.source
+    assert d is not None and d.provenance.value == "DEFAULT" and "not confirmed by a shop" in d.source
 
     # (b) byte-identical off-switch: consumables gone, base lines untouched
     assert "consumables" not in off.line_items
@@ -390,7 +390,7 @@ def test_outsourced_finishing_direction_and_offswitch():
     # lot 150/100 + 4/part = 1.5 + 4 = 5.5 (US, margin 0) → structure is a lot + per-part
     assert abs(_li(on, "finishing") - (150.0 / 100 + 4.0)) < 1e-6
     d = _driver(on, "finishing_cost")
-    assert d is not None and "not shop-validated" in d.source
+    assert d is not None and "not confirmed by a shop" in d.source
     assert d.provenance.value in ("DEFAULT", "USER")
 
     # (b) byte-identical off-switch: finishing gone, base lines untouched, == default
@@ -421,4 +421,4 @@ def test_enow_wave1_sigma_invariant_and_provenance_end_to_end():
     for key in ("machine_labor_frac", "perishable_frac"):
         assert key in names
         assert names[key].provenance.value == "DEFAULT"
-        assert "not shop-validated" in names[key].source
+        assert "not confirmed by a shop" in names[key].source

@@ -7,10 +7,14 @@ import { NextResponse } from "next/server";
 import { backendUrl } from "@/lib/api-base";
 import { signedAuthProxyHeaders } from "@/lib/auth-proxy";
 import { setSession } from "@/lib/session";
+import { crossSiteRefusal } from "@/lib/same-origin-request";
+import { isChallenge, isPurpose, setTwoStepChallenge } from "@/lib/two-step-cookie";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
+  const crossSite = crossSiteRefusal(req);
+  if (crossSite) return crossSite;
   const body = await req.json().catch(() => ({}));
   const backendPath = "/auth/login";
   try {
@@ -28,6 +32,16 @@ export async function POST(req: Request) {
       signal: AbortSignal.timeout(55_000),
     });
     const data = await res.json().catch(() => ({}));
+    // Two-step sign-in: the password was right but a code is still owed. The
+    // challenge goes into an httpOnly cookie; the browser only learns what to
+    // ask for next.
+    if (res.ok && isPurpose(data?.two_step) && isChallenge(data?.challenge)) {
+      await setTwoStepChallenge(data.challenge);
+      return NextResponse.json(
+        { two_step: data.two_step },
+        { headers: { "cache-control": "no-store" } },
+      );
+    }
     if (
       !res.ok ||
       typeof data?.session !== "string" ||

@@ -3,6 +3,7 @@
 from src.analysis.context import GeometryContext
 from src.analysis.models import Issue, ProcessType
 from src.analysis.processes.base import register
+from src.profiles.envelopes import common_envelope
 from src.analysis.processes.checks import (
     check_aspect_ratio,
     check_build_volume,
@@ -27,8 +28,8 @@ class MJFAnalyzer:
         # MJF is self-supporting — no overhang check.
         i.extend(check_small_features(ctx, 0.2, self.process,
                  cite="HP MJF DG §3.2: 0.2mm min feature."))
-        i.extend(check_build_volume(ctx, (380, 284, 380), self.process,
-                 cite="HP Jet Fusion 5200."))
+        i.extend(check_build_volume(ctx, common_envelope(self.process), self.process,
+                 cite="Common size; e.g. HP Jet Fusion 5200."))
         i.extend(check_aspect_ratio(ctx, 10.0, self.process))
         i.extend(check_trapped_volumes(ctx, self.process, min_drain_mm=5.0,
                  cite="HP MJF DG §4.2: 5mm escape holes."))

@@ -41,7 +41,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.auth.kill_switch import require_kill_switch_open
 from src.auth.org_context import resolve_org
 from src.auth.rate_limit import limiter
-from src.auth.rbac import Role, require_role
+from src.auth.rbac import Role, require_org_writer, require_role
 from src.auth.require_api_key import AuthedUser
 from src.db.engine import get_db_session
 from src.services import batch_service
@@ -69,7 +69,7 @@ async def confirm_identity(
     request: Request,
     response: Response,
     body: ConfirmIdentityBody,
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_writer),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Confirm (or correct) a part's identity in the caller's org corpus.
@@ -134,6 +134,32 @@ async def confirm_identity(
 # ---------------------------------------------------------------------------
 
 
+def _zip_onboard_totals(zip_path: str) -> tuple[int, int]:
+    """``(files, bytes)`` the batch extractor would keep from this ZIP.
+
+    Read from the archive's directory alone: the CAD entries the extractor
+    stores (a supported extension, under the per-file limit) and their declared
+    uncompressed sizes. Extraction never writes more than an entry declares, so
+    the onboarding caps can be applied to these numbers before any extraction.
+    """
+    count = 0
+    total = 0
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        for info in zf.infolist():
+            if info.is_dir():
+                continue
+            base = os.path.basename(info.filename)
+            if not base:
+                continue
+            if os.path.splitext(base)[1].lower() not in batch_service.VALID_EXTENSIONS:
+                continue
+            if info.file_size > batch_service.BATCH_MAX_FILE_BYTES:
+                continue  # skipped by the extractor without being read
+            count += 1
+            total += info.file_size
+    return count, total
+
+
 async def _read_onboard_zip_files(
     zip_upload: UploadFile, *, max_bytes: int | None = None, max_files: int | None = None
 ) -> tuple[list, list]:
@@ -156,17 +182,27 @@ async def _read_onboard_zip_files(
     tmp_path = await batch_service.stream_upload_to_tempfile(
         zip_upload, batch_service.BATCH_MAX_ZIP_BYTES
     )
+    file_cap = pmsvc.ONBOARD_MAX_FILES if max_files is None else max_files
+    byte_cap = _ONBOARD_MAX_BYTES if max_bytes is None else max_bytes
+    too_many = "onboarding batch exceeds the file cap — split it into smaller batches"
+    too_big = "onboarding upload exceeds the size cap — split it into smaller batches"
     try:
+        # The caps apply to what the archive declares, before anything is extracted.
+        declared_files, declared_bytes = await asyncio.to_thread(_zip_onboard_totals, tmp_path)
+        if declared_files > file_cap:
+            raise HTTPException(status_code=413, detail=too_many)
+        if declared_bytes > byte_cap:
+            raise HTTPException(status_code=413, detail=too_big)
         items = await asyncio.to_thread(
             batch_service.extract_zip_path_to_items,
             tmp_path,
             object_namespace,
         )
         readable = [item for item in items if item.get("status") != "skipped"]
-        if len(readable) > (pmsvc.ONBOARD_MAX_FILES if max_files is None else max_files):
-            raise HTTPException(status_code=413, detail="onboarding batch exceeds the file cap — split it into smaller batches")
-        if sum(item["size"] for item in readable) > (_ONBOARD_MAX_BYTES if max_bytes is None else max_bytes):
-            raise HTTPException(status_code=413, detail="onboarding upload exceeds the size cap — split it into smaller batches")
+        if len(readable) > file_cap:
+            raise HTTPException(status_code=413, detail=too_many)
+        if sum(item["size"] for item in readable) > byte_cap:
+            raise HTTPException(status_code=413, detail=too_big)
         for item in items:
             if item.get("status") == "skipped":
                 skipped.append({
@@ -218,7 +254,7 @@ async def onboard_library(
     files: Optional[List[UploadFile]] = File(None),
     zip: Optional[UploadFile] = File(None),
     mapping: Optional[UploadFile] = File(None),
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_writer),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Bulk-onboard a customer's part library into the org identity corpus.

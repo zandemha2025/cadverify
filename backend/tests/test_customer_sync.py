@@ -204,8 +204,26 @@ async def test_profile_signup_crm_retry_and_sync_with_real_postgres(monkeypatch)
         if uid:
             async with get_session_factory()() as db:
                 for other_id, sync_after in previous_sync:
-                    await db.execute(text("UPDATE users SET crm_sync_after=CAST(:after AS timestamptz) WHERE id=:id"), {"id": other_id, "after": sync_after})
+                    await db.execute(text("UPDATE users SET crm_sync_after=CAST(CAST(:after AS text) AS timestamptz) WHERE id=:id"), {"id": other_id, "after": sync_after})
                 await db.execute(text("DELETE FROM audit_log WHERE user_id=:id"), {"id": uid})
                 await db.execute(text("DELETE FROM users WHERE id=:id"), {"id": uid})
                 await db.commit()
         await dispose_engine()
+
+
+def test_a_deleted_account_keeps_no_crm_field_that_names_the_person():
+    """Every field the CRM sync writes is blanked on deletion, except the pseudonymous Account ID."""
+    from datetime import datetime, timezone
+
+    from src.services.customer_sync import erased_properties, notion_properties
+
+    written = notion_properties({
+        "id": 7, "email": "a@b.co", "full_name": "Ann B", "phone": "+15550100", "auth_provider": "password",
+        "created_at": datetime.now(timezone.utc), "last_seen_at": None,
+        "signup_metadata": {"timezone": "UTC", "utm_source": "x", "utm_campaign": "y", "country": "US", "region": "MI", "city": "Troy"},
+    })
+    erased = erased_properties()
+    assert set(written) - {"Account ID"} == set(erased)
+    flat = str(erased)
+    for personal in ("a@b.co", "Ann B", "+15550100", "Troy", "UTC"):
+        assert personal not in flat

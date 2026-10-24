@@ -134,12 +134,26 @@ def test_initiation_validation_is_exact_and_structured(kwargs, code):
     assert exc.value.code == code
 
 
-def test_capability_fails_closed_on_non_s3(monkeypatch):
+def test_capability_fails_closed_on_local_storage_in_production(monkeypatch):
     monkeypatch.setattr(service, "selected_backend", lambda: "local")
-    result = service.capability("batch_zip")
-    assert result["available"] is False
-    assert result["direct_upload"] is False
-    assert result["unavailable_code"] == "DIRECT_UPLOAD_REQUIRES_S3"
+    monkeypatch.setenv("OBJECT_STORE_BACKEND", "local")
+    monkeypatch.setenv("RELEASE", "2026.10.22")
+    for purpose in ("batch_zip", "part"):
+        result = service.capability(purpose)
+        assert result["available"] is False
+        assert result["direct_upload"] is False
+        assert result["unavailable_code"] == "DIRECT_UPLOAD_REQUIRES_S3"
+
+
+def test_capability_relays_parts_through_the_api_on_local_storage_outside_production(monkeypatch, tmp_path):
+    monkeypatch.setattr(service, "selected_backend", lambda: "local")
+    monkeypatch.setenv("OBJECT_STORE_BACKEND", "local")
+    monkeypatch.setenv("RELEASE", "dev")
+    monkeypatch.setenv("DIRECT_UPLOAD_LOCAL_ROOT", str(tmp_path))
+    result = service.capability("part")
+    assert result["available"] is True and result["transport"] == "relay"
+    assert result["max_size_bytes"] == 2 * 1024**3
+    assert ".step.gz" in result["accepted_extensions"] and ".zip" in result["accepted_extensions"]
 
 
 def test_capability_advertises_required_integrity_idempotency_and_admission():

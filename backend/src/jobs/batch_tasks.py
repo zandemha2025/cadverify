@@ -7,9 +7,14 @@ dispatch_webhook: Delivers webhook with retry scheduling.
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import errno
+import json
 import logging
 import os
+import time
+import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
 from arq import Retry
@@ -24,10 +29,61 @@ from sqlalchemy.exc import (
 from src.auth.require_api_key import AuthedUser
 from src.db.engine import get_session_factory
 from src.db.models import Batch, BatchItem, DirectUpload
+from src.services import compute_budget
 from src.services.batch_service import BATCH_ITEM_MAX_ATTEMPTS
 from src.storage.base import ObjectNotFoundError
 
 logger = logging.getLogger("cadverify.batch_tasks")
+
+# arq's per-job ceiling for the worker (WorkerSettings.job_timeout): it cancels
+# a job at this deadline, so nothing may be designed to outlive it.
+JOB_TIMEOUT_SECONDS = 600
+
+# When the current batch item's job started (time.monotonic()): how long it may
+# still wait for room in the compute budget is measured from here.
+_JOB_STARTED: contextvars.ContextVar[float | None] = contextvars.ContextVar("cadverify_batch_job_started", default=None)
+
+
+def _item_wait_seconds(work_seconds: float) -> float:
+    """How long this item may wait for compute room and still do ``work_seconds`` inside its job.
+
+    Past it the item goes back to the run (``_put_back_for_room``) rather than
+    being cancelled by arq mid-wait.
+    """
+    started = _JOB_STARTED.get() or time.monotonic()
+    return compute_budget.job_wait_seconds(started, work_seconds, JOB_TIMEOUT_SECONDS)
+
+
+async def _put_back_for_room(session, item_ulid: str, *, count_try: bool = False) -> None:
+    """No compute room within the item's wait: back to pending, this delivery not counted as a try.
+
+    The coordinator publishes it again on a later tick, in its turn. Nothing
+    was computed or saved for it. ``count_try``: its meshing ran out of time on a
+    saturated box (``MeshBusy``); that try counts, so a part that never meshes
+    still ends after its tries with a plain reason.
+    """
+    try:
+        await session.rollback()
+    except Exception:
+        pass
+    item = (await session.execute(
+        select(BatchItem).where(BatchItem.ulid == item_ulid).with_for_update()
+    )).scalars().first()
+    if item is None or item.status != "processing":
+        return
+    item.status = "pending"
+    item.started_at = None
+    item.lease_started_at = None
+    if count_try:
+        from src.services.batch_service import STOPPED_MID_CHECK
+
+        item.error_message = STOPPED_MID_CHECK
+    else:
+        item.attempt_count = max(0, int(item.attempt_count or 1) - 1)
+        item.error_message = None
+    await session.commit()
+    logger.info("BatchItem %s %s; back in the run", item_ulid,
+                "was too busy to mesh" if count_try else "found no compute room in its wait")
 
 _TRUTHY = {"1", "true", "yes", "on"}
 
@@ -230,8 +286,13 @@ async def _terminalize_direct_upload_preparation(
     *,
     code: str,
     message: str,
+    detail: dict | None = None,
 ) -> None:
-    """Persist a terminal preparation failure and align parent/item state."""
+    """Persist a terminal preparation failure and align parent/item state.
+
+    The batch keeps why (``manifest_json["failure"]``: code, message and any
+    details, such as a catalog run's allowance), so the app can say it.
+    """
     from src.services import batch_service
     from src.services.audit_service import emit_event
 
@@ -306,6 +367,9 @@ async def _terminalize_direct_upload_preparation(
         )
         if batch.status not in _TERMINAL_BATCH_STATUSES:
             batch_service.mark_batch_failed(batch, code.lower())
+            manifest = dict(batch.manifest_json or {})
+            manifest["failure"] = {**(detail or {}), "code": code, "message": message[:500]}
+            batch.manifest_json = manifest
         await batch_service.mark_pending_items_terminal(session, batch.id, "skipped")
         await emit_event(
             session,
@@ -385,7 +449,7 @@ async def prepare_direct_upload_batch(ctx: dict, upload_ulid: str) -> None:
     durable ``prepared`` checkpoint before provider deletion/queue publication;
     a retry resumes from that checkpoint without creating duplicate items.
     """
-    from src.services import batch_service, direct_upload_service
+    from src.services import batch_service, catalog_run_service, direct_upload_service
     from src.services.audit_service import emit_event
 
     session_factory = get_session_factory()
@@ -583,6 +647,10 @@ async def prepare_direct_upload_batch(ctx: dict, upload_ulid: str) -> None:
                     await session.execute(
                         delete(BatchItem).where(BatchItem.batch_id == current_batch.id)
                     )
+                    if current_batch.job_type == "catalog":
+                        # A catalog run from a stored ZIP: each part's quantities
+                        # and material, from the options its request kept.
+                        catalog_run_service.prepare_items(current_batch, items_data)
                     count = await batch_service.create_batch_items(
                         session,
                         current_batch.id,
@@ -597,6 +665,12 @@ async def prepare_direct_upload_batch(ctx: dict, upload_ulid: str) -> None:
                     )
                     current_batch.input_mode = "zip"
                     current_batch.status = "pending"
+                    if current_batch.job_type == "catalog":
+                        # The free allowance counts the run's new parts with its
+                        # items, in this transaction; a refusal rolls both back
+                        # and ends the preparation (CatalogRunRefused).
+                        await session.flush()
+                        await catalog_run_service.reserve_prepared_run(session, current_batch)
                     current_upload.status = "prepared"
                     current_upload.prepared_at = datetime.now(timezone.utc)
                     current_upload.checksum_verified_at = current_upload.prepared_at
@@ -689,6 +763,7 @@ async def prepare_direct_upload_batch(ctx: dict, upload_ulid: str) -> None:
                 upload_ulid,
                 code=code,
                 message=message,
+                detail=getattr(exc, "refusal", None),
             )
             return
         await _release_direct_upload_preparation_for_retry(
@@ -713,11 +788,9 @@ def _batch_item_lease_seconds() -> int:
     while still making a worker crash or failed cancellation self-healing.
     Operators may lengthen, but never shorten, this safety boundary.
     """
-    try:
-        configured = int(os.getenv("BATCH_ITEM_LEASE_SECONDS", "660"))
-    except (TypeError, ValueError):
-        configured = _BATCH_ITEM_LEASE_FLOOR_SECONDS
-    return max(_BATCH_ITEM_LEASE_FLOOR_SECONDS, configured)
+    from src.services.batch_service import batch_item_lease_seconds
+
+    return batch_item_lease_seconds()
 
 
 def _batch_item_queue_lease_seconds() -> int:
@@ -735,8 +808,211 @@ def _batch_item_queue_lease_seconds() -> int:
     return max(_BATCH_ITEM_QUEUE_LEASE_FLOOR_SECONDS, configured)
 
 
-async def run_batch_coordinator(ctx: dict, batch_ulid: str) -> None:
-    """Run ONE coordination tick, then re-enqueue itself (F-ARCH-6/#1).
+# ---------------------------------------------------------------------------
+# The coordinator chain: one live chain per batch, that a failed tick never ends
+# ---------------------------------------------------------------------------
+#
+# Each tick is its own arq job and queues the next. The chain's state lives in
+# Redis (``_chain_key``): which chain owns the batch, its tick number, and when
+# it last ticked. Three rules keep exactly one chain going:
+#
+#   * The next tick's job id is ``batch-coordinator:{batch}:{chain}:{seq}``, so
+#     a tick that runs twice (arq re-runs a tick cancelled at shutdown; the
+#     failure path below already queued its successor) queues its successor
+#     once: arq refuses a job id that is queued or recently finished.
+#   * A start without a chain (the API, a re-check, a resume, a kick, or a job
+#     queued before chains existed) takes the batch over with a new chain; the
+#     old chain's next tick sees another owner and stops.
+#   * A tick that fails (a DB connect timing out under load, the job timeout, a
+#     worker shutdown) still queues the next tick, a little later. The minute
+#     cron ``rekick_batch_coordinators`` starts a chain for any running batch
+#     whose chain hasn't ticked for a while (its next job was lost with Redis).
+
+_CHAIN_TTL_SECONDS = 14 * 24 * 3600
+
+
+def _chain_key(batch_ulid: str) -> str:
+    return f"cadverify:batch-coordinator:{batch_ulid}"
+
+
+def _coordinator_stale_seconds() -> int:
+    """How long a running batch may go without a tick before the cron starts a coordinator."""
+    try:
+        configured = int(os.getenv("BATCH_COORDINATOR_STALE_SECONDS", "120"))
+    except (TypeError, ValueError):
+        configured = 120
+    return max(30, configured)
+
+
+def _coordinator_retry_delay(failures: int) -> int:
+    """5, 10, 20, 40, then 60 s between ticks after consecutive failed ticks."""
+    return min(60, 5 * 2 ** max(0, min(failures, 4)))
+
+
+async def _chain_state(pool, batch_ulid: str) -> dict | None:
+    """The batch's chain state from Redis, or None (no state, or a pool without get)."""
+    getter = getattr(pool, "get", None)
+    if getter is None:
+        return None
+    try:
+        raw = await getter(_chain_key(batch_ulid))
+    except Exception:
+        logger.warning("Could not read the coordinator chain of batch %s", batch_ulid, exc_info=True)
+        return None
+    if isinstance(raw, (bytes, bytearray)):
+        raw = raw.decode("utf-8", "replace")
+    if not isinstance(raw, str):
+        return None
+    try:
+        state = json.loads(raw)
+    except ValueError:
+        return None
+    if not isinstance(state, dict) or not isinstance(state.get("chain"), str):
+        return None
+    return state
+
+
+async def _write_chain_state(pool, batch_ulid: str, chain: str, seq: int) -> None:
+    setter = getattr(pool, "set", None)
+    if setter is None:
+        return
+    try:
+        await setter(
+            _chain_key(batch_ulid),
+            json.dumps({"chain": chain, "seq": seq, "at": time.time()}),
+            ex=_CHAIN_TTL_SECONDS,
+        )
+    except Exception:
+        logger.warning("Could not record the coordinator chain of batch %s", batch_ulid, exc_info=True)
+
+
+async def _queue_next_tick(pool, batch_ulid: str, chain: str, seq: int, *, defer: int, failures: int) -> None:
+    """Queue tick ``seq + 1`` of this chain (once, whoever asks: the job id is the tick)."""
+    if pool is None:
+        return
+    next_seq = seq + 1
+    await _write_chain_state(pool, batch_ulid, chain, next_seq)
+    await pool.enqueue_job(
+        "run_batch_coordinator",
+        batch_ulid,
+        chain=chain,
+        seq=next_seq,
+        failures=failures,
+        _job_id=f"batch-coordinator:{batch_ulid}:{chain}:{next_seq}",
+        _defer_by=defer,
+    )
+
+
+async def run_batch_coordinator(
+    ctx: dict,
+    batch_ulid: str,
+    chain: str | None = None,
+    seq: int = 0,
+    failures: int = 0,
+) -> None:
+    """One tick of the batch's coordinator chain; a failed tick still queues the next.
+
+    See the chain rules above. ``chain``/``seq`` name this tick; a call
+    without them starts a chain (and takes the batch over from any other).
+    ``failures`` counts the failed ticks just before this one, for the delay.
+    """
+    pool = ctx.get("redis") or ctx.get("pool")
+    poll_interval = int(os.getenv("BATCH_POLL_INTERVAL_SECONDS", "2"))
+    if chain is None:
+        chain = uuid.uuid4().hex[:16]
+        seq = 0
+        if pool is not None:
+            await _write_chain_state(pool, batch_ulid, chain, seq)
+    elif pool is not None:
+        state = await _chain_state(pool, batch_ulid)
+        if state is not None and state.get("chain") != chain:
+            logger.info("Batch %s coordinator chain %s superseded; stopping it", batch_ulid, chain)
+            return
+
+    retry_in = _coordinator_retry_delay(failures)
+    try:
+        more = await _coordinator_tick(ctx, batch_ulid)
+    except asyncio.CancelledError:
+        # arq's job timeout, or a worker shutting down. The next tick goes on
+        # the queue first (its job id makes a re-run of this tick harmless).
+        try:
+            await asyncio.shield(
+                _queue_next_tick(pool, batch_ulid, chain, seq, defer=retry_in, failures=failures + 1)
+            )
+        except BaseException:
+            logger.exception("Batch %s: the tick after a cancelled one could not be queued", batch_ulid)
+        raise
+    except Exception:
+        logger.warning(
+            "Batch %s coordinator tick failed (%d in a row); the next tick runs in %d s",
+            batch_ulid, failures + 1, retry_in, exc_info=True,
+        )
+        try:
+            await _queue_next_tick(pool, batch_ulid, chain, seq, defer=retry_in, failures=failures + 1)
+        except Exception:
+            logger.exception("Batch %s: the tick after a failed one could not be queued", batch_ulid)
+        raise
+    if more:
+        # Outside the session so no DB connection is pinned across the poll
+        # interval. Without a pool (unit tests) the chain simply stops here.
+        await _queue_next_tick(pool, batch_ulid, chain, seq, defer=poll_interval, failures=0)
+
+
+async def rekick_batch_coordinators(ctx: dict) -> int:
+    """arq cron (every minute): start a coordinator for a running batch whose chain stopped.
+
+    A running batch (pending or processing, its parts unpacked) whose chain
+    hasn't ticked for ``BATCH_COORDINATOR_STALE_SECONDS`` gets a new chain. The
+    kick's job id carries the stalled chain's tick, so a minute later it isn't
+    queued twice; a chain that was only slow stops when the new one starts.
+    Off-switch: BATCH_COORDINATOR_REKICK_ENABLED=0.
+    """
+    if not _flag("BATCH_COORDINATOR_REKICK_ENABLED", "1"):
+        return 0
+    pool = ctx.get("redis") or ctx.get("pool")
+    if pool is None:
+        return 0
+    stale = _coordinator_stale_seconds()
+    async with get_session_factory()() as session:
+        rows = (
+            await session.execute(
+                select(Batch.ulid, Batch.created_at, Batch.started_at).where(
+                    Batch.status.in_(["pending", "processing"]),
+                    Batch.input_mode == "zip",
+                )
+            )
+        ).all()
+    now = time.time()
+    kicked = 0
+    for batch_ulid, created_at, started_at in rows:
+        state = await _chain_state(pool, batch_ulid)
+        if state is not None:
+            try:
+                at = float(state.get("at") or 0)
+            except (TypeError, ValueError):
+                at = 0.0
+            if now - at < stale:
+                continue
+            stalled = f"{state['chain']}:{state.get('seq')}"
+        else:
+            anchor = started_at or created_at
+            if anchor is not None:
+                if anchor.tzinfo is None:
+                    anchor = anchor.replace(tzinfo=timezone.utc)
+                if now - anchor.timestamp() < stale:
+                    continue
+            stalled = "none"
+        job = await pool.enqueue_job(
+            "run_batch_coordinator", batch_ulid, _job_id=f"batch-coordinator-kick:{batch_ulid}:{stalled}"
+        )
+        if job is not None:
+            kicked += 1
+            logger.warning("Batch %s had no coordinator tick for %d s or more; started one", batch_ulid, stale)
+    return kicked
+
+
+async def _coordinator_tick(ctx: dict, batch_ulid: str) -> bool:
+    """Run ONE coordination tick; True when the batch has work left (F-ARCH-6/#1).
 
     This is deliberately NOT a while-True poller. arq wraps every job in
     ``asyncio.wait_for(task, job_timeout)`` (arq/worker.py), so a job designed to
@@ -752,16 +1028,15 @@ async def run_batch_coordinator(ctx: dict, batch_ulid: str) -> None:
         interval. The chain of short jobs replaces the loop -- every job now
         finishes in milliseconds, far inside ``job_timeout``, so the cancellation
         window is designed out rather than patched around.
-      * Recovery is uniform: if a tick is cancelled at ``job_timeout``, crashes,
-        or the worker dies, the chain simply stops advancing the heartbeat and the
-        heartbeat-based orphan sweeper (F-ARCH-6/#2) reaps the batch. No
-        unreachable ``except Exception`` cleanup is relied upon.
+      * Recovery: ``run_batch_coordinator`` queues the next tick even when this
+        one fails or is cancelled, the minute cron restarts a chain that stopped,
+        and the orphan sweep resumes a batch that made no progress before it
+        ever fails one (a run ends only when it can't be resumed).
     """
     from src.services import batch_service
 
     session_factory = get_session_factory()
     pool = ctx.get("redis") or ctx.get("pool")
-    poll_interval = int(os.getenv("BATCH_POLL_INTERVAL_SECONDS", "2"))
 
     async with session_factory() as session:
         batch = (
@@ -771,7 +1046,7 @@ async def run_batch_coordinator(ctx: dict, batch_ulid: str) -> None:
         ).scalars().first()
         if batch is None:
             logger.error("Batch %s not found", batch_ulid)
-            return
+            return False
         batch_id = batch.id
 
         # Terminal already (cancelled/failed/completed): stop the chain without
@@ -780,7 +1055,7 @@ async def run_batch_coordinator(ctx: dict, batch_ulid: str) -> None:
             logger.info(
                 "Batch %s already %s; coordinator stopping", batch_ulid, batch.status
             )
-            return
+            return False
 
         # First tick: pending -> processing. total_items is authoritative from the
         # router, but recompute defensively so the coordinator is self-consistent.
@@ -828,7 +1103,9 @@ async def run_batch_coordinator(ctx: dict, batch_ulid: str) -> None:
                 batch_ulid, batch.status, batch.total_items,
                 batch.completed_items, batch.failed_items,
             )
-            return  # terminal -> do NOT re-enqueue; the chain stops here
+            if batch.job_type == "catalog":
+                await _notify_run_finished(batch_ulid)
+            return False  # terminal -> do NOT re-enqueue; the chain stops here
 
         # Steady state: refresh heartbeat + drip-feed pending items up to the
         # concurrency limit. The heartbeat proves to the sweeper we are alive.
@@ -907,10 +1184,7 @@ async def run_batch_coordinator(ctx: dict, batch_ulid: str) -> None:
                     item.status = "failed"
                     item.completed_at = lease_now
                     item.lease_started_at = None
-                    item.error_message = (
-                        "Temporary storage or database failure persisted after "
-                        f"{BATCH_ITEM_MAX_ATTEMPTS} attempts."
-                    )
+                    item.error_message = batch_service.exhausted_reason(item)
                     batch.failed_items = int(batch.failed_items or 0) + 1
                     continue
                 item.status = "queued"
@@ -956,13 +1230,92 @@ async def run_batch_coordinator(ctx: dict, batch_ulid: str) -> None:
                 )
                 await session.commit()
 
-    # Re-enqueue the next tick outside the session so no DB connection is pinned
-    # across the poll interval. If there is no pool (unit tests), the chain simply
-    # does not continue -- one tick still runs and asserts its own behavior.
-    if pool is not None:
-        await pool.enqueue_job(
-            "run_batch_coordinator", batch_ulid, _defer_by=poll_interval
-        )
+    # Work remains: the caller queues the next tick outside this session.
+    return True
+
+
+async def _notify_run_finished(batch_ulid: str) -> None:
+    """One notification when a catalog run finishes, with its answer in counts.
+
+    Its parts' records don't notify one by one (a run of 50 was 50 "Check
+    recorded" rows). Best effort: a failure here never touches the run.
+    """
+    from src.services import catalog_run_service, notification_service
+
+    try:
+        async with get_session_factory()() as session:
+            batch = (await session.execute(select(Batch).where(Batch.ulid == batch_ulid))).scalars().first()
+            if batch is None:
+                return
+            board = await catalog_run_service.build_board(session, batch)
+            a = board.get("answer") or {}
+            bits = [f"{a.get('make', 0)} make in-house", f"{a.get('buy', 0)} buy"]
+            for key, words in (("new_machine", "need a new machine"), ("cant_make", "can't be made as drawn"),
+                               ("not_checked", "not checked")):
+                if a.get(key):
+                    bits.append(f"{a[key]} {words}")
+            if a.get("saving_usd") is not None:
+                bits.append(f"saves ${a['saving_usd']:,.0f} against what you pay today")
+            name = board.get("name") or "Catalog run"
+            # A run that stopped and was checked again has finished after all.
+            await notification_service.resolve_by_source(
+                session, org_id=batch.org_id, source_type="catalog_run", source_id=batch.ulid,
+                kind="catalog.run_stopped",
+            )
+            await notification_service.emit_notification(
+                session, org_id=batch.org_id, actor_user_id=batch.user_id, kind="catalog.run_finished",
+                severity="info" if a.get("not_checked") else "pass",
+                title=f"Catalog run finished - {name}", body=" · ".join(bits), dest="verify",
+                source_type="catalog_run", source_id=batch.ulid,
+                metadata={"batch_id": batch.ulid, "name": board.get("name"), "parts": a.get("parts"),
+                          "answer": {k: a.get(k) for k in ("make", "buy", "new_machine", "cant_make",
+                                                            "not_checked", "saving_usd")}},
+            )
+            await session.commit()
+    except Exception:
+        logger.warning("Run-finished notification not sent for %s", batch_ulid, exc_info=True)
+
+
+async def _notify_run_stopped(batch_ulid: str) -> None:
+    """One notification when a catalog run stops before every part was checked.
+
+    Says how many were checked and how many weren't, and that they can be
+    checked again (the run's page). Best effort: a failure here never touches
+    the run. Idempotent per run (the inbox keeps one row per source).
+    """
+    from src.services import batch_service, notification_service
+    from src.services.catalog_run_service import run_meta
+
+    try:
+        async with get_session_factory()() as session:
+            batch = (await session.execute(select(Batch).where(Batch.ulid == batch_ulid))).scalars().first()
+            if batch is None or batch.job_type != "catalog":
+                return
+            # The run page's own breakdown (op-28) and the reason the run kept (op-25).
+            c = (await batch_service.catalog_run_counts(session, [batch])).get(batch.id) or {}
+            total = int(c.get("total") or 0) + int(c.get("unlisted") or 0)
+            checked = int(c.get("checked") or 0) + int(c.get("unlisted_checked") or 0)
+            not_checked = total - checked
+            name = run_meta(batch).get("name") or "Catalog run"
+            failure = (batch.manifest_json or {}).get("failure") or {}
+            left = int(c.get("not_checked") or 0) + int(c.get("to_go") or 0)
+            line = f"{int(c.get('checked') or 0):,} of {int(c.get('total') or 0):,} checked; {left:,} not checked"
+            if c.get("unlisted"):
+                u = int(c["unlisted"])
+                line += f"; {u:,} {'file isn’t' if u == 1 else 'files aren’t'} on your parts list"
+            why = failure.get("message")
+            body = (f"{line}. {why}" if why else
+                    f"{line}. Check {'it' if left == 1 else 'them'} again on the run's page.")
+            await notification_service.emit_notification(
+                session, org_id=batch.org_id, actor_user_id=batch.user_id, kind="catalog.run_stopped",
+                severity="cond", title=f"Catalog run stopped - {name}", body=body, dest="verify",
+                source_type="catalog_run", source_id=batch.ulid,
+                metadata={"batch_id": batch.ulid, "name": name, "parts": total, "checked": checked,
+                          "not_checked": not_checked, "reason": failure.get("message")},
+            )
+            await session.commit()
+    except Exception:
+        logger.warning("Run-stopped notification not sent for %s", batch_ulid, exc_info=True)
 
 
 # ---------------------------------------------------------------------------
@@ -971,12 +1324,15 @@ async def run_batch_coordinator(ctx: dict, batch_ulid: str) -> None:
 
 
 async def sweep_orphaned_batches(ctx: dict) -> int:
-    """arq cron: reap batches stuck in pending/processing past the TTL.
+    """arq cron: resume batches that stopped making progress; fail only those that can't go on.
 
     Backstops the reject-don't-orphan path in POST /batch: if the API crashed
     between committing the batch and enqueuing its coordinator (or the
     coordinator died mid-run), the batch would sit 'pending'/'processing'
-    forever. This marks such batches failed with reason 'orphaned'.
+    forever. A stale batch whose parts are stored is resumed (stuck parts back
+    in the run, a new coordinator); one that can't be resumed is marked failed
+    with reason 'orphaned', each skipped part says why, and a catalog run's
+    owner gets one notification that it stopped.
 
     Off-switch: BATCH_ORPHAN_SWEEP_ENABLED=0.
     """
@@ -985,14 +1341,32 @@ async def sweep_orphaned_batches(ctx: dict) -> int:
 
     from src.services import batch_service
 
+    resumed: list[str] = []
+    stopped: list[str] = []
     session_factory = get_session_factory()
     async with session_factory() as session:
-        reaped = await batch_service.sweep_orphaned_batches(session)
-        if reaped:
+        reaped = await batch_service.sweep_orphaned_batches(
+            session, resumed=resumed, stopped=stopped
+        )
+        if reaped or resumed:
             # Commit while the session context is alive. Committing after
             # __aexit__ silently loses the durable reaping transaction with a
             # real AsyncSession even though a loose mock appears to accept it.
             await session.commit()
+    pool = ctx.get("redis") or ctx.get("pool")
+    for batch_ulid in resumed:
+        # A new chain takes the batch over (any old one stops at its next tick).
+        try:
+            if pool is None:
+                from src.jobs.arq_backend import get_arq_pool
+
+                pool = await get_arq_pool()
+            await pool.enqueue_job("run_batch_coordinator", batch_ulid)
+        except Exception:
+            # The minute cron starts one when Redis is back.
+            logger.exception("Resumed batch %s, but its coordinator could not be queued", batch_ulid)
+    for batch_ulid in stopped:
+        await _notify_run_stopped(batch_ulid)
     if reaped:
         from src.api.metrics_registry import record_orphan_sweep
 
@@ -1075,12 +1449,17 @@ async def _release_cancelled_item_lease(item_ulid: str) -> None:
             # to pending would create work no coordinator is allowed to resume.
             item.status = "skipped"
             item.completed_at = datetime.now(timezone.utc)
+            item.error_message = None
         else:
+            # Back in the run with this try counted; the note says why it runs
+            # again and, once its tries are used up, why it failed.
+            from src.services.batch_service import STOPPED_MID_CHECK
+
             item.status = "pending"
             item.completed_at = None
+            item.error_message = STOPPED_MID_CHECK
         item.started_at = None
         item.lease_started_at = None
-        item.error_message = None
         await session.commit()
 
 
@@ -1122,6 +1501,41 @@ def _compute_cost_report(file_bytes: bytes, filename: str, options):
     mesh, suffix = _parse_mesh(file_bytes, filename)
     result, m, features = _run_cost_engine(mesh, filename)
     return estimate_decision(result, m, features, options), suffix
+
+
+async def _bind_org_rate_tables(session, org_id, options) -> dict | None:
+    """Price on the org's governed tables, exactly as POST /validate/cost does.
+
+    The published rate card in effect (RATE_LIBRARY_ENABLED) becomes the base
+    table under shop/user overrides, and the published materials catalog's
+    per-kg prices and materials are laid over it (MATERIAL_LIBRARY_ENABLED).
+    Returns the card (``{"payload", "version"}``) for the record's stamp, or
+    None when the org has none in effect (then the engine's own V0 table, as
+    the route). Mirrors ``routes._run_cost_decision``'s W4 blocks.
+    """
+    import copy
+
+    from src.costing.rates import RATE_CARD_V0
+    from src.services.material_library_service import resolve_material_overrides_for
+    from src.services.rate_library_service import resolve_rate_card_for_org
+
+    if not (isinstance(org_id, str) and org_id):
+        return None
+    rate_card = await resolve_rate_card_for_org(session, org_id)
+    if rate_card is not None:
+        options.base_rate_table = rate_card["payload"]
+    mat_payload = await resolve_material_overrides_for(session, org_id)
+    mat_prices = (mat_payload or {}).get("material_prices") or {}
+    mat_defs = (mat_payload or {}).get("materials") or {}
+    if mat_prices or mat_defs:
+        # The card payload may be the rate library's cached object: copy, never mutate it.
+        base = copy.deepcopy(options.base_rate_table if options.base_rate_table is not None else RATE_CARD_V0)
+        if mat_prices:
+            base["material_prices"] = {**(base.get("material_prices") or {}), **mat_prices}
+        if mat_defs:
+            base["materials"] = {**(base.get("materials") or {}), **mat_defs}
+        options.base_rate_table = base
+    return rate_card
 
 
 async def _run_cost_item(session, batch, item) -> dict:
@@ -1224,16 +1638,20 @@ async def _run_cost_item(session, batch, item) -> dict:
             options.residual_model = residual_model
         if calibration is not None:
             options.calibration = calibration
+    # ---- the org's published rate card and materials, as the route binds them -
+    rate_card = await _bind_org_rate_tables(session, cal_org_id, options)
 
     # ---- parse + cost, bounded by the same timeout the route uses -----------
+    # Room in the compute budget first (the wait is not part of the part's time
+    # or its limit); on a timeout the thread keeps that room until it ends.
     timeout = _cost_timeout_sec()
-    loop = asyncio.get_event_loop()
-    report, suffix = await asyncio.wait_for(
-        loop.run_in_executor(
-            None, _compute_cost_report, file_bytes, filename, options
-        ),
-        timeout=timeout,
-    )
+    waited = time.time()
+    async with compute_budget.hold(compute_budget.need_for_data(file_bytes, filename),
+                                   wait=_item_wait_seconds(timeout), label="batch cost item"):
+        start += time.time() - waited
+        report, suffix = await compute_budget.run_within_budget(
+            _compute_cost_report, file_bytes, filename, options, timeout=timeout, label="batch cost item",
+        )
     duration_ms = round((time.time() - start) * 1000, 1)
 
     # ---- broken geometry -> failed item with the structured reason ----------
@@ -1258,6 +1676,16 @@ async def _run_cost_item(session, batch, item) -> dict:
         }
 
     result_dict = report_to_dict(report)
+    # The record says which of the org's rate cards priced it, and the lines that
+    # use the org's own rates say so, as a single check's record does.
+    if rate_card is not None:
+        from src.services.rate_card_basis import apply_rate_card
+
+        result_dict = apply_rate_card(result_dict, rate_card["version"], rate_card["payload"])
+    # The org's calibration from its own actuals (if one is applied); unchanged otherwise.
+    from src.services.calibration_service import apply_org_calibration
+
+    result_dict = await apply_org_calibration(session, cal_org_id, result_dict)
 
     # ---- persist (dedup-safe: reuse the existing row on conflict) -----------
     # persist_cost_decision keys on (org_id, user_id, mesh_hash, params_hash) and
@@ -1333,14 +1761,441 @@ async def _run_cost_item(session, batch, item) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Catalog-run items: the same two steps as a single-part check
+# ---------------------------------------------------------------------------
+
+
+class CatalogOrgChanged(RuntimeError):
+    """The run's owner switched organization after the run started."""
+
+
+def _catalog_slots() -> "asyncio.Semaphore":
+    """Catalog parts checked at once in this worker process: the parse pool's size.
+
+    A part's analysis budget (ANALYSIS_TIMEOUT_SEC) includes any wait for a
+    parse-ladder slot. Parts of several runs (or one run's 4 at a time) queued
+    behind a slow STEP would time out while merely waiting; holding a slot here
+    first means the clock starts when the part is actually being read. The wait
+    is bounded (``_catalog_slot``): past it the part goes back to the run.
+    Loop-local, like the parse pool's own.
+    """
+    from src.parsers import parse_pool
+
+    loop = asyncio.get_event_loop()
+    sem = getattr(loop, "_cadverify_catalog_sem", None)
+    if sem is None:
+        sem = asyncio.Semaphore(max(1, parse_pool.worker_count()))
+        setattr(loop, "_cadverify_catalog_sem", sem)
+    return sem
+
+
+@asynccontextmanager
+async def _catalog_slot(wait: float):
+    """A catalog slot (``_catalog_slots``), waited for at most ``wait`` seconds (then ComputeBusy)."""
+    sem = _catalog_slots()
+    try:
+        await asyncio.wait_for(sem.acquire(), max(0.0, wait))
+    except asyncio.TimeoutError:
+        raise compute_budget.ComputeBusy(wait) from None
+    try:
+        yield
+    finally:
+        sem.release()
+
+
+def _catalog_owned_processes(processes) -> str:
+    """The org's machine processes the cost route accepts as owned (others are left out)."""
+    from src.costing.rates import _resolve_process_token
+
+    return ",".join(sorted({p for p in processes if p and _resolve_process_token(p) is not None}))
+
+
+async def _run_catalog_item(session, batch, item) -> dict:
+    """Check one catalog part: the DFM analysis, then the cost decision with the org's machines.
+
+    Both steps are the live single-check code paths (``run_analysis`` and the
+    POST /validate/cost body ``routes._run_cost_decision``), so a part on the
+    board carries exactly the numbers its own check would: the org's machines,
+    materials, rates and calibration bound, its own quantity ladder and
+    material. The analysis keeps the source file for the part's page; the
+    analysed geometry is reused by the cost step, as in a single check.
+
+    Invalid geometry is a result, not a failure: the item completes with the
+    engine's reason (no decision is saved, as the route saves none). A free run
+    keeps the part's allowance slot once the item completes, in the same
+    transaction (``catalog_allowance.count_completed_part``).
+    """
+    from src.auth.org_context import resolve_org
+    from src.services import batch_service
+    from src.services.catalog_run_service import run_meta
+
+    batch_id = batch.id
+    batch_ulid = batch.ulid
+    batch_user_id = batch.user_id
+    batch_org_id = batch.org_id
+    batch_api_key_id = batch.api_key_id or 0
+    free_run = bool(run_meta(batch).get("free"))
+    item_id = item.id
+    item_ulid = item.ulid
+    item_filename = item.filename
+    item_quantities = item.quantities or ""
+    item_material_class = item.material_class
+
+    try:
+        file_bytes = await asyncio.to_thread(batch_service.read_batch_blob, batch_ulid, item_filename)
+    except Exception as exc:
+        raise BatchStorageReadError("batch artifact could not be read from durable storage") from exc
+
+    # The cost route resolves the caller's ACTIVE organization. A run belongs to
+    # the organization it started in; if the owner switched since, stop rather
+    # than save this part's records into another organization.
+    if await resolve_org(session, batch_user_id) != batch_org_id:
+        raise CatalogOrgChanged(
+            "Your active organization changed after this run started. Switch back to start it again."
+        )
+
+    user = AuthedUser(user_id=batch_user_id, api_key_id=batch_api_key_id, key_prefix="batch")
+    from fastapi import HTTPException
+
+    from src.api.routes import refuse_over_memory_budget
+    from src.config.check_limits import larger_limits
+
+    # A part too heavy for this worker is refused before anything runs (the same
+    # memory gate as any check), in plain words.
+    try:
+        refuse_over_memory_budget(file_bytes, item_filename)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, dict) else {}
+        raise RuntimeError(str(detail.get("message") or "This file needs more memory than one check gets.")) from exc
+    # A catalog part runs with the worker's own budget for its size (as a big
+    # file's check does), not the 60 s a web request gets.
+    budget = _catalog_budget_sec(len(file_bytes), item_filename)
+    # A catalog slot, then room in the compute budget for the part's whole check
+    # (its analysis, bodies and price), sized by the memory model. Waiting for
+    # either isn't part of its time limit; past the wait its job allows, the part
+    # goes back to the run (run_batch_item). A part that ran out of time keeps its
+    # room until its thread really ends, so its retry never doubles it unseen.
+    wait_until = time.monotonic() + _item_wait_seconds(2 * budget)
+    try:
+        with larger_limits(budget_sec=budget, max_triangles=_catalog_max_triangles(),
+                           max_bytes=max(len(file_bytes), 1)):
+            async with _catalog_slot(wait_until - time.monotonic()):
+                async with compute_budget.hold(compute_budget.need_for_data(file_bytes, item_filename),
+                                               wait=max(0.0, wait_until - time.monotonic()), label="catalog part"):
+                    return await _check_catalog_part(
+                        session, batch, item, file_bytes, user,
+                        batch_id=batch_id, batch_org_id=batch_org_id, batch_user_id=batch_user_id,
+                        free_run=free_run, item_id=item_id, item_ulid=item_ulid, item_filename=item_filename,
+                        item_quantities=item_quantities, item_material_class=item_material_class,
+                    )
+    except CatalogPartTimedOut as exc:
+        # Once more, after the rest of the run: a busy worker is the usual cause.
+        if await _check_again_later(session, item_ulid, batch):
+            logger.info("BatchItem %s ran past %.0fs; checking it again after the rest of the run", item_ulid, budget)
+            return {}
+        raise RuntimeError(f"Checking took longer than its {budget:.0f} s time limit, twice.") from exc
+
+
+class CatalogPartTimedOut(RuntimeError):
+    """A catalog part's check ran past its time limit."""
+
+
+def _catalog_budget_sec(size_bytes: int, filename: str) -> float:
+    """A catalog part's time limit: the big-file check's budget for its size, within the job's own."""
+    from src.services.stored_check_service import time_budget_sec
+
+    try:
+        floor = float(os.getenv("CATALOG_PART_MIN_SECONDS", "180"))
+    except ValueError:
+        floor = 180.0
+    # The analysis and the price each get the budget; both fit in the 600 s job.
+    return max(floor, min(240.0, time_budget_sec(size_bytes, filename)))
+
+
+def _catalog_max_triangles() -> int:
+    try:
+        return max(1, int(os.getenv("MAX_TRIANGLES", "2000000")))
+    except ValueError:
+        return 2_000_000
+
+
+def _timed_out(exc: BaseException) -> bool:
+    from fastapi import HTTPException
+
+    if isinstance(exc, compute_budget.MeshBusy):
+        return True  # meshing ran out of time on a saturated box: check it again later
+    if isinstance(exc, HTTPException):
+        if exc.status_code == 504:
+            return True
+        detail = exc.detail.get("message") if isinstance(exc.detail, dict) else exc.detail
+        from src.services.catalog_run_service import _TIME_LIMIT
+
+        return exc.status_code == 400 and bool(_TIME_LIMIT.search(str(detail or "")))
+    return isinstance(exc, asyncio.TimeoutError)
+
+
+async def _check_again_later(session, item_ulid: str, batch=None) -> bool:
+    """Put a part that ran out of time back in the run once, behind the parts still to go.
+
+    ``priority = 'low'`` marks the second try (and orders it last); a part that
+    already had it fails with plain words instead. False when it was already retried.
+    """
+    try:
+        await session.rollback()
+    except Exception:
+        pass
+    item = (await session.execute(
+        select(BatchItem).where(BatchItem.ulid == item_ulid).with_for_update()
+    )).scalars().first()
+    if batch is not None:
+        await session.refresh(batch)
+    if item is None or item.status != "processing":
+        return True  # cancelled or finished elsewhere: nothing to record here
+    if item.priority == "low":
+        return False
+    item.status = "pending"
+    item.priority = "low"
+    item.started_at = None
+    item.lease_started_at = None
+    item.error_message = None
+    await session.commit()
+    if batch is not None:
+        await session.refresh(batch)  # the rollback above expired it; the caller reads it after
+    return True
+
+
+async def _declare_list_specs(session, org_id: str, user_id: int, file_bytes: bytes, specs: dict) -> None:
+    """Store a parts-list row's specs on the part's context (best effort, never breaks a run)."""
+    import copy
+
+    from src.services import cost_decision_service, part_context_service as pcs
+    from src.services.analysis_service import compute_mesh_hash
+
+    mesh_hash = compute_mesh_hash(file_bytes)
+    try:
+        async with session.begin_nested():
+            before = copy.deepcopy(pcs.engine_inputs(await pcs.get_context(session, org_id, mesh_hash)))
+            row = await pcs.upsert_context(session, org_id, mesh_hash, {"part_specs": specs}, created_by=user_id)
+            for reason in pcs.changed_input_reasons(before, pcs.engine_inputs(row))[:1]:
+                await cost_decision_service.mark_part_decisions_stale(session, org_id, mesh_hash, reason=reason)
+        await session.commit()
+    except Exception:
+        logger.warning("parts-list specs not stored for org %s part %.12s", org_id, mesh_hash, exc_info=True)
+
+
+def part_facts(list_meta: dict, run: dict) -> dict:
+    """A part's facts from its catalog run: the parts list's row for it, with the
+    run's Quantity ("each, unless listed") as its yearly quantity when the list
+    names none."""
+    run_qty = run.get("quantity")
+    if list_meta.get("quantity") or not isinstance(run_qty, int) or run_qty <= 0:
+        return list_meta
+    return {**list_meta, "quantity": run_qty}
+
+
+async def _declare_list_facts(session, org_id: str, user_id: int, batch_ulid: str, file_bytes: bytes,
+                              list_meta: dict) -> None:
+    """The parts list's current price and yearly quantity on the part's declared context.
+
+    The yearly quantity is the list's for this file, else the run's own Quantity
+    ("each, unless listed": the same yearly figure for every part the list
+    doesn't name), so a part from a run says how many a year and an RFQ asks
+    for that many. Best effort, never breaks a run. A price typed on the part's
+    Decision view stays (it wins over a list's); a yearly quantity already
+    declared stays. Neither is an engine input, so no record goes out of date.
+    """
+    from src.services import part_context_service as pcs
+    from src.services.analysis_service import compute_mesh_hash
+
+    price = list_meta.get("current_price_usd")
+    qty = list_meta.get("quantity")
+    if not price and not qty:
+        return
+    mesh_hash = compute_mesh_hash(file_bytes)
+    try:
+        async with session.begin_nested():
+            row = await pcs.get_context(session, org_id, mesh_hash)
+            fields: dict = {}
+            stored = getattr(row, "buy_price", None) if row is not None else None
+            if price and not (isinstance(stored, dict) and stored.get("source") == "you"):
+                fields["buy_price"] = pcs.normalize_buy_price({"usd_each": float(price)}, source="parts_list",
+                                                              run_id=batch_ulid)
+            if qty and (row is None or row.annual_volume is None):
+                fields["annual_volume"] = int(qty)
+            if fields:
+                await pcs.upsert_context(session, org_id, mesh_hash, fields, created_by=user_id)
+        await session.commit()
+    except Exception:
+        logger.warning("parts-list price and quantity not stored for org %s part %.12s", org_id, mesh_hash,
+                       exc_info=True)
+
+
+async def _check_catalog_part(
+    session, batch, item, file_bytes: bytes, user, *, batch_id: int, batch_org_id: str,
+    batch_user_id: int, free_run: bool, item_id: int, item_ulid: str, item_filename: str,
+    item_quantities: str, item_material_class,
+) -> dict:
+    """The two steps of one catalog part, holding a parse slot (see _run_catalog_item)."""
+    import io
+    import time
+
+    from fastapi import HTTPException
+    from starlette.datastructures import Headers, UploadFile
+
+    from src.api.routes import _run_cost_decision
+    from src.auth.catalog_allowance import count_completed_part, file_identity
+    from src.db.models import CostDecision, MachineInstance
+    from src.services import analysis_service, batch_service
+    from src.services.catalog_run_service import GEOMETRY_INVALID_PREFIX
+
+    # The part's own time: from when it holds a parse slot, not while it waited.
+    start = time.time()
+    try:
+        analysis_run = await analysis_service.run_analysis(
+            file_bytes=file_bytes,
+            filename=item_filename,
+            processes=None,
+            rule_pack=None,
+            user=user,
+            session=session,
+            org_id=batch_org_id,
+            return_persisted_id=True,
+        )
+    except (HTTPException, asyncio.TimeoutError) as exc:
+        if _timed_out(exc):
+            raise CatalogPartTimedOut(str(getattr(exc, "detail", exc))) from exc
+        raise
+    if not isinstance(analysis_run, analysis_service.AnalysisRun) or analysis_run.analysis_id is None:
+        raise RuntimeError("Analysis completed without a durable persisted record")
+    analysis_id = analysis_run.analysis_id
+
+    owned = _catalog_owned_processes((await session.execute(
+        select(MachineInstance.process).where(MachineInstance.org_id == batch_org_id)
+    )).scalars().all())
+    upload = UploadFile(
+        file=io.BytesIO(file_bytes),
+        filename=item_filename,
+        headers=Headers({"content-type": "application/octet-stream"}),
+    )
+    qty = ",".join(t for t in item_quantities.split(";") if t.strip()) or "1,100,1000,2000,5000,10000"
+    # The parts list's specs for this file become the part's declared specs, so
+    # the price, the gates and the part's page all read them (the newest
+    # declaration wins, as on the part's page).
+    from src.services.catalog_run_service import run_meta
+
+    list_meta = ((run_meta(batch).get("items") or {}).get(item_filename) or {})
+    list_specs = list_meta.get("part_specs")
+    if list_specs:
+        await _declare_list_specs(session, batch_org_id, batch_user_id, file_bytes, list_specs)
+    # The list's price and yearly quantity (else the run's quantity) go on the part, for its own page.
+    await _declare_list_facts(session, batch_org_id, batch_user_id, batch.ulid, file_bytes,
+                              part_facts(list_meta, run_meta(batch)))
+    # The material the list names is priced as that grade; one ScaleCAD can't
+    # price leaves the part checked and not priced (never priced as another).
+    material_name = list_meta.get("material") if list_meta.get("material_grade") else None
+    unpriced = bool(list_meta.get("material")) and not list_meta.get("material_class")
+    geometry_invalid: str | None = None
+    decision_id = None
+    # A file of several bodies isn't priced as one block: each body shape becomes
+    # a part of its own on the board (services/catalog_bodies.py).
+    split = None
+    part_type = analysis_run.result.get("part_type") if isinstance(analysis_run.result, dict) else None
+    if isinstance(part_type, dict) and not unpriced:
+        from src.services.catalog_bodies import check_file_bodies
+
+        try:
+            split = await check_file_bodies(
+                session, user=user, org_id=batch_org_id, file_bytes=file_bytes, filename=item_filename,
+                quantities=qty, material_class=item_material_class, owned=owned, part_type=part_type,
+                material_name=material_name,
+            )
+        except Exception:
+            logger.warning("BatchItem %s: body by body check failed; priced as one file", item_ulid, exc_info=True)
+            split = None
+    if split is None and not unpriced:
+        try:
+            report = await _run_cost_decision(
+                file=upload,
+                qty=qty,
+                region=None,
+                cavities=1,
+                complexity="moderate",
+                material_class=item_material_class or "polymer",
+                owned_processes=owned or None,
+                user=user,
+                session=session,
+                material_name=material_name,
+                org_id=batch_org_id,
+            )
+            saved = (report or {}).get("saved") or {}
+            if saved.get("id"):
+                decision_id = (await session.execute(
+                    select(CostDecision.id).where(CostDecision.ulid == saved["id"])
+                )).scalar_one_or_none()
+        except HTTPException as exc:
+            detail = exc.detail if isinstance(exc.detail, dict) else {}
+            if exc.status_code == 400 and detail.get("code") == "GEOMETRY_INVALID":
+                geometry_invalid = str(detail.get("message") or "the geometry needs repair")
+            elif _timed_out(exc):
+                raise CatalogPartTimedOut("pricing ran past the time limit") from exc
+            else:
+                message = detail.get("message") if detail else exc.detail
+                raise RuntimeError(f"Pricing didn't finish: {message}") from exc
+    duration_ms = round((time.time() - start) * 1000, 1)
+
+    # The analysis or a deduplicated decision may have rolled the session back.
+    await session.refresh(item)
+    await session.refresh(batch)
+    if item.status != "processing":
+        logger.info("BatchItem %s finished its catalog check after becoming %s; result not linked", item_ulid, item.status)
+        return {}
+
+    item.status = "completed"
+    item.analysis_id = analysis_id
+    item.cost_decision_id = decision_id
+    item.error_message = (GEOMETRY_INVALID_PREFIX + geometry_invalid)[:500] if geometry_invalid else None
+    item.duration_ms = duration_ms
+    item.completed_at = datetime.now(timezone.utc)
+    item.lease_started_at = None
+    await batch_service.update_batch_counters(session, batch_id, "completed_items")
+    batch_service.touch_batch_heartbeat(batch)
+    if split is not None:
+        from src.services.catalog_bodies import record_file_bodies
+
+        await record_file_bodies(batch_org_id, batch.ulid, split)
+    if free_run:
+        from src.auth.validation_caps import SAMPLE_PART_SHA256
+        import hashlib
+
+        # One file is one part of the free run, however many bodies it holds.
+        if hashlib.sha256(file_bytes).hexdigest() not in SAMPLE_PART_SHA256:
+            await count_completed_part(session, batch_user_id, batch_id, item_id, file_identity(item_filename, file_bytes))
+    await session.commit()
+    logger.info(
+        "BatchItem %s catalog check completed: analysis_id=%s decision=%s duration=%.1fms",
+        item_ulid, analysis_id, decision_id, duration_ms,
+    )
+    return {}
+
+
+# ---------------------------------------------------------------------------
 # Item processor task
 # ---------------------------------------------------------------------------
 
 
 async def _resolve_transient_batch_item_failure(
     item_ulid: str,
+    *,
+    stopped_before: bool = False,
 ) -> tuple[str, int]:
-    """Persist retry, exhaustion, or terminal-parent state in a fresh session."""
+    """Persist retry, exhaustion, or terminal-parent state in a fresh session.
+
+    ``stopped_before``: an earlier try of this item was stopped part way (a
+    worker restart or out-of-memory kill, a reclaimed lease). Then the tries
+    weren't all spent on storage or database failures, and an item that runs
+    out of them says it was stopped (``batch_service.exhausted_reason``); the
+    note stays on the item across this retry so the next try knows it too.
+    """
 
     from src.services import batch_service
 
@@ -1376,12 +2231,13 @@ async def _resolve_transient_batch_item_failure(
             await session.commit()
             return "terminal", attempts
 
+        stopped_before = stopped_before or (item.error_message or "").startswith(
+            batch_service.STOPPED_MID_CHECK)
         if attempts >= BATCH_ITEM_MAX_ATTEMPTS:
             item.status = "failed"
-            item.error_message = (
-                "Temporary storage or database failure persisted after "
-                f"{BATCH_ITEM_MAX_ATTEMPTS} attempts."
-            )
+            # What spent the tries: the storage/database wording only when no
+            # earlier try was stopped part way.
+            item.error_message = batch_service.exhausted_reason(item, stopped=stopped_before)
             item.completed_at = now
             item.lease_started_at = None
             await batch_service.update_batch_counters(
@@ -1399,12 +2255,51 @@ async def _resolve_transient_batch_item_failure(
         item.started_at = None
         item.completed_at = None
         item.lease_started_at = now
-        item.error_message = None
+        item.error_message = batch_service.STOPPED_MID_CHECK if stopped_before else None
         await session.commit()
         return "retry", attempts
 
 
+# arq job slots the worker keeps from batch items for interactive jobs (a design,
+# a big file's check, a kept part's job): with all of max_jobs taken by catalog
+# parts waiting for compute room, a design waited 15-76 s just to start.
+INTERACTIVE_JOB_SLOTS = 2
+_ITEMS_IN_FLIGHT = 0
+
+
+def batch_item_job_slots() -> int:
+    """How many batch items this worker runs at once (``BATCH_ITEM_JOB_SLOTS``).
+
+    Default: arq's ``max_jobs`` less ``INTERACTIVE_JOB_SLOTS``, at least one.
+    """
+    raw = os.getenv("BATCH_ITEM_JOB_SLOTS", "").strip()
+    if raw:
+        try:
+            return max(1, int(raw))
+        except ValueError:
+            pass
+    from src.jobs.worker import WorkerSettings
+
+    return max(1, int(WorkerSettings.max_jobs) - INTERACTIVE_JOB_SLOTS)
+
+
 async def run_batch_item(ctx: dict, item_ulid: str) -> None:
+    """Process a single batch item (``_run_batch_item``) as batch work.
+
+    Its compute holds wait behind interactive work (``compute_budget.batch_work``),
+    and past ``batch_item_job_slots()`` items in flight it goes back to the run,
+    its try not spent, so interactive jobs always find an arq job slot.
+    """
+    global _ITEMS_IN_FLIGHT
+    _ITEMS_IN_FLIGHT += 1
+    try:
+        with compute_budget.batch_work():
+            await _run_batch_item(ctx, item_ulid)
+    finally:
+        _ITEMS_IN_FLIGHT -= 1
+
+
+async def _run_batch_item(ctx: dict, item_ulid: str) -> None:
     """Process a single batch item.
 
     DFM batches (``job_type='dfm'``) run ``analysis_service.run_analysis``; cost
@@ -1414,6 +2309,8 @@ async def run_batch_item(ctx: dict, item_ulid: str) -> None:
     """
     from src.services import analysis_service, batch_service, webhook_service
 
+    # The compute-room waits below are measured from the job's own start.
+    _JOB_STARTED.set(time.monotonic())
     session_factory = get_session_factory()
 
     async with session_factory() as session:
@@ -1492,12 +2389,23 @@ async def run_batch_item(ctx: dict, item_ulid: str) -> None:
         item.attempt_count = attempts
         item.started_at = datetime.now(timezone.utc)
         item.lease_started_at = item.started_at
+        # A note from a stopped earlier try isn't this try's outcome, but it is
+        # part of why the tries ran out if this one fails on storage or the
+        # database too. A processing row this delivery reclaims was left by a
+        # try that stopped before it could record anything.
+        stopped_before = retry_reclaim or (item.error_message or "").startswith(
+            batch_service.STOPPED_MID_CHECK)
+        item.error_message = None
 
         # Cost items carry engine-number webhook extras; DFM items carry none.
         webhook_extra: dict | None = None
 
         try:
             await session.commit()
+            if _ITEMS_IN_FLIGHT > batch_item_job_slots():
+                # The worker's job slots left for interactive jobs: back in the
+                # run, try not spent (the ComputeBusy path below).
+                raise compute_budget.ComputeBusy(0.0)
             if batch_release_fault == "batch_delay":
                 # Bounded, record-scoped delay for proving refresh/cancellation
                 # behavior against a real worker. The API can persist this marker
@@ -1508,9 +2416,11 @@ async def run_batch_item(ctx: dict, item_ulid: str) -> None:
                 # W3: should-cost this item (mirror POST /validate/cost). The
                 # coordinator/DFM paths are untouched.
                 webhook_extra = await _run_cost_item(session, batch, item)
+            elif batch_job_type == "catalog":
+                # A catalog part: its DFM analysis and its cost decision with
+                # the org's machines, exactly as a single-part check.
+                webhook_extra = await _run_catalog_item(session, batch, item) or None
             else:
-                import time
-
                 start = time.time()
 
                 # Read file bytes
@@ -1539,17 +2449,23 @@ async def run_batch_item(ctx: dict, item_ulid: str) -> None:
                     key_prefix="batch",
                 )
 
-                # Run analysis
-                analysis_run = await analysis_service.run_analysis(
-                    file_bytes=file_bytes,
-                    filename=item_filename,
-                    processes=item_process_types,
-                    rule_pack=item_rule_pack,
-                    user=user,
-                    session=session,
-                    org_id=batch_org_id,
-                    return_persisted_id=True,
-                )
+                # Run analysis, holding room in the compute budget for it (the
+                # wait isn't part of its time; past the job's wait it goes back).
+                async with compute_budget.hold(
+                    compute_budget.need_for_data(file_bytes, item_filename),
+                    wait=_item_wait_seconds(2 * _cost_timeout_sec()), label="batch analysis item",
+                ):
+                    start = time.time()
+                    analysis_run = await analysis_service.run_analysis(
+                        file_bytes=file_bytes,
+                        filename=item_filename,
+                        processes=item_process_types,
+                        rule_pack=item_rule_pack,
+                        user=user,
+                        session=session,
+                        org_id=batch_org_id,
+                        return_persisted_id=True,
+                    )
                 if not isinstance(analysis_run, analysis_service.AnalysisRun):
                     raise RuntimeError(
                         "Analysis did not return its durable persistence receipt"
@@ -1612,6 +2528,12 @@ async def run_batch_item(ctx: dict, item_ulid: str) -> None:
                     item_ulid,
                 )
             raise
+        except compute_budget.ComputeBusy as exc:
+            # No room within the wait its job allows: back in the run, try not
+            # spent. Meshing that ran out of time on a saturated box: back too,
+            # that try counted.
+            await _put_back_for_room(session, item_ulid, count_try=isinstance(exc, compute_budget.MeshBusy))
+            return
         except Exception as exc:
             if is_transient_batch_item_error(exc):
                 logger.warning(
@@ -1629,7 +2551,7 @@ async def run_batch_item(ctx: dict, item_ulid: str) -> None:
                     )
                 try:
                     action, next_attempt = await _resolve_transient_batch_item_failure(
-                        item_ulid
+                        item_ulid, stopped_before=stopped_before
                     )
                 except Exception:
                     # The database may still be unavailable. Preserve ARQ retry

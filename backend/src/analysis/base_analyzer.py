@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import numpy as np
 import trimesh
 
@@ -52,9 +54,9 @@ def analyze_geometry(mesh: trimesh.Trimesh) -> GeometryInfo:
     if is_watertight and np.isfinite(volume) and abs(volume) > 1e-12:
         with np.errstate(all="ignore"):
             com = mesh.center_mass
-        center_of_mass = tuple(
-            float(c) if np.isfinite(c) else None for c in com
-        )
+        center_of_mass = cast("tuple[float | None, float | None, float | None]", tuple(
+            float(c) if np.isfinite(c) else None for c in com  # center_mass: three coordinates
+        ))
     else:
         center_of_mass = (None, None, None)
     return GeometryInfo(
@@ -67,11 +69,28 @@ def analyze_geometry(mesh: trimesh.Trimesh) -> GeometryInfo:
         is_manifold=is_watertight,  # trimesh: watertight ≈ manifold
         euler_number=int(mesh.euler_number),
         center_of_mass=center_of_mass,
+        cad_face_count=_cad_faces(mesh),
     )
 
 
+def _cad_faces(mesh: trimesh.Trimesh) -> int | None:
+    """The B-rep faces of a STEP/IGES ScaleCAD meshed (the faces its CAD tool shows), else None."""
+    from src.analysis.context import cad_face_count
+
+    try:
+        count = cad_face_count(mesh)
+    except Exception:
+        return None
+    return count or None
+
+
 def check_watertight(mesh: trimesh.Trimesh) -> list[Issue]:
-    """Check if the mesh is watertight (manifold, no holes)."""
+    """Check if the mesh is watertight (manifold, no holes).
+
+    Closed bodies that share an edge where they touch (a weldment's members
+    exported as one STL, say) aren't one closed solid, but nothing is open either:
+    that reads as BODIES_SHARE_EDGES, not as an open shell to repair.
+    """
     issues = []
     if not mesh.is_watertight:
         # Find boundary edges (edges that belong to only one face)
@@ -79,6 +98,29 @@ def check_watertight(mesh: trimesh.Trimesh) -> list[Issue]:
         if hasattr(mesh, "edges_unique") and hasattr(mesh, "edges_unique_inverse"):
             edge_face_count = np.bincount(mesh.edges_unique_inverse)
             boundary_count = int(np.sum(edge_face_count == 1))
+
+        if boundary_count == 0:
+            from src.analysis.part_types import body_count
+
+            try:
+                counted = body_count(mesh)
+            except Exception:
+                counted = None
+            if counted is not None and counted.share_edges:
+                issues.append(Issue(
+                    code="BODIES_SHARE_EDGES",
+                    severity=Severity.ERROR,
+                    message=(
+                        f"The file holds {counted.bodies} closed bodies that share edges where they "
+                        "touch, so as one shape it isn't a closed solid. Each body on its own is closed."
+                    ),
+                    process=None,
+                    fix_suggestion=(
+                        "Nothing to repair. ScaleCAD checks each body as its own part (Bodies). "
+                        "If they are one part, join them into one solid in your CAD tool."
+                    ),
+                ))
+                return issues
 
         issues.append(Issue(
             code="NON_WATERTIGHT",
@@ -172,9 +214,24 @@ def check_self_intersections(mesh: trimesh.Trimesh) -> list[Issue]:
 
 
 def check_disconnected_components(mesh: trimesh.Trimesh) -> list[Issue]:
-    """Check for multiple disconnected bodies."""
+    """Check for multiple disconnected bodies.
+
+    The shell of a sealed internal void is part of the solid around it, not a
+    second body: a 40 mm cube with a sealed 20 mm cavity is one part. Closed
+    bodies that only share an edge or a corner where they touch are still
+    separate bodies (counted from the mesh's manifold edges).
+    """
+    from src.analysis.context import solid_body_count
+    from src.analysis.part_types import body_count as counted_bodies
+
     issues = []
-    body_count = mesh.body_count if hasattr(mesh, "body_count") else len(mesh.split())
+    body_count = solid_body_count(mesh)
+    try:
+        counted = counted_bodies(mesh)
+        if counted.all_closed and counted.bodies > body_count:
+            body_count = counted.bodies
+    except Exception:
+        pass
     if body_count > 1:
         issues.append(Issue(
             code="MULTIPLE_BODIES",
@@ -182,8 +239,8 @@ def check_disconnected_components(mesh: trimesh.Trimesh) -> list[Issue]:
             message=f"Mesh contains {body_count} disconnected bodies.",
             process=None,
             fix_suggestion=(
-                "Combine into a single solid body using boolean union, or "
-                "separate into individual files for independent manufacturing."
+                "ScaleCAD checks each body as its own part (Bodies). If they are "
+                "one part, join them into one solid in your CAD tool."
             ),
         ))
     return issues
@@ -241,17 +298,29 @@ def decimation_issue(ctx) -> Issue | None:
     from src.analysis.context import _max_analysis_faces
 
     cap = _max_analysis_faces()
+    source = (getattr(ctx, "mesh", None) is not None
+              and ctx.mesh.metadata.get("source_format")) or None
+    cad_fix = ("ScaleCAD made the triangles from your CAD file itself, so there is no "
+               "triangle count to export. For exact values, remove detail the check "
+               "doesn't need (text, knurling, cosmetic threads, tiny fillets), or "
+               "check the part on its own rather than in an assembly.")
+    stl_fix = (f"Re-export the part with {cap:,} or fewer triangles (lower the "
+               "tessellation / mesh density) so DFM is computed on the exact geometry.")
+    if source == "cad":
+        fix = cad_fix
+    elif source == "stl":
+        fix = stl_fix
+    else:
+        fix = (f"For exact values: from a mesh file, export one with {cap:,} or fewer "
+               "triangles; from a STEP or IGES file, " + cad_fix[cad_fix.index("remove"):])
     return Issue(
         code="DECIMATED_MESH",
         severity=Severity.WARNING,
         message=(
-            f"Analyzed on a decimated mesh: {orig:,}→{ana:,} faces "
+            f"Analyzed on a simplified copy: {orig:,}→{ana:,} faces "
             f"({strat}). Wall-thickness, draft-angle and other DFM values are "
-            "approximate — computed on a reduced-resolution copy to bound memory."
+            "approximate, computed on the copy to bound memory."
         ),
         process=None,
-        fix_suggestion=(
-            f"Re-export the part with {cap:,} or fewer triangles (lower the "
-            "tessellation / mesh density) so DFM is computed on the exact geometry."
-        ),
+        fix_suggestion=fix,
     )

@@ -21,6 +21,8 @@ are documented inline and regression-tested in tests/test_features.py.
 
 from __future__ import annotations
 
+from typing import cast
+
 import numpy as np
 import trimesh
 
@@ -169,8 +171,8 @@ def detect_cylinders(
             Feature(
                 kind=kind,
                 face_indices=[int(i) for i in comp_arr],
-                centroid=tuple(float(v) for v in mean),
-                axis=tuple(float(v) for v in axis),
+                centroid=cast("tuple[float, float, float]", tuple(float(v) for v in mean)),
+                axis=cast("tuple[float, float, float]", tuple(float(v) for v in axis)),
                 radius=fitted_radius if circular else None,
                 depth=depth,
                 area=area,

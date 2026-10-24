@@ -4,7 +4,11 @@ Mounted at /scim/v2 for Okta/Entra-style provisioning, and only on deployments
 that use single sign-on (AUTH_MODE saml, oidc or hybrid) or that set
 ``SCIM_ENABLED=1``; see :func:`mount_scim`. Authentication uses the existing
 Bearer API-key path, authorization requires org admin, and the key's org must
-be a shared organization: a personal org never uses SCIM.
+be a shared organization (a personal org never uses SCIM) that owns this
+deployment's identity provider, ``SSO_ORG_ID`` (:mod:`src.auth.sso_org`), the
+same rule SAML group mappings follow. SCIM creates accounts for addresses no one
+has registered yet, with the provisioning org as their home, so an org that
+does not own the identity provider must never be able to do that.
 """
 from __future__ import annotations
 
@@ -15,7 +19,10 @@ from typing import Any
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.auth.org_context import org_is_personal
 from src.auth.rbac import OrgAuthContext, OrgRole, require_org_role
+from src.auth.sso_org import sso_org_id
+from src.config.public_urls import error_doc_url
 from src.db.engine import get_db_session
 from src.services import scim_service as svc
 
@@ -77,18 +84,38 @@ def _scim_org_required(message: str) -> HTTPException:
     )
 
 
+def _sso_org_required() -> HTTPException:
+    return HTTPException(
+        status_code=403,
+        detail={
+            "code": "sso_org_required",
+            # Plain words for the admin, as for SAML group mappings: single
+            # sign-on is set up per organization by ScaleCAD support.
+            "message": (
+                "Single sign-on isn't set up for this organization, so it can't "
+                "provision people with SCIM. ScaleCAD support sets it up for "
+                "your organization: email nazeem@scalecad.ai."
+            ),
+            "doc_url": error_doc_url("sso_org_required"),
+        },
+    )
+
+
 async def _org_id(ctx: OrgAuthContext, session: AsyncSession) -> str:
-    """The org this SCIM call provisions: the admin key's own shared org."""
+    """The org this SCIM call provisions: the admin key's own shared org, and
+    only when that org owns this deployment's identity provider."""
     if not ctx.org_id:
         raise _scim_org_required(
             "SCIM provisioning requires an org-scoped admin API key."
         )
-    if await svc.org_is_personal(session, ctx.org_id):
+    if await org_is_personal(session, ctx.org_id):
         raise _scim_org_required(
             "SCIM provisioning works only for a shared organization, not a "
             "personal one. Create an organization for your team and use an "
             "admin API key issued in it."
         )
+    if ctx.org_id != sso_org_id():
+        raise _sso_org_required()
     return ctx.org_id
 
 

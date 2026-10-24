@@ -112,7 +112,7 @@ export function RfqPackagesClient() {
     <div className="space-y-6">
       <PageHeader
         title="RFQ packages"
-        subtitle="Supplier evidence bundles generated from saved cost decisions."
+        subtitle="Requests for quote built from saved cost decisions. ScaleCAD doesn't send packages or track replies: download the ZIP and send it yourself."
         actions={
           <Button variant="secondary" size="sm" onClick={() => void refresh()} disabled={loading}>
             <RefreshCw /> Refresh

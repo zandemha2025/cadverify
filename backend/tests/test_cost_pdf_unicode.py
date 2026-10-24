@@ -88,7 +88,7 @@ def test_cost_pdf_explains_asymptotic_split_and_repeats_table_headers(tmp_path):
         [pdftotext, "-layout", str(pdf_path), "-"],
         check=True, capture_output=True, text=True,
     ).stdout.split("\f")
-    assert "mjf" in pages[1]
+    assert "Nylon powder printing (MJF)" in pages[1]
     assert "One-time $" in pages[1], "continuation pages must repeat estimate headings"
     line_item_pages = [p for p in pages if "2.83" in p]
     assert len(line_item_pages) >= 2

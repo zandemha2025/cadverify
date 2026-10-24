@@ -68,15 +68,15 @@ def test_near_threshold_evidence_survives_analysis_cost_and_heatmap_serializatio
     from src.api.routes import _to_response
     from src.costing import EstimateOptions, estimate_decision
 
-    result, mesh, ctx = _analyze(trimesh.creation.box(extents=[30, 20, 0.79999]))
+    result, mesh, ctx = _analyze(trimesh.creation.box(extents=[30, 20, 0.59999]))
     response = _to_response(result, wall_thickness=ctx.wall_thickness)
     fdm = next(s for s in response["process_scores"] if s["process"] == "fdm")
     wall = next(i for i in fdm["issues"] if i["code"] == "THIN_WALL")
     assert wall["measurement_unit"] == "mm"
     assert next(i for i in response["priority_fixes"] if i["code"] == "THIN_WALL")["measurement_unit"] == "mm"
-    assert wall["measured_value"] < wall["required_value"] == 0.8
-    assert "0.79999mm" in wall["message"]
-    assert min(response["wall_thickness_map"]["values"]) < 0.8
+    assert wall["measured_value"] < wall["required_value"] == 0.6
+    assert "0.59999mm" in wall["message"]
+    assert min(response["wall_thickness_map"]["values"]) < 0.6
     report = estimate_decision(result, mesh, ctx.features, EstimateOptions(quantities=[100]))
     fdm_estimates = [e for e in report.estimates if e["process"] == "fdm"]
     assert fdm_estimates
@@ -489,9 +489,23 @@ def test_real_geometry_findings_serialize_ratio_and_angle_units():
     for issue, expected in [(ratio, "ratio"), (angle, "deg")]:
         assert serialize_issue(issue)["measurement_unit"] == expected
     assert 150 < angle.measured_value < 180
-    assert ratio.measured_value == 30
+    # As built: 10 mm tall on a sliver footprint whose narrowest width is the
+    # triangle's altitude onto its 30.02 mm side (0.9994 mm), not 30 / 1 from the box.
+    assert abs(ratio.measured_value - 10.0 * np.hypot(30.0, 1.0) / 30.0) < 1e-9
     # Old saved percentage findings remain readable; rotation is no longer one.
     historical = Issue("NOT_PRISMATIC", Severity.ERROR, "old finding", None,
                        measured_value=80., measurement_unit="percent")
     assert serialize_issue(historical)["measurement_unit"] == "percent"
     assert "measurement_unit" not in serialize_issue(Issue("UNKNOWN", Severity.INFO, "unknown", None, measured_value=2))
+
+
+def test_measurements_read_in_three_figures_unless_the_limit_needs_more():
+    # Plain engineering figures: no "0.173003mm" or "14.7625mm" in a finding.
+    assert format_measurement(0.173003, 0.5) == "0.173"
+    assert format_measurement(14.7625, 10) == "14.8"
+    assert format_measurement(268.814272, 254) == "269"
+    assert format_measurement(1234.5) == "1234"
+    # Near the limit the extra digits stay, so the order never flips.
+    assert format_measurement(2.9999, 3.0) == "2.9999"
+    assert format_measurement(0.79999999, 0.8) == "0.79999999"
+    assert format_measurement(0.8, 0.8) == "0.8"

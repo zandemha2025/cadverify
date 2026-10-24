@@ -9,7 +9,7 @@ import logging
 
 import numpy as np
 import trimesh
-from scipy.spatial import cKDTree
+from scipy.spatial import cKDTree  # pyright: ignore[reportAttributeAccessIssue]  # scipy's compiled _ckdtree has no stub
 from src.analysis.context import manufacturing_edge_measurements
 
 from src.analysis.constants import (

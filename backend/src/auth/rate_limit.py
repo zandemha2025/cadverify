@@ -97,7 +97,8 @@ def rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse
     reset = int(time.time()) + int(retry_after)
     limit_str = "60"
     try:
-        limit_str = str(exc.limit.limit.amount)
+        if exc.limit is not None:  # None keeps the default, as the AttributeError did
+            limit_str = str(exc.limit.limit.amount)
     except Exception:
         pass
     return JSONResponse(
