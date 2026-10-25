@@ -1,0 +1,739 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ScaleCAD homepage</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Funnel+Display:wght@300;400;500;600;700&amp;family=Funnel+Sans:wght@400;500;600;700&amp;family=Martian+Mono:wght@300;400;500&amp;display=swap">
+<style>
+html{scrollbar-color:#B9BEBA #F4F5F2}
+body{margin:0;background:#F4F5F2;color:#0D0F0E;font-family:'Funnel Sans',system-ui,-apple-system,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+*{box-sizing:border-box}
+a{color:#0D0F0E;text-underline-offset:.2em}a:hover{color:#474D4A}
+::selection{background:#FF5B1F;color:#0D0F0E}
+input{caret-color:#FF5B1F}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.num{font-variant-numeric:tabular-nums}
+.wrap{width:100%;max-width:1360px;margin:0 auto;padding-left:40px;padding-right:40px}
+.sec{padding-top:152px;padding-bottom:152px}
+.display{font-family:'Funnel Display','Funnel Sans',system-ui,sans-serif}
+.h2{font-family:'Funnel Display','Funnel Sans',system-ui,sans-serif;font-weight:500;font-size:clamp(40px,5vw,72px);line-height:1;letter-spacing:-0.04em;margin:0;text-wrap:balance}
+.lede{margin:0;font-size:19px;line-height:1.55;color:#474D4A;text-wrap:pretty}
+.mono{font-family:'Martian Mono',ui-monospace,'SFMono-Regular',monospace;font-weight:400;letter-spacing:.01em}
+.label{font-size:13px;font-weight:600;letter-spacing:.01em;color:#5A605D}
+.nav-links{display:flex;gap:32px;align-items:center}
+.nav-link{font-size:15px;font-weight:500;color:#474D4A;text-decoration:none;transition:color 160ms ease}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:54px;padding:0 24px;border-radius:999px;font-family:inherit;font-size:16px;font-weight:600;letter-spacing:-0.01em;text-decoration:none;border:0;cursor:pointer;white-space:nowrap;transition:transform 180ms cubic-bezier(.23,1,.32,1),background-color 180ms ease,box-shadow 180ms ease,color 180ms ease}
+.btn:active{transform:scale(.97)}
+.btn:disabled{opacity:.55;cursor:default;transform:none}
+.btn-sm{min-height:44px;padding:0 18px;font-size:15px}
+.btn-signal{background:#FF5B1F;color:#0D0F0E;box-shadow:inset 0 1px 0 rgba(255,255,255,.3),inset 0 -2px 0 rgba(13,15,14,.14),0 1px 2px rgba(13,15,14,.18),0 6px 16px -8px rgba(13,15,14,.35)}
+.btn-ink{background:#0D0F0E;color:#F4F5F2;box-shadow:inset 0 1px 0 rgba(255,255,255,.12)}
+.btn-ghost{background:#FFFFFF;color:#0D0F0E;box-shadow:inset 0 0 0 1px #C9CDC8}
+.arr{transition:transform 240ms cubic-bezier(.23,1,.32,1)}
+.tlink{display:inline-flex;align-items:center;gap:8px;font-weight:600;font-size:16px;color:#0D0F0E;text-decoration:none;background:none;border:0;padding:0;cursor:pointer;font-family:inherit}
+.chip{display:inline-flex;align-items:center;gap:5px;font-family:'Martian Mono',ui-monospace,monospace;font-size:9.5px;font-weight:500;letter-spacing:.04em;line-height:1;padding:5px 7px;border-radius:5px;white-space:nowrap;text-transform:uppercase}
+.pill{display:inline-flex;align-items:center;font-size:12.5px;font-weight:600;line-height:1.25;padding:5px 9px;border-radius:7px;white-space:normal}
+.c-measured{background:#0D0F0E;color:#F4F5F2}
+.c-cad{background:#4A504D;color:#F4F5F2}
+.c-shop{background:#E3E6E1;color:#0D0F0E}
+.c-user{background:#FFFFFF;color:#0D0F0E;box-shadow:inset 0 0 0 1px #8A908C}
+.c-default{background:transparent;color:#474D4A;border:1px dashed #8A908C}
+.c-warn{background:#FBEFD8;color:#7A4900}
+.c-ok{background:#E4F1E9;color:#17603D}
+.c-block{background:#F6E1DA;color:#8A2A0C}
+.c-wait{background:transparent;color:#474D4A;border:1px dashed #9AA09C}
+.studio{background:radial-gradient(ellipse 55% 75% at 70% 42%,#FFFFFF 0%,rgba(255,255,255,0) 72%),linear-gradient(180deg,#F4F5F2 0%,#E9EBE7 100%)}
+.stage{position:relative;margin-left:-120px}
+.fig{margin:0;position:relative;aspect-ratio:4/3;border-radius:28px;overflow:hidden;transition:box-shadow 200ms ease,background-color 200ms ease}
+.fig.is-drag{background:rgba(255,91,31,.06);box-shadow:inset 0 0 0 2px #FF5B1F}
+.env{stroke-dasharray:1;stroke-dashoffset:1;transition:stroke-dashoffset 1100ms cubic-bezier(.65,0,.35,1)}
+.env.is-on{stroke-dashoffset:0}
+.reveal{opacity:0;transition:opacity 500ms ease}
+.reveal.is-on{opacity:1}
+.rail-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr))}
+.rail{position:relative;z-index:3;margin:-40px 0 0;background:#FFFFFF;border-radius:22px;box-shadow:0 0 0 1px rgba(13,15,14,.07),0 2px 4px rgba(13,15,14,.04),0 28px 56px -28px rgba(13,15,14,.34)}
+.gcell{display:flex;flex-direction:column;gap:10px;padding:18px 18px 18px;border-left:1px solid #EEF0EC;opacity:.32;transform:translateY(4px);transition:opacity 420ms ease,transform 520ms cubic-bezier(.16,1,.3,1)}
+.gcell:first-child{border-left:0}
+.gcell.is-on{opacity:1;transform:none}
+.gcell .pill{transition:opacity 300ms ease 120ms}
+.gcell:not(.is-on) .pill{opacity:0}
+@keyframes scan{0%{transform:translateY(0);opacity:0}8%{opacity:1}90%{opacity:1}100%{transform:translateY(100%);opacity:0}}
+.scan{animation:scan 1800ms cubic-bezier(.65,0,.35,1) both}
+@keyframes marquee{to{transform:translateX(-50%)}}
+.marquee{display:flex;width:max-content;animation:marquee 60s linear infinite}
+.marquee-wrap:hover .marquee{animation-play-state:paused}
+.qtab{appearance:none;border:0;cursor:pointer;font-family:inherit;font-size:16px;font-weight:600;letter-spacing:-0.01em;padding:0 22px;min-height:52px;border-radius:999px;background:#FFFFFF;color:#474D4A;box-shadow:inset 0 0 0 1px #DDE0DB;transition:background-color 220ms ease,color 220ms ease,box-shadow 220ms ease,transform 160ms cubic-bezier(.23,1,.32,1)}
+.qtab:active{transform:scale(.97)}
+.qtab.is-on{background:#0D0F0E;color:#F4F5F2;box-shadow:none}
+@keyframes panelIn{from{opacity:.2;transform:translateY(12px);filter:blur(6px)}to{opacity:1;transform:none;filter:blur(0)}}
+.panel-in{animation:panelIn 520ms cubic-bezier(.16,1,.3,1) both}
+@keyframes grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+.grow{transform-origin:left center;animation:grow 760ms cubic-bezier(.16,1,.3,1) 120ms both}
+.seg{position:relative;display:grid;grid-template-columns:1fr 1fr;padding:4px;border-radius:999px;background:#E6E8E4;width:min(560px,100%)}
+.seg-ind{position:absolute;top:4px;bottom:4px;left:4px;width:calc(50% - 4px);border-radius:999px;background:#0D0F0E;transition:transform 420ms cubic-bezier(.23,1,.32,1)}
+.seg-ind.is-b{transform:translateX(100%)}
+.seg button{position:relative;z-index:1;appearance:none;border:0;background:transparent;cursor:pointer;font-family:inherit;font-size:15px;font-weight:600;min-height:48px;padding:0 16px;border-radius:999px;color:#474D4A;transition:color 260ms ease}
+.seg button.is-on{color:#F4F5F2}
+.rp-row{display:grid;grid-template-columns:200px minmax(0,1fr) 96px;gap:28px;align-items:center;padding:20px 0;border-top:1px solid #E6E8E4}
+.rp-track{position:relative;height:30px}
+.rp-axis{position:absolute;left:0;right:0;top:14px;height:2px;background:#EEF0EC}
+.rp-band{position:absolute;top:8px;height:14px;border-radius:999px;background:rgba(13,15,14,.13);transition:left 700ms cubic-bezier(.23,1,.32,1),width 700ms cubic-bezier(.23,1,.32,1)}
+.rp-dot{position:absolute;top:7px;width:16px;height:16px;margin-left:-8px;border-radius:999px;background:#0D0F0E;box-shadow:0 0 0 3px #FFFFFF;transition:left 700ms cubic-bezier(.23,1,.32,1),background-color 300ms ease}
+.rp-row.is-best .rp-dot{background:#FF5B1F}
+.rp-row.is-blocked .rp-band{background:transparent;box-shadow:inset 0 0 0 1.5px rgba(13,15,14,.35)}
+.rp-row.is-blocked .rp-dot{background:#FFFFFF;box-shadow:inset 0 0 0 2px #0D0F0E,0 0 0 3px #FFFFFF}
+.term{appearance:none;border:0;background:transparent;cursor:pointer;text-align:left;font-family:inherit;color:#0D0F0E;padding:16px 16px 18px;border-radius:18px;display:flex;flex-direction:column;gap:12px;min-width:0;transition:background-color 220ms ease,transform 160ms cubic-bezier(.23,1,.32,1)}
+.term:active{transform:scale(.98)}
+.term.is-on{background:#F4F5F2}
+.term-v{font-family:'Martian Mono',ui-monospace,monospace;font-weight:300;font-size:clamp(20px,1.9vw,27px);letter-spacing:-0.03em;white-space:nowrap}
+.term-bar{height:3px;border-radius:3px;background:#DDE0DB;transition:background-color 260ms ease}
+.term.is-on .term-bar{background:#FF5B1F}
+.prow{display:grid;grid-template-columns:minmax(0,1fr) 120px;gap:40px;align-items:center;padding:36px 0;border-top:1px solid #DDE0DB;text-decoration:none;color:#0D0F0E}
+.field{width:100%;height:58px;padding:0 18px;border-radius:14px;border:1px solid #CBCFCA;background:#FFFFFF;font-family:inherit;font-size:17px;color:#0D0F0E;transition:border-color 160ms ease,box-shadow 160ms ease}
+.field::placeholder{color:#6E7471}
+.field:focus{outline:none;border-color:#0D0F0E;box-shadow:0 0 0 4px rgba(255,91,31,.25)}
+a:focus-visible,button:focus-visible,summary:focus-visible{outline:2px solid #FF5B1F;outline-offset:3px}
+.filepick:focus-within{outline:2px solid #FF5B1F;outline-offset:3px;border-radius:6px}
+.faq summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:24px;padding:26px 0;font-size:20px;font-weight:500;letter-spacing:-0.015em}
+.faq summary::-webkit-details-marker{display:none}
+.faq .plus{flex:none;width:30px;height:30px;border-radius:999px;box-shadow:inset 0 0 0 1px #CBCFCA;display:grid;place-items:center;transition:transform 260ms cubic-bezier(.23,1,.32,1),background-color 160ms ease,color 160ms ease}
+.faq details[open] .plus{transform:rotate(45deg);background:#0D0F0E;color:#F4F5F2;box-shadow:none}
+.faq details{border-top:1px solid #DDE0DB}
+@keyframes rise{from{opacity:.001;transform:translateY(14px)}to{opacity:1;transform:none}}
+.rise{animation:rise 800ms cubic-bezier(.16,1,.3,1) both}
+.d1{animation-delay:70ms}.d2{animation-delay:140ms}
+@supports (animation-timeline: view()){@media (max-height:1600px){
+@keyframes inview{from{opacity:.35;transform:translateY(28px)}to{opacity:1;transform:none}}
+.inview{animation:inview linear both;animation-timeline:view();animation-range:entry 0% cover 28%}
+}}
+@media (hover:hover) and (pointer:fine){
+.btn-signal:hover{background:#FF6D36;color:#0D0F0E}
+.btn-ink:hover{background:#262A28;color:#F4F5F2}
+.btn-ghost:hover{box-shadow:inset 0 0 0 1px #0D0F0E;color:#0D0F0E}
+.btn:hover .arr,.tlink:hover .arr,.prow:hover .arr{transform:translateX(4px)}
+.nav-link:hover,.tlink:hover,.prow:hover{color:#0D0F0E}
+.qtab:not(.is-on):hover{color:#0D0F0E;box-shadow:inset 0 0 0 1px #0D0F0E}
+.seg button:not(.is-on):hover{color:#0D0F0E}
+.term:not(.is-on):hover{background:#F8F9F7}
+.prow:hover .prow-t{text-decoration:underline;text-decoration-thickness:1.5px;text-underline-offset:6px}
+.faq summary:hover .plus{background:#E8EAE6}
+}
+@media (max-width:1100px){.stage{margin-left:0}}
+@media (max-width:700px){.rail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.callout{display:none!important}}
+@media (max-width:900px){.nav-links{display:none}.hide-sm{display:none}.sec{padding-top:104px;padding-bottom:104px}.sticky{position:static!important}.rp-row{grid-template-columns:minmax(0,1fr) 80px}.rp-track{grid-column:1 / -1;grid-row:2}.prow{grid-template-columns:minmax(0,1fr)}.prow-art{display:none}}
+@media (max-width:600px){.wrap{padding-left:16px;padding-right:16px}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}.env{stroke-dashoffset:0!important}.reveal,.gcell{opacity:1!important;transform:none!important}.gcell .pill{opacity:1!important}.scan{display:none}}
+</style>
+</helmet>
+<div id="top" style="min-height: 100vh; background: #F4F5F2">
+
+<header style="position: sticky; top: 0; z-index: 40; background: rgba(244,245,242,0.94); border-bottom: 1px solid rgba(13,15,14,0.08)">
+<div class="wrap" style="display: flex; align-items: center; justify-content: space-between; gap: 24px; height: 72px">
+<div style="display: flex; align-items: center; gap: 52px">
+<a href="#top" aria-label="ScaleCAD home" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #0D0F0E">
+<svg width="26" height="26" viewBox="0 0 26 26" fill="none" aria-hidden="true"><path d="M13 2.6 22.4 8v10L13 23.4 3.6 18V8L13 2.6Z" stroke="#0D0F0E" stroke-width="1.9" stroke-linejoin="round"></path><path d="M3.6 8 13 13.4 22.4 8M13 13.4v10" stroke="#0D0F0E" stroke-width="1.9" stroke-linejoin="round"></path></svg>
+<span class="display" style="font-size: 22px; font-weight: 600; letter-spacing: -0.035em">ScaleCAD<sc-if value="{{logoDot}}" hint-placeholder-val="{{ false }}"><span style="color: #FF5B1F">.</span></sc-if></span>
+</a>
+<nav class="nav-links" aria-label="Primary">
+<a class="nav-link" href="#desk">Product</a>
+<a class="nav-link" href="#platform">Platform</a>
+<a class="nav-link" href="Pricing.dc.html">Pricing</a>
+<a class="nav-link" href="#">Security</a>
+<a class="nav-link" href="#">Developers</a>
+</nav>
+</div>
+<div style="display: flex; align-items: center; gap: 22px">
+<sc-if value="{{loggedOut}}" hint-placeholder-val="{{ true }}">
+<a class="nav-link hide-sm" href="#">Log in</a>
+<a class="btn btn-signal btn-sm" href="#start">Try ScaleCAD free <svg class="arr" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"></path></svg></a>
+</sc-if>
+<sc-if value="{{loggedIn}}" hint-placeholder-val="{{ false }}">
+<a class="btn btn-ink btn-sm" href="#">Open ScaleCAD <svg class="arr" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"></path></svg></a>
+</sc-if>
+</div>
+</div>
+</header>
+
+<main>
+<section class="studio" style="overflow: hidden">
+<div class="wrap" style="display: flex; flex-wrap: wrap; align-items: center; gap: 48px 40px; padding-top: 72px; padding-bottom: 120px">
+<div style="flex: 1 1 440px; min-width: 0; position: relative; z-index: 2; display: flex; flex-direction: column; gap: 32px">
+<h1 class="display rise" style="margin: 0; font-weight: 500; font-size: clamp(64px, 8vw, 96px); line-height: 0.92; letter-spacing: -0.04em">Can you<br>make it?</h1>
+<p class="rise d1" style="margin: 0; max-width: 500px; font-size: 20px; line-height: 1.55; color: #3A3F3C; text-wrap: pretty">Upload a 3D model of a part. ScaleCAD tells you whether your machines can make it, which materials will hold up, how long it takes and what it costs. Every number shows where it came from.</p>
+<div class="rise d2" style="display: flex; flex-direction: column; gap: 16px; align-items: flex-start">
+<div style="display: flex; flex-wrap: wrap; gap: 12px">
+<a class="btn btn-signal" href="#start">Try ScaleCAD free <svg class="arr" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"></path></svg></a>
+<a class="btn btn-ghost" href="#desk">View sample output</a>
+</div>
+<p style="margin: 0; font-size: 14px; color: #5A605D">{{workChecks}} free checks with a work email, {{personalChecks}} with a personal email. No credit card.</p>
+</div>
+</div>
+
+<div class="stage" style="flex: 1.45 1 560px; min-width: 0">
+<figure class="fig {{dragClass}}" onDragOver="{{onDragOver}}" onDragLeave="{{onDragLeave}}" onDrop="{{onDrop}}">
+<span aria-hidden="true" style="position: absolute; left: 33%; top: 73%; width: 34%; height: 9%; background: radial-gradient(closest-side, rgba(13,15,14,0.2), rgba(13,15,14,0))"></span>
+<img src="/_blob/ee41ec3eba4b8344d7196c5528b87470" alt="The sample part, a small round fitting about 2 cm across, inside a box showing its measured size" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover">
+<svg viewBox="0 0 1200 1000" preserveAspectRatio="xMidYMid slice" aria-hidden="true" style="position: absolute; inset: 0; width: 100%; height: 100%">
+<path class="env {{envOn}}" pathLength="1" d="M602 200 L862 350 L862 650 L602 800 L342 650 L342 350 Z" fill="none" stroke="#0D0F0E" stroke-opacity="0.55" stroke-width="1.2" vector-effect="non-scaling-stroke"></path>
+<path class="env {{envOn}}" pathLength="1" d="M342 350 L602 500 L862 350 M602 500 L602 800" fill="none" stroke="#0D0F0E" stroke-opacity="0.3" stroke-width="1" vector-effect="non-scaling-stroke"></path>
+<g class="reveal {{envOn}}">
+<path d="M322 685 L582 835 M330 678 L314 692 M590 828 L574 842 M622 835 L882 685 M614 828 L630 842 M874 678 L890 692 M910 650 L910 350 M900 650 L920 650 M900 350 L920 350" fill="none" stroke="#0D0F0E" stroke-width="1.2" vector-effect="non-scaling-stroke"></path>
+<g font-family="Martian Mono, ui-monospace, monospace" font-size="19" fill="#0D0F0E">
+<text x="430" y="800" transform="rotate(30 430 800)" text-anchor="middle">21.16 mm</text>
+<text x="774" y="800" transform="rotate(-30 774 800)" text-anchor="middle">21.48 mm</text>
+<text x="944" y="500" transform="rotate(-90 944 500)" text-anchor="middle">21.43 mm</text>
+</g>
+</g>
+<g class="reveal {{g3}}">
+<circle cx="486" cy="640" r="7" fill="#FF5B1F"></circle>
+<circle cx="486" cy="640" r="16" fill="none" stroke="#FF5B1F" stroke-opacity="0.45" stroke-width="1.2" vector-effect="non-scaling-stroke"></circle>
+<path d="M470 640 H250" stroke="#FF5B1F" stroke-width="1.2" vector-effect="non-scaling-stroke"></path>
+</g>
+</svg>
+<span class="reveal callout {{g3}}" style="position: absolute; left: 6%; top: 61.6%; display: flex; flex-direction: column; gap: 3px; padding: 8px 11px; border-radius: 10px; background: #FFFFFF; box-shadow: 0 0 0 1px rgba(194,65,12,0.25), 0 8px 20px -12px rgba(13,15,14,0.4)">
+<span style="font-size: 11.5px; font-weight: 600; color: #9A3A0E">Can’t be molded as drawn</span>
+<span style="font-size: 13px; font-weight: 600; max-width: 190px">This wall is too straight to slide out of a mold</span>
+</span>
+<sc-if value="{{scanning}}" hint-placeholder-val="{{ false }}">
+<div class="scan" aria-hidden="true" style="position: absolute; left: 26%; right: 26%; top: 18%; height: 66%; pointer-events: none">
+<div style="height: 1.5px; background: linear-gradient(90deg, rgba(255,91,31,0), #FF5B1F 20%, #FF5B1F 80%, rgba(255,91,31,0))"></div>
+</div>
+</sc-if>
+<figcaption class="mono" style="position: absolute; left: 22%; top: 5%; font-size: 11px; color: #474D4A">Sample part · about 2 cm across</figcaption>
+<sc-if value="{{dragging}}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none"><span style="padding: 12px 18px; border-radius: 999px; background: #0D0F0E; color: #F4F5F2; font-weight: 600; font-size: 15px">Drop to check this part</span></div>
+</sc-if>
+
+<sc-if value="{{fileBad}}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(244,245,242,0.9); border-radius: 28px">
+<div class="panel-in" role="alert" style="width: min(440px, 100%); background: #FFFFFF; border-radius: 22px; padding: 28px; box-shadow: 0 0 0 1px rgba(13,15,14,.07), 0 28px 56px -28px rgba(13,15,14,.34); display: flex; flex-direction: column; gap: 14px">
+<span style="font-size: 20px; font-weight: 600; letter-spacing: -0.015em">We can’t read {{fileName}} yet.</span>
+<span style="font-size: 15.5px; line-height: 1.55; color: #474D4A">ScaleCAD works with STEP, STL and IGES files. Save your part as STEP in your CAD program, then drop it here again.</span>
+<button class="btn btn-ghost" type="button" onClick="{{onClearFile}}" style="align-self: flex-start">Choose another file</button>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{fileReady}}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(244,245,242,0.9); border-radius: 28px">
+<form class="panel-in" onSubmit="{{onSubmit}}" style="width: min(460px, 100%); background: #FFFFFF; border-radius: 22px; padding: 28px; box-shadow: 0 0 0 1px rgba(13,15,14,.07), 0 28px 56px -28px rgba(13,15,14,.34); display: flex; flex-direction: column; gap: 14px">
+<span style="display: flex; align-items: center; gap: 10px"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M5 10.4l3.2 3.2L15 6.8" stroke="#17603D" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg><span class="mono" style="font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{fileName}}</span></span>
+<span style="font-size: 22px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.2">Your part is ready.</span>
+<span style="font-size: 15.5px; line-height: 1.55; color: #474D4A">Enter your email and we’ll send you a sign-in link. Your part runs as soon as you click it.</span>
+<label for="hero-email" class="sr-only">Work email</label>
+<input id="hero-email" class="field" type="email" autocomplete="email" required placeholder="you@company.com" value="{{email}}" onChange="{{onEmail}}">
+<button class="btn btn-signal" type="submit" style="width: 100%">Try ScaleCAD free <svg class="arr" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+<span style="display: flex; justify-content: space-between; gap: 12px; font-size: 13.5px; color: #5A605D"><span>{{tierLine}}</span><button class="tlink" type="button" onClick="{{onClearFile}}" style="font-size: 13.5px">Use a different file</button></span>
+</form>
+</div>
+</sc-if>
+<sc-if value="{{fileSent}}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(244,245,242,0.9); border-radius: 28px">
+<div class="panel-in" role="status" style="width: min(440px, 100%); background: #FFFFFF; border-radius: 22px; padding: 28px; box-shadow: 0 0 0 1px rgba(13,15,14,.07), 0 28px 56px -28px rgba(13,15,14,.34); display: flex; flex-direction: column; gap: 12px">
+<span style="font-size: 24px; font-weight: 600; letter-spacing: -0.02em">Check your inbox.</span>
+<span style="font-size: 15.5px; line-height: 1.55; color: #474D4A">We sent a sign-in link to <strong style="color: #0D0F0E">{{email}}</strong>. Click it and {{fileName}} runs first.</span>
+</div>
+</div>
+</sc-if>
+</figure>
+
+<div class="rail rise d2">
+<div class="rail-grid">
+<div class="gcell {{g1}}"><span class="mono num" style="font-size: 11px; color: #5A605D">01</span><span style="font-size: 15px; font-weight: 600">Fits your machines?</span><span class="pill c-wait" style="align-self: flex-start">Add your machines</span></div>
+<div class="gcell {{g2}}"><span class="mono num" style="font-size: 11px; color: #5A605D">02</span><span style="font-size: 15px; font-weight: 600">Right material?</span><span class="pill c-wait" style="align-self: flex-start">Add where it’s used</span></div>
+<div class="gcell {{g3}}"><span class="mono num" style="font-size: 11px; color: #5A605D">03</span><span style="font-size: 15px; font-weight: 600">Can it be made?</span><span class="pill c-warn" style="align-self: flex-start">Yes, on a lathe</span></div>
+<div class="gcell {{g4}}"><span class="mono num" style="font-size: 11px; color: #5A605D">04</span><span style="font-size: 15px; font-weight: 600">How long?</span><span class="pill c-shop" style="align-self: flex-start">About 4 min each</span></div>
+<div class="gcell {{g5}}"><span class="mono num" style="font-size: 11px; color: #5A605D">05</span><span style="font-size: 15px; font-weight: 600">What it costs</span><span class="pill c-default" style="align-self: flex-start">About $14.14 each</span></div>
+</div>
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px 20px; padding: 14px 18px; border-top: 1px solid #EEF0EC">
+<span style="font-size: 14px; color: #474D4A">Have a part? Drop its 3D file (STEP, STL or IGES) on the picture, or <span class="filepick"><label for="part-file" style="color: #0D0F0E; font-weight: 600; text-decoration: underline; text-underline-offset: .2em; cursor: pointer">choose a file</label></span>.</span>
+<input id="part-file" class="sr-only" type="file" accept=".step,.stp,.stl,.iges,.igs" onChange="{{onFile}}">
+<button class="tlink" type="button" onClick="{{onReplay}}" disabled="{{walking}}" style="font-size: 14px"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 8a5.5 5.5 0 1 0 1.8-4.1M2.5 2.5v3h3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"></path></svg>{{replayLabel}}</button>
+</div>
+</div>
+</div>
+</div>
+</section>
+
+<section aria-label="Processes ScaleCAD checks" class="marquee-wrap" style="background: #0D0F0E; color: #F4F5F2; overflow: hidden">
+<div style="display: flex; align-items: center; gap: 0; height: 84px">
+<div style="flex: none; position: relative; z-index: 1; height: 100%; display: flex; align-items: center; padding: 0 28px 0 40px; background: #0D0F0E; box-shadow: 24px 0 24px -8px #0D0F0E"><span class="display" style="font-size: 20px; font-weight: 500; letter-spacing: -0.02em; white-space: nowrap">Checks 21 ways to make a part</span></div>
+<div style="flex: 1; min-width: 0; overflow: hidden">
+<div class="marquee">
+<ul style="display: flex; align-items: center; gap: 36px; margin: 0; padding: 0 36px 0 0; list-style: none; font-size: 17px; color: #B9BEBA; white-space: nowrap">
+<li>CNC turning</li><li>CNC 3-axis</li><li>CNC 5-axis</li><li>Wire EDM</li><li>MJF</li><li>SLS</li><li>DMLS</li><li>SLM</li><li>EBM</li><li>FDM</li><li>SLA</li><li>DLP</li><li>Binder jetting</li><li>DED</li><li>WAAM</li><li>Injection molding</li><li>Die casting</li><li>Investment casting</li><li>Sand casting</li><li>Sheet metal</li><li>Forging</li>
+</ul>
+<ul aria-hidden="true" style="display: flex; align-items: center; gap: 36px; margin: 0; padding: 0 36px 0 0; list-style: none; font-size: 17px; color: #B9BEBA; white-space: nowrap">
+<li>CNC turning</li><li>CNC 3-axis</li><li>CNC 5-axis</li><li>Wire EDM</li><li>MJF</li><li>SLS</li><li>DMLS</li><li>SLM</li><li>EBM</li><li>FDM</li><li>SLA</li><li>DLP</li><li>Binder jetting</li><li>DED</li><li>WAAM</li><li>Injection molding</li><li>Die casting</li><li>Investment casting</li><li>Sand casting</li><li>Sheet metal</li><li>Forging</li>
+</ul>
+</div>
+</div>
+</div>
+</section>
+
+<section id="desk" class="sec" style="scroll-margin-top: 72px">
+<div class="wrap">
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(460px, 100%), 1fr)); gap: 28px 80px; align-items: end">
+<h2 class="h2">What do you need to know?</h2>
+<p class="lede" style="max-width: 520px">Pick a question. The answers come from a real run on the sample part, using an example shop’s prices.</p>
+</div>
+<div class="inview" role="group" aria-label="Choose a question" style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 56px">
+<sc-for list="{{tabs}}" as="tab" hint-placeholder-count="3">
+<button type="button" class="qtab {{tab.on}}" aria-pressed="{{tab.pressed}}" onClick="{{tab.pick}}">{{tab.label}}</button>
+</sc-for>
+</div>
+<div class="inview" style="margin-top: 20px; background: #FFFFFF; border-radius: 28px; box-shadow: 0 0 0 1px #E2E4E0, 0 40px 80px -60px rgba(13,15,14,0.35); padding: clamp(28px, 4vw, 56px); min-height: 460px" aria-live="polite">
+
+<sc-if value="{{isInhouse}}" hint-placeholder-val="{{ true }}">
+<div class="panel-in" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(400px, 100%), 1fr)); gap: 48px 72px">
+<div style="display: flex; flex-direction: column; gap: 20px">
+<h3 class="display" style="margin: 0; font-size: clamp(30px, 3vw, 44px); font-weight: 500; letter-spacing: -0.035em; line-height: 1.05; text-wrap: balance">A lathe can make it. Can yours?</h3>
+<p class="lede" style="font-size: 17px">The part is round, so the best way to make it is on a lathe. Tell ScaleCAD which machines you have and it checks the part’s size, about 2 cm each way, against every one. If it’s missing information, it says “unknown” instead of guessing yes.</p>
+<a class="tlink" href="#start">Check it against your machines <svg class="arr" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"></path></svg></a>
+</div>
+<div style="display: flex; flex-direction: column">
+<span class="label" style="padding-bottom: 12px">How well each method suits this shape</span>
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) 140px auto; gap: 16px; align-items: center; padding: 14px 0; border-top: 1px solid #EEF0EC"><span style="font-weight: 600">Lathe (CNC turning)</span><span style="height: 6px; border-radius: 6px; background: #EEF0EC; overflow: hidden"><span class="grow" style="display: block; height: 100%; width: 90%; background: #0D0F0E"></span></span><span class="pill c-warn">Works, with notes</span></div>
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) 140px auto; gap: 16px; align-items: center; padding: 14px 0; border-top: 1px solid #EEF0EC"><span style="font-weight: 600">3D printing (MJF)</span><span style="height: 6px; border-radius: 6px; background: #EEF0EC; overflow: hidden"><span class="grow" style="display: block; height: 100%; width: 90%; background: #0D0F0E"></span></span><span class="pill c-warn">Works, with notes</span></div>
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) 140px auto; gap: 16px; align-items: center; padding: 14px 0; border-top: 1px solid #EEF0EC"><span style="font-weight: 600">5-axis milling</span><span style="height: 6px; border-radius: 6px; background: #EEF0EC; overflow: hidden"><span class="grow" style="display: block; height: 100%; width: 80%; background: #0D0F0E"></span></span><span class="pill c-warn">Works, with notes</span></div>
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) 140px auto; gap: 16px; align-items: center; padding: 14px 0; border-top: 1px solid #EEF0EC"><span style="font-weight: 600">3-axis milling</span><span style="height: 6px; border-radius: 6px; background: #EEF0EC"></span><span class="pill c-block">No: tool can’t reach</span></div>
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) 140px auto; gap: 16px; align-items: center; padding: 14px 0; border-top: 1px solid #EEF0EC; border-bottom: 1px solid #EEF0EC"><span style="font-weight: 600">Injection molding</span><span style="height: 6px; border-radius: 6px; background: #EEF0EC"></span><span class="pill c-block">No: wall too straight</span></div>
+<span style="padding-top: 12px; font-size: 13.5px; color: #5A605D">Longer bar, better fit. Scores run from 0 to 1.</span>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{isDesign}}" hint-placeholder-val="{{ false }}">
+<div class="panel-in" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(400px, 100%), 1fr)); gap: 48px 72px">
+<div style="display: flex; flex-direction: column; gap: 20px">
+<h3 class="display" style="margin: 0; font-size: clamp(30px, 3vw, 44px); font-weight: 500; letter-spacing: -0.035em; line-height: 1.05; text-wrap: balance">Two problems. Neither one stops a lathe.</h3>
+<p class="lede" style="font-size: 17px">ScaleCAD checks the design against each way of making it. A problem for one method doesn’t rule out the others. Fix the design or pick another method, then check again.</p>
+</div>
+<div style="display: flex; flex-direction: column; gap: 12px">
+<div style="padding: 22px 24px; border-radius: 18px; background: #FBF6EC; display: flex; flex-direction: column; gap: 8px">
+<span style="display: flex; justify-content: space-between; gap: 12px; align-items: center"><span style="font-weight: 600; font-size: 17px">Injection molding</span><span class="pill c-block">Stops molding</span></span>
+<span style="font-size: 16px; color: #3A3F3C">One wall is too straight to slide out of a mold. It needs at least a 1° angle.</span>
+<span style="font-size: 14.5px; color: #5A605D">Fix: angle that wall slightly, or don’t mold it.</span>
+</div>
+<div style="padding: 22px 24px; border-radius: 18px; background: #FBF6EC; display: flex; flex-direction: column; gap: 8px">
+<span style="display: flex; justify-content: space-between; gap: 12px; align-items: center"><span style="font-weight: 600; font-size: 17px">3-axis milling</span><span class="pill c-block">Stops 3-axis</span></span>
+<span style="font-size: 16px; color: #3A3F3C">The cutting tool can’t reach about 6 in 10 of the part’s surfaces from above.</span>
+<span style="font-size: 14.5px; color: #5A605D">Fix: use a lathe or a 5-axis mill.</span>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{isCost}}" hint-placeholder-val="{{ false }}">
+<div class="panel-in" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(400px, 100%), 1fr)); gap: 48px 72px">
+<div style="display: flex; flex-direction: column; gap: 20px">
+<h3 class="display" style="margin: 0; font-size: clamp(30px, 3vw, 44px); font-weight: 500; letter-spacing: -0.035em; line-height: 1.05; text-wrap: balance">$14.14 a part. Here’s where it goes.</h3>
+<p class="lede" style="font-size: 17px">3D-printed in plastic, 10 at a time: about 4 minutes of machine time and 4 grams of material each. Until it’s checked against real jobs, the true cost could land anywhere from $8.49 to $19.80.</p>
+</div>
+<div style="display: flex; flex-direction: column; gap: 18px">
+<div style="display: flex; height: 16px; border-radius: 999px; overflow: hidden; background: #EEF0EC" role="img" aria-label="Where the money goes: labor 45%, setup 27%, machine time 27%, material under 1%">
+<span class="grow" style="width: 45.2%; background: #0D0F0E"></span>
+<span class="grow" style="width: 27.5%; background: #5A605D; animation-delay: 220ms"></span>
+<span class="grow" style="width: 27%; background: #A9AEAA; animation-delay: 320ms"></span>
+<span class="grow" style="width: 0.3%; background: #FF5B1F; animation-delay: 420ms"></span>
+</div>
+<dl style="margin: 0; display: flex; flex-direction: column">
+<div style="display: grid; grid-template-columns: 14px minmax(0, 1fr) auto auto; gap: 14px; align-items: center; padding: 13px 0; border-top: 1px solid #EEF0EC"><span style="width: 10px; height: 10px; border-radius: 3px; background: #0D0F0E"></span><dt style="font-size: 15.5px">Labor</dt><dd style="margin: 0"><span class="chip c-shop">Shop</span></dd><dd class="num" style="margin: 0; font-weight: 600; min-width: 56px; text-align: right">$6.39</dd></div>
+<div style="display: grid; grid-template-columns: 14px minmax(0, 1fr) auto auto; gap: 14px; align-items: center; padding: 13px 0; border-top: 1px solid #EEF0EC"><span style="width: 10px; height: 10px; border-radius: 3px; background: #5A605D"></span><dt style="font-size: 15.5px">Setup, shared across 10 parts</dt><dd style="margin: 0"><span class="chip c-shop">Shop</span></dd><dd class="num" style="margin: 0; font-weight: 600; min-width: 56px; text-align: right">$3.89</dd></div>
+<div style="display: grid; grid-template-columns: 14px minmax(0, 1fr) auto auto; gap: 14px; align-items: center; padding: 13px 0; border-top: 1px solid #EEF0EC"><span style="width: 10px; height: 10px; border-radius: 3px; background: #A9AEAA"></span><dt style="font-size: 15.5px">Machine time</dt><dd style="margin: 0"><span class="chip c-shop">Shop</span></dd><dd class="num" style="margin: 0; font-weight: 600; min-width: 56px; text-align: right">$3.82</dd></div>
+<div style="display: grid; grid-template-columns: 14px minmax(0, 1fr) auto auto; gap: 14px; align-items: center; padding: 13px 0; border-top: 1px solid #EEF0EC; border-bottom: 1px solid #EEF0EC"><span style="width: 10px; height: 10px; border-radius: 3px; background: #FF5B1F"></span><dt style="font-size: 15.5px">Material</dt><dd style="margin: 0"><span class="chip c-shop">Shop</span></dd><dd class="num" style="margin: 0; font-weight: 600; min-width: 56px; text-align: right">$0.04</dd></div>
+</dl>
+</div>
+</div>
+</sc-if>
+</div>
+</div>
+</section>
+
+<section style="background: #FFFFFF; border-top: 1px solid #E6E8E4; border-bottom: 1px solid #E6E8E4">
+<div class="wrap sec">
+<div style="display: flex; flex-direction: column; gap: 28px">
+<h2 class="h2">Same part. Two shops.<br>Up to 4.5 times the price.</h2>
+<p class="lede" style="max-width: 640px">The shape decides how a part can be made. Who makes it decides the price. Flip between two example price lists, both for an order of 1,000. That’s why ScaleCAD uses your prices, not an average.</p>
+</div>
+<div class="inview" style="margin-top: 56px; display: flex; flex-direction: column; gap: 32px">
+<div class="seg" role="group" aria-label="Price list">
+<span class="seg-ind {{segPos}}" aria-hidden="true"></span>
+<button type="button" class="{{shopAOn}}" aria-pressed="{{shopAPressed}}" onClick="{{pickA}}">US Midwest example prices</button>
+<button type="button" class="{{shopBOn}}" aria-pressed="{{shopBPressed}}" onClick="{{pickB}}">Shenzhen example prices</button>
+</div>
+<div>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="5">
+<div class="rp-row {{r.cls}}">
+<span style="display: flex; flex-direction: column; gap: 4px"><span style="font-weight: 600; font-size: 16px">{{r.name}}</span><span style="font-size: 13.5px; color: #5A605D">{{r.note}}</span></span>
+<span class="rp-track" aria-hidden="true"><span class="rp-axis"></span><span class="rp-band" style="left: {{r.lowPct}}%; width: {{r.bandPct}}%"></span><span class="rp-dot" style="left: {{r.pointPct}}%"></span></span>
+<span class="display num" style="font-size: 26px; font-weight: 500; letter-spacing: -0.02em; text-align: right">{{r.price}}</span>
+</div>
+</sc-for>
+<div style="display: grid; grid-template-columns: 200px minmax(0, 1fr) 96px; gap: 28px; border-top: 1px solid #E6E8E4; padding-top: 10px" aria-hidden="true" class="hide-sm">
+<span></span>
+<span class="mono num" style="display: flex; justify-content: space-between; font-size: 11px; color: #5A605D"><span>$0</span><span>$25</span><span>$50</span><span>$75</span></span>
+<span></span>
+</div>
+</div>
+<p style="margin: 0; font-size: 14.5px; line-height: 1.55; color: #5A605D; max-width: 760px">Each dot is the best estimate for one part. The bar shows how far off it could be until real jobs confirm it. Orange marks the cheapest option that works today.</p>
+</div>
+</div>
+</section>
+
+<section class="sec">
+<div class="wrap">
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(460px, 100%), 1fr)); gap: 28px 80px; align-items: end">
+<h2 class="h2">Every number shows its work.</h2>
+<p class="lede" style="max-width: 520px">No mystery totals. Tap any piece of this sum to see where it came from, so your team can question the inputs, not just the answer.</p>
+</div>
+<div class="inview" style="margin-top: 56px; background: #FFFFFF; border-radius: 28px; box-shadow: 0 0 0 1px #E2E4E0; padding: clamp(16px, 2.4vw, 28px)">
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 24px; padding: 8px 16px 20px">
+<span style="font-size: 14.5px; font-weight: 600">Machine cost for one sample part, 3D-printed 10 at a time</span>
+<span style="font-size: 14.5px; color: #5A605D">Not yet checked against real jobs</span>
+</div>
+<div role="group" aria-label="Pieces of the sum" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(176px, 100%), 1fr)); gap: 6px">
+<sc-for list="{{terms}}" as="t" hint-placeholder-count="6">
+<button type="button" class="term {{t.on}}" aria-pressed="{{t.pressed}}" onClick="{{t.pick}}">
+<span class="term-v num">{{t.v}}</span>
+<span class="term-bar"></span>
+<span style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap"><span class="chip {{t.chip}}">{{t.tag}}</span><span style="font-size: 14px; color: #474D4A">{{t.label}}</span></span>
+</button>
+</sc-for>
+</div>
+<div aria-live="polite" style="margin-top: 8px; padding: 22px 16px 10px; border-top: 1px solid #EEF0EC; min-height: 96px">
+<sc-for list="{{terms}}" as="t" hint-placeholder-count="0">
+<sc-if value="{{t.isOn}}" hint-placeholder-val="{{ false }}">
+<div class="panel-in" style="display: flex; flex-direction: column; gap: 8px; max-width: 820px">
+<span style="font-size: 17px; font-weight: 600">{{t.label}} · {{t.v}}</span>
+<span style="font-size: 16px; line-height: 1.6; color: #474D4A">{{t.source}}</span>
+</div>
+</sc-if>
+</sc-for>
+</div>
+</div>
+<div class="inview" style="margin-top: 56px; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 24px">
+<div style="display: flex; flex-direction: column; gap: 12px; padding-top: 20px; border-top: 1px solid #DDE0DB"><span class="chip c-measured" style="align-self: flex-start">Measured</span><span style="font-size: 15px; line-height: 1.5; color: #474D4A">Measured straight from the 3D file</span></div>
+<div style="display: flex; flex-direction: column; gap: 12px; padding-top: 20px; border-top: 1px solid #DDE0DB"><span class="chip c-cad" style="align-self: flex-start">CAD</span><span style="font-size: 15px; line-height: 1.5; color: #474D4A">Read from details saved in the CAD file</span></div>
+<div style="display: flex; flex-direction: column; gap: 12px; padding-top: 20px; border-top: 1px solid #DDE0DB"><span class="chip c-shop" style="align-self: flex-start">Shop</span><span style="font-size: 15px; line-height: 1.5; color: #474D4A">From your shop’s machines, prices and materials</span></div>
+<div style="display: flex; flex-direction: column; gap: 12px; padding-top: 20px; border-top: 1px solid #DDE0DB"><span class="chip c-user" style="align-self: flex-start">User</span><span style="font-size: 15px; line-height: 1.5; color: #474D4A">Something you typed in for this check</span></div>
+<div style="display: flex; flex-direction: column; gap: 12px; padding-top: 20px; border-top: 1px solid #DDE0DB"><span class="chip c-default" style="align-self: flex-start">Default</span><span style="font-size: 15px; line-height: 1.5; color: #474D4A">A standard guess, clearly marked until you replace it</span></div>
+</div>
+</div>
+</section>
+
+<section id="platform" class="sec" style="padding-top: 0; scroll-margin-top: 72px">
+<div class="wrap" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr)); gap: 48px 96px; align-items: start">
+<div class="sticky" style="position: sticky; top: 120px; display: flex; flex-direction: column; gap: 22px; max-width: 560px">
+<h2 class="h2">One part today.<br>Every part next.</h2>
+<p class="lede">Run the same check on your whole parts list, and keep every answer on file.</p>
+</div>
+<div style="border-bottom: 1px solid #DDE0DB">
+<a class="prow inview" href="#">
+<span style="display: flex; flex-direction: column; gap: 10px"><span class="display prow-t" style="font-size: 26px; font-weight: 600; letter-spacing: -0.025em; line-height: 1.15">Sort up to 10,000 parts at once</span><span style="font-size: 16px; line-height: 1.6; color: #474D4A">Upload a zip file. Each part lands in a pile: make it ourselves, buy it, needs new equipment, can’t be made, or not enough info.</span></span>
+<svg class="prow-art" width="120" height="64" viewBox="0 0 120 64" fill="none" aria-hidden="true"><rect x="1" y="1" width="22" height="62" rx="3" stroke="#0D0F0E" stroke-width="1.4"></rect><rect x="25" y="17" width="22" height="46" rx="3" stroke="#0D0F0E" stroke-width="1.4"></rect><rect x="49" y="29" width="22" height="34" rx="3" stroke="#FF5B1F" stroke-width="1.4"></rect><rect x="73" y="41" width="22" height="22" rx="3" stroke="#0D0F0E" stroke-width="1.4"></rect><rect x="97" y="49" width="22" height="14" rx="3" stroke="#0D0F0E" stroke-width="1.4" stroke-dasharray="3 3"></rect></svg>
+</a>
+<a class="prow inview" href="#">
+<span style="display: flex; flex-direction: column; gap: 10px"><span class="display prow-t" style="font-size: 26px; font-weight: 600; letter-spacing: -0.025em; line-height: 1.15">See what each product line is worth</span><span style="font-size: 16px; line-height: 1.6; color: #474D4A">Group parts by product, add how many you build a year, and see the money riding on each make-or-buy call.</span></span>
+<svg class="prow-art" width="120" height="64" viewBox="0 0 120 64" fill="none" aria-hidden="true"><circle cx="12" cy="32" r="10" stroke="#0D0F0E" stroke-width="1.4"></circle><path d="M22 32h22M44 12v40M44 12h20M44 32h20M44 52h20" stroke="#0D0F0E" stroke-width="1.4"></path><rect x="64" y="4" width="54" height="16" rx="3" stroke="#0D0F0E" stroke-width="1.4"></rect><rect x="64" y="24" width="54" height="16" rx="3" stroke="#FF5B1F" stroke-width="1.4"></rect><rect x="64" y="44" width="54" height="16" rx="3" stroke="#0D0F0E" stroke-width="1.4"></rect></svg>
+</a>
+<a class="prow inview" href="#">
+<span style="display: flex; flex-direction: column; gap: 10px"><span class="display prow-t" style="font-size: 26px; font-weight: 600; letter-spacing: -0.025em; line-height: 1.15">Keep every answer on file</span><span style="font-size: 16px; line-height: 1.6; color: #474D4A">Every check is saved and shareable. Compare decisions side by side, and feed back real costs to make future estimates sharper.</span></span>
+<svg class="prow-art" width="120" height="64" viewBox="0 0 120 64" fill="none" aria-hidden="true"><rect x="22" y="2" width="76" height="44" rx="4" stroke="#0D0F0E" stroke-width="1.4" stroke-opacity="0.35"></rect><rect x="14" y="10" width="76" height="44" rx="4" stroke="#0D0F0E" stroke-width="1.4" stroke-opacity="0.6" fill="#F4F5F2"></rect><rect x="6" y="18" width="76" height="44" rx="4" stroke="#0D0F0E" stroke-width="1.4" fill="#F4F5F2"></rect><path d="M16 46h56" stroke="#0D0F0E" stroke-width="1.4" stroke-dasharray="3 3"></path><path d="M16 36h40" stroke="#FF5B1F" stroke-width="2.4" stroke-linecap="round"></path></svg>
+</a>
+<a class="prow inview" href="#">
+<span style="display: flex; flex-direction: column; gap: 10px"><span class="display prow-t" style="font-size: 26px; font-weight: 600; letter-spacing: -0.025em; line-height: 1.15">Fits your IT setup</span><span style="font-size: 16px; line-height: 1.6; color: #474D4A">Connect through an API, let people sign in with their company login (SAML or OIDC), and add or remove users automatically (SCIM).</span></span>
+<svg class="prow-art" width="120" height="64" viewBox="0 0 120 64" fill="none" aria-hidden="true"><rect x="30" y="26" width="60" height="36" rx="6" stroke="#0D0F0E" stroke-width="1.4"></rect><path d="M42 26v-8a18 18 0 0 1 36 0v8" stroke="#0D0F0E" stroke-width="1.4"></path><circle cx="60" cy="42" r="4" stroke="#FF5B1F" stroke-width="1.4"></circle><path d="M60 46v6" stroke="#FF5B1F" stroke-width="1.4" stroke-linecap="round"></path></svg>
+</a>
+</div>
+</div>
+</section>
+
+<section class="sec" style="padding-top: 0">
+<div class="wrap">
+<div class="inview" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); border-radius: 28px; overflow: hidden; background: #FFFFFF; box-shadow: 0 0 0 1px #E2E4E0">
+<div style="padding: 40px; display: flex; flex-direction: column; gap: 24px; justify-content: space-between; background: #E9EBE7">
+<h2 class="display" style="margin: 0; font-size: 34px; font-weight: 500; letter-spacing: -0.035em; line-height: 1.05; text-wrap: balance">Start free.<br>Pay when it pays off.</h2>
+<a class="tlink" href="Pricing.dc.html">Compare plans <svg class="arr" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"></path></svg></a>
+</div>
+<div style="padding: 40px; display: flex; flex-direction: column; gap: 12px; box-shadow: inset 1px 0 0 #E6E8E4">
+<span style="font-weight: 600; font-size: 17px">Free</span>
+<span class="display num" style="font-size: 56px; font-weight: 500; letter-spacing: -0.04em; line-height: 1">$0</span>
+<span style="font-size: 15px; line-height: 1.55; color: #474D4A">{{workChecks}} checks with a work email, {{personalChecks}} with a personal email. The full answer every time.</span>
+</div>
+<div style="padding: 40px; display: flex; flex-direction: column; gap: 12px; box-shadow: inset 1px 0 0 #E6E8E4">
+<span style="display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 17px">Pro <span class="chip" style="background: #FF5B1F; color: #0D0F0E">Self-serve</span></span>
+<span class="display num" style="font-size: 56px; font-weight: 500; letter-spacing: -0.04em; line-height: 1">$[149]<span style="font-size: 17px; font-weight: 500; letter-spacing: 0; color: #474D4A"> /mo</span></span>
+<span style="font-size: 15px; line-height: 1.55; color: #474D4A">[50] checks a month using your own machines and prices. Cancel anytime.</span>
+</div>
+<div style="padding: 40px; display: flex; flex-direction: column; gap: 12px; box-shadow: inset 1px 0 0 #E6E8E4">
+<span style="font-weight: 600; font-size: 17px">Pilot</span>
+<span class="display num" style="font-size: 56px; font-weight: 500; letter-spacing: -0.04em; line-height: 1">$7,500</span>
+<span style="font-size: 15px; line-height: 1.55; color: #474D4A">We set it up for one factory: up to 500 parts over 4–6 weeks. The fee counts toward your first year.</span>
+</div>
+</div>
+</div>
+</section>
+
+<section id="start" style="background: #0D0F0E; color: #F4F5F2; position: relative; overflow: hidden; scroll-margin-top: 72px">
+<svg aria-hidden="true" viewBox="0 0 1200 1000" style="position: absolute; right: -180px; top: -120px; width: 900px; height: 750px">
+<path d="M602 200 L862 350 L862 650 L602 800 L342 650 L342 350 Z M342 350 L602 500 L862 350 M602 500 L602 800" fill="none" stroke="#232724" stroke-width="2"></path>
+<path d="M602 120 L942 316 L942 704 L602 900 L262 704 L262 316 Z" fill="none" stroke="#1B1E1C" stroke-width="2"></path>
+</svg>
+<div class="wrap sec" style="position: relative; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(480px, 100%), 1fr)); gap: 56px 96px; align-items: center">
+<div style="display: flex; flex-direction: column; gap: 32px">
+<h2 class="display" style="margin: 0; font-weight: 500; font-size: clamp(56px, 6.6vw, 96px); line-height: 0.94; letter-spacing: -0.04em">Try ScaleCAD free.</h2>
+<p style="margin: 0; max-width: 480px; font-size: 20px; line-height: 1.5; color: #B9BEBA">Enter your email and we’ll send you a link to sign in. No password needed. Then upload a part and see the answer.</p>
+<div style="display: flex; flex-direction: column; max-width: 520px">
+<div style="display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 22px; align-items: center; padding: 22px 0; border-top: 1px solid #2A2E2C">
+<span class="display num" style="font-size: 60px; font-weight: 400; letter-spacing: -0.04em; line-height: 1; color: #FF5B1F">{{workChecks}}</span>
+<span style="display: flex; flex-direction: column; gap: 4px"><span style="font-weight: 600; font-size: 17px">checks with a work email</span><span style="font-size: 15px; color: #9BA19D">Enough to try it on several real parts.</span></span>
+</div>
+<div style="display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 22px; align-items: center; padding: 22px 0; border-top: 1px solid #2A2E2C; border-bottom: 1px solid #2A2E2C">
+<span class="display num" style="font-size: 60px; font-weight: 400; letter-spacing: -0.04em; line-height: 1; color: #F4F5F2">{{personalChecks}}</span>
+<span style="display: flex; flex-direction: column; gap: 4px"><span style="font-weight: 600; font-size: 17px">checks with a personal email</span><span style="font-size: 15px; color: #9BA19D">Gmail, Outlook, iCloud and similar.</span></span>
+</div>
+</div>
+</div>
+
+<div style="background: #FFFFFF; color: #0D0F0E; border-radius: 28px; padding: clamp(26px, 3.4vw, 44px); box-shadow: 0 40px 80px -40px rgba(0,0,0,0.6)">
+<sc-if value="{{notSent}}" hint-placeholder-val="{{ true }}">
+<form onSubmit="{{onSubmit}}" style="display: flex; flex-direction: column; gap: 14px">
+<label for="signup-email" style="font-size: 15px; font-weight: 600">Work email</label>
+<input id="signup-email" class="field" type="email" name="email" autocomplete="email" required placeholder="you@company.com" value="{{email}}" onChange="{{onEmail}}">
+<div aria-live="polite" style="min-height: 48px">
+<sc-if value="{{tierNone}}" hint-placeholder-val="{{ true }}">
+<p style="margin: 0; padding: 13px 15px; border-radius: 12px; background: #F4F5F2; font-size: 14.5px; line-height: 1.45; color: #474D4A">Work emails get {{workChecks}} free checks. Personal emails get {{personalChecks}}.</p>
+</sc-if>
+<sc-if value="{{tierPersonal}}" hint-placeholder-val="{{ false }}">
+<p style="margin: 0; padding: 13px 15px; border-radius: 12px; background: #FBF3E3; font-size: 14.5px; line-height: 1.45; color: #5C3D00"><strong>Personal email: {{personalChecks}} free checks.</strong> Use your work email to start with {{workChecks}}.</p>
+</sc-if>
+<sc-if value="{{tierWork}}" hint-placeholder-val="{{ false }}">
+<p style="margin: 0; display: flex; gap: 10px; align-items: center; padding: 13px 15px; border-radius: 12px; background: #E4F1E9; font-size: 14.5px; line-height: 1.45; color: #17603D"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M5 10.4l3.2 3.2L15 6.8" stroke="#17603D" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg><strong>Work email: {{workChecks}} free checks.</strong></p>
+</sc-if>
+</div>
+<button class="btn btn-signal" type="submit" style="width: 100%; min-height: 60px; font-size: 17px">Try ScaleCAD free <svg class="arr" width="17" height="17" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+<p style="margin: 2px 0 0; font-size: 13.5px; line-height: 1.5; color: #5A605D; text-align: center">No password. No credit card. By continuing you agree to the <a href="#" style="color: #0D0F0E">Terms</a> and <a href="#" style="color: #0D0F0E">Privacy Policy</a>.</p>
+</form>
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; margin-top: 22px; padding-top: 20px; border-top: 1px solid #EDEFEB; font-size: 14.5px">
+<span style="color: #474D4A">Have an account? <a href="#" style="color: #0D0F0E; font-weight: 600">Log in</a></span>
+<a href="#" style="color: #0D0F0E; font-weight: 600">Sign in with your company account</a>
+</div>
+</sc-if>
+<sc-if value="{{sent}}" hint-placeholder-val="{{ false }}">
+<div class="panel-in" role="status" style="display: flex; flex-direction: column; gap: 16px; padding: 12px 0">
+<svg width="48" height="48" viewBox="0 0 48 48" fill="none" aria-hidden="true"><rect x="5" y="10" width="38" height="28" rx="5" stroke="#0D0F0E" stroke-width="2"></rect><path d="M7 13l17 13 17-13" stroke="#FF5B1F" stroke-width="2" stroke-linejoin="round"></path></svg>
+<h3 class="display" style="margin: 0; font-size: 34px; font-weight: 500; letter-spacing: -0.035em">Check your inbox.</h3>
+<p style="margin: 0; font-size: 16px; line-height: 1.6; color: #474D4A">We sent a sign-in link to <strong style="color: #0D0F0E">{{email}}</strong>. Click it to open ScaleCAD with {{tierChecks}} free checks. Not there? Check your spam folder or try another address.</p>
+<button class="btn btn-ghost" type="button" onClick="{{onReset}}" style="align-self: flex-start">Use a different email</button>
+</div>
+</sc-if>
+</div>
+</div>
+</section>
+
+<section class="sec faq">
+<div class="wrap" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr)); gap: 40px 96px">
+<h2 class="h2" style="font-size: clamp(36px, 3.8vw, 56px)">Before your first part.</h2>
+<div>
+<details>
+<summary>What counts as a check?<span class="plus"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg></span></summary>
+<p style="margin: 0 0 26px; max-width: 620px; font-size: 16.5px; line-height: 1.65; color: #474D4A">Each part you upload is one check. You get the full answer every time: can it be made, what’s wrong with it, how long it takes and what it costs.</p>
+</details>
+<details>
+<summary>What files can I upload?<span class="plus"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg></span></summary>
+<p style="margin: 0 0 26px; max-width: 620px; font-size: 16.5px; line-height: 1.65; color: #474D4A">STEP, STL or IGES, the 3D formats almost every CAD program can save. Using SolidWorks, CATIA, NX or Creo? Save a copy as STEP first.</p>
+</details>
+<details>
+<summary>Is this a quote from a supplier?<span class="plus"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg></span></summary>
+<p style="margin: 0 0 26px; max-width: 620px; font-size: 16.5px; line-height: 1.65; color: #474D4A">No. It’s an estimate built from the part and your shop’s numbers. Use it to decide and to negotiate. Your team still signs off before anything gets made.</p>
+</details>
+<details>
+<summary>What if I don’t have all the details?<span class="plus"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg></span></summary>
+<p style="margin: 0 0 26px; max-width: 620px; font-size: 16.5px; line-height: 1.65; color: #474D4A">ScaleCAD fills the gaps with standard guesses and marks every one. It never treats missing information as a yes. Add your own machines or prices anytime and check again.</p>
+</details>
+<details style="border-bottom: 1px solid #DDE0DB">
+<summary>Can it run on our own servers?<span class="plus"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg></span></summary>
+<p style="margin: 0 0 26px; max-width: 620px; font-size: 16.5px; line-height: 1.65; color: #474D4A">Yes, as part of a pilot. We work through your security and data rules with you before you share any sensitive files.</p>
+</details>
+</div>
+</div>
+</section>
+</main>
+
+<footer style="background: #FFFFFF; border-top: 1px solid #E2E4E0; overflow: hidden">
+<div class="wrap" style="padding-top: 72px">
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr)); gap: 40px">
+<div style="display: flex; flex-direction: column; gap: 18px">
+<p style="margin: 0; font-size: 20px; line-height: 1.35; letter-spacing: -0.015em; max-width: 260px">Make the decision. Keep the evidence.</p>
+<a class="btn btn-signal btn-sm" href="#start" style="align-self: flex-start">Try ScaleCAD free</a>
+</div>
+<nav aria-label="Product" style="display: flex; flex-direction: column; gap: 12px; font-size: 15px"><span class="label" style="margin-bottom: 6px">Product</span><a href="#desk" style="text-decoration: none">Sample output</a><a href="#" style="text-decoration: none">How it works</a><a href="#platform" style="text-decoration: none">Platform</a><a href="Pricing.dc.html" style="text-decoration: none">Pricing</a></nav>
+<nav aria-label="Teams" style="display: flex; flex-direction: column; gap: 12px; font-size: 15px"><span class="label" style="margin-bottom: 6px">Teams</span><a href="#" style="text-decoration: none">In-house manufacturing</a><a href="#" style="text-decoration: none">Design engineering</a><a href="#" style="text-decoration: none">Cost engineering</a><a href="#" style="text-decoration: none">Sourcing</a></nav>
+<nav aria-label="Resources" style="display: flex; flex-direction: column; gap: 12px; font-size: 15px"><span class="label" style="margin-bottom: 6px">Resources</span><a href="#" style="text-decoration: none">Developers</a><a href="#" style="text-decoration: none">API reference</a><a href="#" style="text-decoration: none">Security</a><a href="#" style="text-decoration: none">Service status</a></nav>
+<nav aria-label="Company" style="display: flex; flex-direction: column; gap: 12px; font-size: 15px"><span class="label" style="margin-bottom: 6px">Company</span><a href="#" style="text-decoration: none">About</a><a href="#" style="text-decoration: none">Plan a pilot</a><a href="#" style="text-decoration: none">Contact</a><a href="#" style="text-decoration: none">Log in</a></nav>
+</div>
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px 24px; margin-top: 64px; padding: 22px 0; border-top: 1px solid #E2E4E0; font-size: 14px; color: #5A605D">
+<span>© 2026 ScaleCAD</span>
+<span style="display: flex; gap: 20px"><a href="#" style="color: #5A605D; text-decoration: none">Privacy</a><a href="#" style="color: #5A605D; text-decoration: none">Terms</a><a href="#" style="color: #5A605D; text-decoration: none">Data processing</a></span>
+</div>
+</div>
+<div aria-hidden="true" class="display" style="text-align: center; font-size: clamp(88px, 21vw, 312px); font-weight: 600; line-height: 0.74; letter-spacing: -0.04em; color: #E9EBE7; white-space: nowrap; margin-bottom: -0.06em; padding-top: 8px">ScaleCAD<sc-if value="{{logoDot}}" hint-placeholder-val="{{ false }}"><span style="color: #FFD3BF">.</span></sc-if></div>
+</footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"workChecks":{"editor":"int","default":15,"min":1,"max":50,"section":"Free allowance"},"personalChecks":{"editor":"int","default":3,"min":0,"max":20,"section":"Free allowance"},"loggedIn":{"editor":"boolean","default":false,"section":"Visitor"},"logoDot":{"editor":"boolean","default":false,"section":"Brand"},"$preview":{"width":1440,"height":7900}}'>
+class Component extends DCLogic {
+  componentDidMount() {
+    this.timers = [];
+    this.startTimer = setTimeout(() => this.play(), 700);
+  }
+  componentWillUnmount() {
+    clearTimeout(this.startTimer);
+    (this.timers || []).forEach(clearTimeout);
+  }
+  play() {
+    (this.timers || []).forEach(clearTimeout);
+    this.timers = [];
+    this.setState({ phase: 0 });
+    for (let i = 1; i <= 6; i++) {
+      this.timers.push(setTimeout(() => this.setState({ phase: i }), 200 + i * 460));
+    }
+  }
+  renderVals() {
+    const s = this.state || {};
+    const work = this.props.workChecks ?? 15;
+    const personal = this.props.personalChecks ?? 3;
+    const loggedIn = this.props.loggedIn ?? false;
+
+    const phase = s.phase ?? 6;
+    const on = (n) => (phase >= n ? 'is-on' : '');
+
+    const email = s.email || '';
+    const m = /^[^@\s]+@([a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,})$/i.exec(email.trim());
+    const domain = m ? m[1].toLowerCase() : '';
+    const personalDomains = ['gmail.com', 'googlemail.com', 'yahoo.com', 'ymail.com', 'outlook.com', 'hotmail.com', 'live.com', 'msn.com', 'icloud.com', 'me.com', 'mac.com', 'aol.com', 'proton.me', 'protonmail.com', 'gmx.com', 'gmx.de', 'mail.com', 'yandex.com', 'zoho.com', 'fastmail.com', 'hey.com'];
+    const isPersonal = !!domain && personalDomains.indexOf(domain) !== -1;
+    const sent = !!s.sent && !!domain;
+    const tierLine = !domain ? `Work email: ${work} free checks. Personal: ${personal}.` : (isPersonal ? `Personal email: ${personal} free checks.` : `Work email: ${work} free checks.`);
+
+    const fileName = s.fileName || '';
+    const fileOk = /\.(step|stp|stl|iges|igs)$/i.test(fileName);
+
+    const tab = s.tab || 'inhouse';
+    const tabDefs = [
+      { id: 'inhouse', label: 'Can we make it ourselves?' },
+      { id: 'design', label: 'What’s wrong with the design?' },
+      { id: 'cost', label: 'What will it cost?' }
+    ];
+    const tabs = tabDefs.map((t) => ({
+      label: t.label,
+      on: t.id === tab ? 'is-on' : '',
+      pressed: t.id === tab,
+      pick: () => this.setState({ tab: t.id })
+    }));
+
+    const shop = s.shop || 'a';
+    const scale = 75;
+    const data = [
+      { name: '3D printing (MJF)', note: 'Could be 40% higher or lower', a: 10.45, b: 2.68, h: 0.4 },
+      { name: '3D printing (SLS)', note: 'Could be 40% higher or lower', a: 10.64, b: 2.86, h: 0.4 },
+      { name: 'Lathe (CNC turning)', note: 'Best fit for the shape', a: 26.92, b: 5.96, h: 0.5 },
+      { name: '5-axis milling', note: 'Could be 50% higher or lower', a: 47.36, b: 10.95, h: 0.5 },
+      { name: 'Injection molding', note: 'Needs a design fix first', a: 14.25, b: 4.65, h: 0.6, blocked: true }
+    ];
+    const rows = data.map((d, i) => {
+      const v = shop === 'a' ? d.a : d.b;
+      const low = v * (1 - d.h);
+      const high = v * (1 + d.h);
+      return {
+        name: d.name,
+        note: d.note,
+        price: '$' + v.toFixed(2),
+        pointPct: (v / scale * 100).toFixed(2),
+        lowPct: (low / scale * 100).toFixed(2),
+        bandPct: ((high - low) / scale * 100).toFixed(2),
+        cls: d.blocked ? 'is-blocked' : (i === 0 ? 'is-best' : '')
+      };
+    });
+
+    const termDefs = [
+      { v: '0.0682 hr', tag: 'Default', chip: 'c-default', label: 'Machine time per part', source: 'One full print run takes 15.2 hours and fits 223 parts, so each part gets about 4 minutes. The 223 is our standard guess at how many fit, so it stays marked as a guess until you give us real numbers.' },
+      { v: '× $30/hr', tag: 'Shop', chip: 'c-shop', label: 'Hourly machine rate', source: 'What the example shop charges per hour for this printer. On your account, it’s your own rate.' },
+      { v: '÷ 0.8', tag: 'Shop', chip: 'c-shop', label: 'Uptime', source: 'Machines run about 80% of the time. Dividing by 0.8 covers the hours they sit idle.' },
+      { v: '× 1.3', tag: 'Shop', chip: 'c-shop', label: 'Margin', source: 'The shop’s 30% profit margin.' },
+      { v: '× 1.15', tag: 'Shop', chip: 'c-shop', label: 'Overhead', source: 'An extra 15% for rent, power and other running costs.' },
+      { v: '= $3.82', tag: '±40%', chip: 'c-default', label: 'Machine cost per part', source: 'Multiply it all out and you get $3.82 a part. It could be 40% higher or lower until real jobs confirm it.' }
+    ];
+    const termIdx = s.term ?? 0;
+    const terms = termDefs.map((t, i) => ({
+      v: t.v, tag: t.tag, chip: t.chip, label: t.label, source: t.source,
+      on: i === termIdx ? 'is-on' : '',
+      isOn: i === termIdx,
+      pressed: i === termIdx,
+      pick: () => this.setState({ term: i })
+    }));
+
+    return {
+      workChecks: work,
+      personalChecks: personal,
+      loggedIn: loggedIn,
+      loggedOut: !loggedIn,
+      logoDot: this.props.logoDot ?? false,
+
+      envOn: on(1), g1: on(1), g2: on(2), g3: on(3), g4: on(4), g5: on(5),
+      scanning: phase >= 1 && phase <= 4,
+      walking: phase < 6,
+      replayLabel: phase < 6 ? 'Checking the sample part…' : 'Watch it again',
+      onReplay: () => this.play(),
+
+      dragging: !!s.dragging,
+      dragClass: s.dragging ? 'is-drag' : '',
+      onDragOver: (e) => { e.preventDefault(); if (!s.dragging) this.setState({ dragging: true }); },
+      onDragLeave: () => this.setState({ dragging: false }),
+      onDrop: (e) => { e.preventDefault(); const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]; this.setState({ dragging: false, fileName: f ? f.name : '' }); },
+      onFile: (e) => { const f = e.target.files && e.target.files[0]; if (f) this.setState({ fileName: f.name }); },
+      onClearFile: () => this.setState({ fileName: '' }),
+      fileName: fileName,
+      fileBad: !!fileName && !fileOk,
+      fileReady: !!fileName && fileOk && !sent,
+      fileSent: !!fileName && fileOk && sent,
+
+      tabs: tabs,
+      isInhouse: tab === 'inhouse',
+      isDesign: tab === 'design',
+      isCost: tab === 'cost',
+
+      rows: rows,
+      segPos: shop === 'b' ? 'is-b' : '',
+      shopAOn: shop === 'a' ? 'is-on' : '',
+      shopBOn: shop === 'b' ? 'is-on' : '',
+      shopAPressed: shop === 'a',
+      shopBPressed: shop === 'b',
+      pickA: () => this.setState({ shop: 'a' }),
+      pickB: () => this.setState({ shop: 'b' }),
+
+      terms: terms,
+
+      email: email,
+      tierLine: tierLine,
+      onEmail: (e) => this.setState({ email: e.target.value, sent: false }),
+      onSubmit: (e) => { if (e && e.preventDefault) e.preventDefault(); if (domain) this.setState({ sent: true }); },
+      onReset: () => this.setState({ email: '', sent: false }),
+      tierNone: !domain,
+      tierPersonal: isPersonal,
+      tierWork: !!domain && !isPersonal,
+      tierChecks: isPersonal ? personal : work,
+      sent: sent,
+      notSent: !sent
+    };
+  }
+}
+</script>
+</body>
+</html>

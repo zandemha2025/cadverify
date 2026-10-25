@@ -1,0 +1,97 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-10-17T22:49:06Z"
+  },
+  "title": "ScaleCAD Site Redesign",
+  "launch": {
+    "view": "canvas"
+  },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 7900,
+      "title": "A · Precise · homepage",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Loud.dc.html": {
+      "x": 1520,
+      "y": 0,
+      "w": 1440,
+      "h": 9000,
+      "title": "B · Loud · homepage",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Pricing.dc.html": {
+      "x": 4560,
+      "y": 0,
+      "w": 1440,
+      "h": 2700,
+      "title": "C · Pricing",
+      "expand": "fill"
+    },
+    "SignupStates.dc.html": {
+      "x": 4560,
+      "y": 3020,
+      "w": 1440,
+      "h": 760,
+      "title": "Sign-up · email tiers"
+    },
+    "NavStates.dc.html": {
+      "x": 4560,
+      "y": 3900,
+      "w": 1440,
+      "h": 520,
+      "title": "Nav · logged out vs logged in"
+    },
+    "Mobile.dc.html": {
+      "x": 6080,
+      "y": 0,
+      "w": 390,
+      "h": 1900,
+      "title": "A · Precise · mobile"
+    },
+    "Logo.dc.html": {
+      "x": 6550,
+      "y": 0,
+      "w": 1280,
+      "h": 760,
+      "title": "Logo · the period question"
+    },
+    "Cinematic.dc.html": {
+      "x": 3040,
+      "y": 0,
+      "w": 1440,
+      "h": 6300,
+      "title": "C · Cinematic · homepage",
+      "expand": "fill",
+      "is_interactive": true
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "Loud.dc.html",
+    "Cinematic.dc.html",
+    "Pricing.dc.html",
+    "SignupStates.dc.html",
+    "NavStates.dc.html",
+    "Mobile.dc.html",
+    "Logo.dc.html"
+  ],
+  "notes": {
+    "title": {
+      "x": 0,
+      "y": -320,
+      "text": "ScaleCAD site redesign: A Precise · B Loud · C Cinematic",
+      "kind": "title1",
+      "maxW": 7830
+    }
+  },
+  "designSystems": []
+}
