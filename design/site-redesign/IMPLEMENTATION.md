@@ -27,3 +27,8 @@ uses a checked-in six-record public BCN3D manifest excerpt instead of requiring
 private local data, and requires all six ontology keys. CI rejects every skipped
 test, with session-local tracking that survives nested pytester runs. Merge and
 deployment remain on hold until this follow-up passes all required checks.
+
+Installing OCP also activates the NIST corpus PMI oracle. Detection now includes
+modern dimension, geometric-tolerance and datum labels as well as legacy DimTol
+labels. A pinned public NIST AP242 fixture prevents regression to the old false
+negative; the existing complete NIST corpus gate remains required.

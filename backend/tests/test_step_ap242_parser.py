@@ -5,6 +5,7 @@ OCP-dependent tests are skipped when XDE modules are not available.
 """
 from __future__ import annotations
 
+import gzip
 from pathlib import Path
 
 import pytest
@@ -125,3 +126,17 @@ def test_ap214_fallback_no_pmi(tmp_path):
 
     result = parse_ap242(step_file)
     assert result.has_pmi is False
+
+
+@pytest.mark.skipif(not is_ap242_supported(), reason="OCP XDE not available")
+def test_ap242_detects_modern_pmi():
+    """NIST's semantic/graphical annotations are outside legacy DimTol labels."""
+    from OCP.TDF import TDF_LabelSequence
+
+    fixture = Path(__file__).parent / "assets" / "nist_ctc_01_asme1_ap242-e1.stp.gz"
+    result = parse_ap242_from_bytes(gzip.decompress(fixture.read_bytes()), "nist.stp")
+    legacy = TDF_LabelSequence()
+    result.dim_tol_tool.GetDimTolLabels(legacy)
+    assert legacy.Length() == 0
+    assert result.has_pmi is True
+    assert result.shape_labels

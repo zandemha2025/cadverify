@@ -123,10 +123,19 @@ def parse_ap242(file_path: str | Path) -> AP242Document:
     shape_tool = XCAFDoc_DocumentTool.ShapeTool_s(doc.Main())
     dim_tol_tool = XCAFDoc_DocumentTool.DimTolTool_s(doc.Main())
 
-    # Detect PMI presence via GDT labels
-    gdt_labels = TDF_LabelSequence()
-    dim_tol_tool.GetDimTolLabels(gdt_labels)
-    has_pmi = gdt_labels.Length() > 0
+    # Modern AP242 annotations live outside the legacy DimTol collection.
+    has_pmi = False
+    for collect in (
+        dim_tol_tool.GetDimTolLabels,
+        dim_tol_tool.GetDimensionLabels,
+        dim_tol_tool.GetGeomToleranceLabels,
+        dim_tol_tool.GetDatumLabels,
+    ):
+        labels = TDF_LabelSequence()
+        collect(labels)
+        if labels.Length() > 0:
+            has_pmi = True
+            break
 
     # Get top-level (free) shape labels
     free_shapes = TDF_LabelSequence()
