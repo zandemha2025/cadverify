@@ -85,6 +85,33 @@ class ConfidenceInterval:
         }
 
 
+def rolled_up_band(line_items: dict, drivers, unit_cost: float) -> Tuple[float, str]:
+    """The price's ± band rolled up from each line's own band (ce-02): the root-sum-square
+    of line value × line band, treating the lines as independent, as a % of the price.
+
+    A line whose driver states no band (the order minimum, a rule) adds nothing. Returns
+    ``(band_pct, basis)`` with the arithmetic in words; ``(0.0, "")`` for a zero price.
+    """
+    from src.costing.footing import line_driver, line_name
+
+    bands = {getattr(d, "name", None): getattr(d, "error_band_pct", None) for d in drivers or []}
+    parts = []
+    for key, value in (line_items or {}).items():
+        b = bands.get(line_driver(key))
+        if not isinstance(value, (int, float)) or not value or b is None:
+            continue
+        parts.append((line_name(key), float(value), float(b), abs(float(value)) * float(b) / 100.0))
+    if unit_cost <= 0 or not parts:
+        return 0.0, ""
+    rss = sum(p[3] ** 2 for p in parts) ** 0.5
+    pct = round(100.0 * rss / unit_cost, 1)
+    parts.sort(key=lambda p: -p[3])
+    shown = ", ".join(f"{n.lower()} ±{b:g}% of ${v:,.2f}" for n, v, b, _x in parts[:4])
+    more = f" and {len(parts) - 4} more" if len(parts) > 4 else ""
+    return pct, (f"±{pct:g}%: the root-sum-square of each line's band ({shown}{more}) = "
+                 f"±${rss:,.2f} on ${unit_cost:,.2f}, treating the lines as independent")
+
+
 def _percentile(sorted_vals: Sequence[float], q: float) -> float:
     """Linear-interpolated percentile of an ascending list. q in [0, 1]."""
     n = len(sorted_vals)
@@ -107,6 +134,7 @@ def confidence_interval(
     residual_provider: Optional[ResidualProvider] = None,
     process: Optional[str] = None,
     level: float = 0.80,
+    band_basis: Optional[str] = None,
 ) -> ConfidenceInterval:
     """Build the CI for one point estimate.
 
@@ -122,7 +150,7 @@ def confidence_interval(
             residuals, from_real, n = None, False, 0
         if residuals is not None and len(residuals) >= MIN_RESIDUALS:
             return _empirical_interval(point_usd, residuals, from_real, n, process, level)
-    return _assumption_interval(point_usd, assumption_band_pct, level)
+    return _assumption_interval(point_usd, assumption_band_pct, level, band_basis)
 
 
 def _empirical_interval(point_usd, residuals, from_real, n, process, level) -> ConfidenceInterval:
@@ -161,7 +189,7 @@ def _empirical_interval(point_usd, residuals, from_real, n, process, level) -> C
     )
 
 
-def _assumption_interval(point_usd, assumption_band_pct, level) -> ConfidenceInterval:
+def _assumption_interval(point_usd, assumption_band_pct, level, band_basis=None) -> ConfidenceInterval:
     b = max(0.0, float(assumption_band_pct)) / 100.0
     return ConfidenceInterval(
         low_usd=point_usd * (1.0 - b),
@@ -171,7 +199,8 @@ def _assumption_interval(point_usd, assumption_band_pct, level) -> ConfidenceInt
         method="assumption-band",
         validated=False,
         n_samples=0,
-        basis=(f"±{assumption_band_pct:g}% stated assumption band (cycle-time / tooling "
+        basis=(f"{band_basis}; assumption-based, no real jobs behind it yet" if band_basis else
+               f"±{assumption_band_pct:g}% stated assumption band (cycle-time / tooling "
                f"defaults) propagated around the point estimate — no ground truth yet"),
         label="assumption-based, not yet validated",
     )

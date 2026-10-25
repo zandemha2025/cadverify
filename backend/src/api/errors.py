@@ -35,7 +35,7 @@ def cad_upload_diagnosis(message: str) -> dict[str, Any] | None:
     if "unsupported file type" in lower:
         return {
             "failure_class": "unsupported_type",
-            "plain_reason": "The file is not one of the CAD exchange formats ScaleCad can read.",
+            "plain_reason": "The file is not one of the CAD exchange formats ScaleCAD can read.",
             "location": None,
             "repairable": False,
             "next_action": "Export the original part as STL, STEP, STP, IGES, or IGS.",
@@ -129,6 +129,43 @@ async def structured_http_error_handler(
         status_code=exc.status_code,
         content=payload,
         headers=exc.headers,
+    )
+
+
+# How long a client is asked to wait when every database connection is taken:
+# the same 5 s the admission and compute-budget refusals give.
+DB_BUSY_RETRY_AFTER_SECONDS = 5
+
+
+def server_busy_payload() -> dict:
+    """The API's one ``server_busy`` body (admission and compute budget use it too)."""
+    return {
+        "code": "server_busy",
+        "message": "server is at capacity, retry shortly",
+        "doc_url": error_doc_url("server_busy"),
+    }
+
+
+async def db_pool_busy_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Every database connection stayed taken for the pool's whole wait.
+
+    SQLAlchemy raises ``sqlalchemy.exc.TimeoutError`` only when a pool checkout
+    times out, so this is the server being busy, not a fault in the request: a
+    503 ``server_busy`` with Retry-After, the shape the app already retries,
+    never a 500 (capacity report C7: 210 of these answered 500 at 50 browsers).
+    """
+    import logging
+
+    from src.db.engine import pool_status
+
+    logging.getLogger("cadverify.db").warning(
+        "db_pool_exhausted method=%s path=%s %s",
+        request.method, request.url.path, pool_status(),
+    )
+    return JSONResponse(
+        status_code=503,
+        content=server_busy_payload(),
+        headers={"Retry-After": str(DB_BUSY_RETRY_AFTER_SECONDS)},
     )
 
 

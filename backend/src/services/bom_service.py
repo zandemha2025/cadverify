@@ -235,7 +235,7 @@ def parse_bom_csv(text: str) -> tuple[list[dict], list[dict]]:
             cell(record, "qty_per_parent"),
             cell(record, "child_name"),
         )
-        if err:
+        if err or row is None:  # _coerce_row gives a row exactly when there is no error
             errors.append({"line": line, "reason": err})
             continue
         rows.append(row)
@@ -273,7 +273,7 @@ def parse_bom_json(text: str) -> tuple[list[dict], list[dict]]:
             _clean(entry.get("qty_per_parent")),
             _clean(entry.get("child_name")),
         )
-        if err:
+        if err or row is None:  # _coerce_row gives a row exactly when there is no error
             errors.append({"line": idx, "reason": err})
             continue
         rows.append(row)

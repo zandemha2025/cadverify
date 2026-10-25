@@ -7,24 +7,32 @@ engine/session singletons.
 from __future__ import annotations
 
 import os
-from typing import AsyncGenerator, Optional
+from typing import TYPE_CHECKING, Any, AsyncGenerator, ClassVar, Optional, cast
 
 from fastapi import Depends
+from sqlalchemy import Table
 from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase
 
+if TYPE_CHECKING:
+    from sqlalchemy.pool import QueuePool
+
 
 class Base(DeclarativeBase):
     """ORM declarative base for all mapped classes."""
 
-    pass
+    if TYPE_CHECKING:
+        # Every class mapped here is declared on a real Table (never a select),
+        # so ``Model.__table__.update()`` type-checks as it runs.
+        __table__: ClassVar[Table]  # pyright: ignore[reportIncompatibleVariableOverride]  # FromClause narrowed to the Table each model really has
 
 
-_ENGINE = None
+_ENGINE: Optional[AsyncEngine] = None
 _SESSION_FACTORY: Optional[async_sessionmaker[AsyncSession]] = None
 
 
@@ -105,7 +113,7 @@ def _async_url(url: str) -> str:
     return url
 
 
-def get_engine():
+def get_engine() -> AsyncEngine:
     """Return (and lazily create) the async engine singleton."""
     global _ENGINE
     if _ENGINE is None:
@@ -113,8 +121,15 @@ def get_engine():
         # concurrency can hold several sessions at once, so operators must be
         # able to size the pool to their deployment instead of a hardcoded 5.
         url = _async_url(_ensure_prod_tls(os.environ["DATABASE_URL"]))
-        kwargs = {"pool_pre_ping": True}
-        if not url.startswith("sqlite"):
+        kwargs: dict[str, Any] = {"pool_pre_ping": True}
+        if os.getenv("DB_POOL", "").strip().lower() == "null":
+            # Tests (tests/conftest.py) run every async test on its own event
+            # loop; a pooled asyncpg connection is bound to the loop that opened
+            # it, so the test suite keeps no connections between uses.
+            from sqlalchemy.pool import NullPool
+
+            kwargs = {"poolclass": NullPool}
+        elif not url.startswith("sqlite"):
             # F-CAP-1: pool_size bumped 5 -> 10 (the /validate family holds a
             # session for the whole 30-80s analysis, and 5+10 overflow=15 was
             # too tight under real concurrency; see admission.py for the
@@ -129,6 +144,21 @@ def get_engine():
             kwargs["pool_recycle"] = int(os.getenv("DB_POOL_RECYCLE", "300"))
         _ENGINE = create_async_engine(url, **kwargs)
     return _ENGINE
+
+
+def pool_status() -> str:
+    """One log-friendly line on the pool (size, checked out, overflow), or "pool=none"."""
+    if _ENGINE is None:
+        return "pool=none"
+    # The default pool is a QueuePool; any other raises AttributeError below.
+    pool = cast("QueuePool", _ENGINE.pool)
+    try:
+        return (
+            f"pool_size={pool.size()} checked_out={pool.checkedout()} "
+            f"overflow={pool.overflow()} idle={pool.checkedin()}"
+        )
+    except Exception:  # NullPool / StaticPool have no counters
+        return f"pool={type(pool).__name__}"
 
 
 async def init_engine() -> None:

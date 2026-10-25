@@ -39,6 +39,9 @@ class S3ObjectStore(ObjectStore):
     may be injected (used by the contract tests against an in-memory stand-in).
     """
 
+    # Browsers PUT multipart parts straight to presigned S3 URLs.
+    transport = "s3"
+
     def __init__(
         self,
         bucket: str,
@@ -299,6 +302,29 @@ class S3ObjectStore(ObjectStore):
             MultipartUpload={"Parts": parts},
         )
         return self.stat(key)
+
+    def list_parts(self, key: str, upload_id: str) -> list[dict[str, Any]]:
+        """Parts the provider has received so far: ``{part_number, etag, size_bytes}``.
+
+        Lets a client resume an interrupted upload by sending only the parts
+        that are missing.
+        """
+        if not upload_id:
+            raise ValueError("multipart upload id is required")
+        out: list[dict[str, Any]] = []
+        params: dict[str, Any] = {"Bucket": self._bucket, "Key": self._full_key(key), "UploadId": upload_id}
+        while True:
+            response = self._client().list_parts(**params)
+            for part in response.get("Parts") or []:
+                out.append({
+                    "part_number": int(part["PartNumber"]),
+                    "etag": part.get("ETag"),
+                    "size_bytes": int(part.get("Size") or 0),
+                })
+            if not response.get("IsTruncated"):
+                break
+            params["PartNumberMarker"] = response.get("NextPartNumberMarker")
+        return sorted(out, key=lambda p: p["part_number"])
 
     def abort_multipart_upload(self, key: str, upload_id: str) -> None:
         """Abort an unfinished provider multipart upload idempotently."""

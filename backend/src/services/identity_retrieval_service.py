@@ -520,7 +520,7 @@ async def _retrieve_from_vector(
     )
 
     reason: Optional[str]
-    if grounded:
+    if grounded and top is not None:  # grounded means there is a top match
         reason = (
             f"top match is {top.confidence_bucket} confidence "
             f"({top.combined_confidence:.0%}) — a retrieved suggestion to confirm"

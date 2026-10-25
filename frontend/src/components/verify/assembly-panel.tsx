@@ -19,6 +19,7 @@
  */
 import { useMemo, type ReactNode } from "react";
 import { isLifetimeQuotaErrorMessage } from "@/lib/api-recovery";
+import { UpgradeButton } from "@/components/billing/upgrade-button";
 import { C, MONO, USD, procLabel, statusColor } from "@/lib/verify/tokens";
 
 /** Fixed-decimal formatter for measured geometry — "—" when absent. */
@@ -356,7 +357,7 @@ function AnalysisStatus({ analysis, analyzing, error, onRetry }: { analysis: Ass
           measured geometry below are real; no verdict or cost is asserted without the engine.
         </p>
         {error && <p role="alert" style={{ fontSize: 12.5, lineHeight: 1.5 }}>{error}</p>}
-        {isLifetimeQuotaErrorMessage(error) ? <a href="/history">Review usage and contact options →</a> : <GhostButton onClick={onRetry}>Retry analysis</GhostButton>}
+        {isLifetimeQuotaErrorMessage(error) ? <UpgradeButton /> : <GhostButton onClick={onRetry}>Retry analysis</GhostButton>}
       </div>
     );
   }

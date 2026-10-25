@@ -164,6 +164,20 @@ async def test_part_context_upsert_read_and_isolation():
         assert got["parent_assembly"] is None
         assert got["units_per_parent"] == 4
 
+        # --- an empty service_environment never erases stored conditions;
+        #     only an explicit null clears them ------------------------------
+        r = await c.put(
+            f"/api/v1/part-context/{mesh}", json={"service_environment": {}}
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["service_environment"]["pressure_bar"] == 350
+        r = await c.put(
+            f"/api/v1/part-context/{mesh}", json={"service_environment": None}
+        )
+        assert r.status_code == 200, r.text
+        assert "service_environment" not in r.json()
+        assert r.json()["program"] == "Zoox-2"
+
         # --- a non-positive declared volume is a 400 ------------------------
         r = await c.put(
             f"/api/v1/part-context/{mesh}", json={"annual_volume": 0}

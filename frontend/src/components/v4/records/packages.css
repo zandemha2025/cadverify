@@ -1,0 +1,21 @@
+/* RFQ packages (./packages-screen.tsx): the builder's parts and quantities, the cost warning, the package link. */
+.ob .pk-two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+.ob .pk-two .field input{width:100%;min-width:0}
+.ob .pk-parts{display:flex;flex-direction:column;padding:0 12px 6px}
+.ob .pk-part{display:grid;grid-template-columns:minmax(0,1fr) 92px;gap:10px;align-items:center;padding:7px 0;border-top:1px solid rgba(20,24,31,.07)}
+.ob .pk-part:first-child{border-top:0}
+.ob .pk-part b{display:block;font-weight:600;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ob .pk-part small{display:block;color:var(--ink3);font-size:12.5px;overflow-wrap:anywhere}
+.ob .pk-q input{width:100%;height:34px;padding:0 10px;border:1px solid var(--rule2);border-radius:10px;background:#fff;font:inherit;font-size:13.5px;text-align:right;font-variant-numeric:tabular-nums}
+.ob .pk-costwarn{margin:-4px 0 0 28px;padding:8px 10px;border-radius:10px;background:var(--warn-bg);color:var(--warn);font-size:12.5px}
+.ob .pk-link{display:flex;flex-direction:column;gap:8px;padding:2px 12px 8px}
+.ob .pk-link input{font-family:var(--font-geist-mono),ui-monospace,monospace;font-size:12.5px}
+/* The picker's price sits in its own column; where that column is hidden (records.css, phones), in the line. */
+.ob .pkbtn small .pkp{display:none}
+@media (max-width:900px){
+  .ob .pkbtn small .pkp{display:inline}
+}
+@media (max-width:560px){
+  .ob .pk-two{grid-template-columns:minmax(0,1fr)}
+  .ob .pk-costwarn{margin-left:0}
+}

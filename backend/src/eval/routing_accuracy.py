@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Optional, cast
 
 import trimesh
 
@@ -118,7 +118,8 @@ def evaluate(
             skipped.append({"part_id": part_id, "reason": "mesh file missing"})
             continue
         try:
-            mesh = trimesh.load(path, force="mesh")
+            # force="mesh" hands back a Trimesh; trimesh types load() as Geometry.
+            mesh = cast(trimesh.Trimesh, trimesh.load(path, force="mesh"))
         except Exception as exc:  # pragma: no cover - corrupt mesh
             skipped.append({"part_id": part_id, "reason": f"load failed: {exc}"})
             continue

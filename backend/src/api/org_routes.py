@@ -20,8 +20,10 @@ from __future__ import annotations
 
 from src.config.public_urls import dashboard_origin, error_doc_url
 
+import html
 import logging
 import os
+import re
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -50,10 +52,28 @@ class CreateOrgBody(BaseModel):
 class InviteBody(BaseModel):
     email: str
     role: str = "member"
+    # Optional: the page in this organization the invite is for (a catalog run),
+    # opened once the invite is accepted and named in the email.
+    next: Optional[str] = None
+
+
+# An in-app page an invite may open after it is accepted: a path, never a site.
+_NEXT_PATH = re.compile(r"^/app/[A-Za-z0-9/_-]{1,200}$")
+
+
+def _safe_next(path: Optional[str]) -> Optional[str]:
+    p = (path or "").strip()
+    return p if p and _NEXT_PATH.match(p) and "//" not in p else None
 
 
 class AcceptBody(BaseModel):
     token: str
+
+
+class AcceptInviteBody(AcceptBody):
+    # The person chose to work there now (the accept button says so): make it
+    # the active organization in the same step. Accepting alone never switches.
+    switch: bool = False
 
 
 class RoleBody(BaseModel):
@@ -103,11 +123,15 @@ async def _emit(
     )
 
 
-def _invite_link(raw_token: str) -> str:
-    return f"{dashboard_origin()}/orgs/accept?token={raw_token}"
+def _invite_link(raw_token: str, next_path: Optional[str] = None) -> str:
+    from urllib.parse import quote
+
+    link = f"{dashboard_origin()}/orgs/accept?token={raw_token}"
+    return link + (f"&next={quote(next_path, safe='/')}" if next_path else "")
 
 
-def _send_invite_email(email: str, link: str, org_name: Optional[str]) -> bool:
+def _send_invite_email(email: str, link: str, org_name: Optional[str], *, inviter: Optional[str] = None,
+                       role: Optional[str] = None, what: Optional[str] = None) -> bool:
     """Best-effort invite email via Resend. Returns True if a send was attempted.
 
     Graceful no-email fallback: when RESEND_API_KEY is unset (local/dev) we skip
@@ -120,15 +144,29 @@ def _send_invite_email(email: str, link: str, org_name: Optional[str]) -> bool:
         import resend
 
         resend.api_key = os.environ["RESEND_API_KEY"]
-        who = f" to {org_name}" if org_name else ""
+        # Every value is escaped for HTML: names are user text.
+        who = f" to {html.escape(org_name)}" if org_name else ""
+        href = html.escape(link, quote=True)
+        if inviter:
+            # Who sent it, to which organization, as what, and what they want you to see.
+            subject = f"{inviter} invited you to {org_name or 'their organization'} on ScaleCAD"
+            lead = (f"<p>{html.escape(inviter)} invited you{who} on ScaleCAD"
+                    + (f" as {html.escape(role)}" if role else "") + ".</p>")
+            if what:
+                lead += f"<p>{html.escape(what)}</p>"
+            action = "Accept and open it" if what else "Accept the invitation"
+        else:
+            subject = "You've been invited to a ScaleCAD organization"
+            lead = f"<p>You've been invited{who}.</p>"
+            action = "Accept the invitation"
         resend.Emails.send(
             {
                 "from": os.environ["RESEND_FROM"],
                 "to": email,
-                "subject": "You've been invited to a ScaleCad organization",
+                "subject": subject,
                 "html": (
-                    f'<p>You\'ve been invited{who}.</p>'
-                    f'<p><a href="{link}">Accept the invitation</a> '
+                    lead
+                    + f'<p><a href="{href}">{action}</a> '
                     f"(expires in {svc._invite_ttl_days()} days).</p>"
                 ),
             }
@@ -139,6 +177,34 @@ def _send_invite_email(email: str, link: str, org_name: Optional[str]) -> bool:
         # the one-time link in the response.
         logger.warning("invite email send failed for %s", email, exc_info=True)
         return False
+
+
+_ROLE_WORDS = {"viewer": "a viewer", "member": "a member", "admin": "an admin"}
+
+
+async def _invite_words(session: AsyncSession, user_id: int, org_id: str,
+                        next_path: Optional[str]) -> tuple[Optional[str], Optional[str], Optional[str]]:
+    """``(inviter, organization, what it's for)`` in the words the email uses."""
+    from sqlalchemy import select
+
+    from src.db.models import Batch, Organization, User
+
+    try:
+        name, email = (await session.execute(select(User.full_name, User.email).where(User.id == user_id))).one()
+        org_name = (await session.execute(select(Organization.name).where(Organization.id == org_id))).scalar_one_or_none()
+    except Exception:
+        return None, None, None
+    inviter = f"{name} ({email})" if name else email
+    what = None
+    m = re.match(r"^/app/many/([0-9A-HJKMNP-TV-Z]{26})$", next_path or "")
+    if m:
+        batch = (await session.execute(select(Batch).where(Batch.ulid == m.group(1), Batch.org_id == org_id,
+                                                           Batch.job_type == "catalog"))).scalars().first()
+        if batch is not None:
+            from src.services.catalog_run_service import run_title
+
+            what = f"It's to look at a make-or-buy result: {run_title(batch) or 'a catalog run'}."
+    return inviter, org_name, what
 
 
 # ── org create / list / switch ────────────────────────────────────────────────
@@ -329,8 +395,11 @@ async def create_invite(
         org_id=org_id,
     )
     await session.commit()
-    link = _invite_link(raw)
-    emailed = _send_invite_email(invite.email, link, None)
+    next_path = _safe_next(body.next)
+    link = _invite_link(raw, next_path)
+    inviter, org_name, what = await _invite_words(session, ctx.user_id, org_id, next_path)
+    emailed = _send_invite_email(invite.email, link, org_name, inviter=inviter,
+                                 role=_ROLE_WORDS.get(invite.role, invite.role), what=what)
     response.status_code = 201
     out = svc.serialize_invite(invite)
     # The raw token / accept link is returned exactly once, here, and never
@@ -353,19 +422,75 @@ async def list_invites(
     return {"invites": await svc.list_invites(session, org_id)}
 
 
-@router.post("/invites/accept", dependencies=[Depends(require_kill_switch_open)])
+@router.post("/invites/preview")
 @limiter.limit("60/hour;300/day")
-async def accept_invite(
+async def preview_invite(
     request: Request,
     response: Response,
     body: AcceptBody,
     user: AuthedUser = Depends(require_role(Role.viewer)),
     session: AsyncSession = Depends(get_db_session),
 ):
+    """Show what accepting an invite would do, without accepting it.
+
+    The confirm step before ``/invites/accept``: the org, the role, who sent
+    it, when it expires, and whether the caller is already a member. Same
+    refusals as accept (400/404/409, and 403 for any other account, so a
+    forwarded token reveals nothing). POST keeps the token out of URLs and
+    access logs; nothing is written, so no kill-switch gate."""
+    return await svc.preview_invite(session, user.user_id, body.token)
+
+
+@router.post("/invites/summary")
+@limiter.limit("30/minute;300/hour")
+async def invite_summary(
+    request: Request,
+    response: Response,
+    body: AcceptBody,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """What an invite link is for, before its holder signs in: the org, the
+    role, the inviter's name (never a member's address), the invited address
+    and when it expires. No sign-in: the link itself is the secret (256 random
+    bits, stored only as a hash), emailed to the invited address. Pending
+    invites only; a used, revoked, expired or unknown one gives no details.
+    Read-only, so no kill-switch gate; POST keeps the token out of URLs."""
+    response.headers["Cache-Control"] = "no-store"
+    return await svc.invite_summary(session, body.token)
+
+
+@router.post("/invites/accept", dependencies=[Depends(require_kill_switch_open)])
+@limiter.limit("60/hour;300/day")
+async def accept_invite(
+    request: Request,
+    response: Response,
+    body: AcceptInviteBody,
+    user: AuthedUser = Depends(require_role(Role.viewer)),
+    session: AsyncSession = Depends(get_db_session),
+):
     """Accept an invite with the raw token → a membership (single-use, expiry +
     revoke enforced; the token is hash-compared). Accepting never escalates an
-    existing member's role."""
-    membership, invite, created = await svc.accept_invite(
+    existing member's role, and never switches the active organization unless
+    the person asked to (``switch``: the accept button's choice), so opening a
+    link can't move their work into the inviting org by itself.
+
+    ``signed_out``: the org requires two-step and the account has none, so
+    joining ended its sessions (this one included). The next sign-in asks the
+    person to set it up; then the org (active, when they switched) opens."""
+    if body.switch and user.org_id is not None:
+        # Same rule as /switch: an API key stays bound to its issuing org.
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "api_key_org_bound",
+                "message": (
+                    "API keys cannot switch organizations. "
+                    "Use a dashboard session to switch organizations."
+                ),
+                "doc_url": error_doc_url("api_key_org_bound"),
+            },
+        )
+    membership, invite, created, signed_out = await svc.accept_invite(
         session, user.user_id, body.token
     )
     if created:
@@ -377,11 +502,35 @@ async def accept_invite(
             {"org_id": invite.org_id, "role": membership.org_role},
             org_id=invite.org_id,
         )
+    if body.switch:
+        switched = await svc.switch_org(session, user.user_id, invite.org_id)
+        await _emit(
+            session,
+            user.user_id,
+            "org.switched",
+            invite.org_id,
+            {"org_role": switched["org_role"], "via": "invite"},
+            org_id=invite.org_id,
+        )
+    if signed_out:
+        from src.services.audit_service import emit_event
+
+        await emit_event(
+            session,
+            actor_id=user.user_id,
+            action="user.sessions_revoked",
+            resource_type="user",
+            resource_id=str(user.user_id),
+            detail={"revoked_by": user.user_id, "scope": "two_step_setup_required", "org_id": invite.org_id},
+            org_id=invite.org_id,
+        )
     await session.commit()
     return {
         "org_id": membership.org_id,
         "org_role": membership.org_role,
         "created": created,
+        "switched": body.switch,
+        "signed_out": signed_out,
     }
 
 
@@ -399,6 +548,87 @@ async def revoke_invite(
     inv = await svc.revoke_invite(session, org_id, invite_id)
     await session.commit()
     return svc.serialize_invite(inv)
+
+
+# ── the org's name ───────────────────────────────────────────────────────────
+class RenameBody(BaseModel):
+    name: str
+
+
+@router.patch("/current", dependencies=[Depends(require_kill_switch_open)])
+@limiter.limit("30/hour;120/day")
+async def rename_current_org(
+    request: Request,
+    response: Response,
+    body: RenameBody,
+    ctx: OrgAuthContext = Depends(require_org_role(OrgRole.admin)),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Rename the caller's active org (org admins only). Invites, the header and
+    the member list show the new name; the org keeps its id, slug and members."""
+    org_id = await _ctx_org(ctx, session)
+    org, previous = await svc.rename_org(session, org_id, body.name)
+    if org.name != previous:
+        await _emit(session, ctx.user_id, "org.renamed", org_id,
+                    {"org_id": org_id, "from": previous, "to": org.name}, org_id=org_id)
+    await session.commit()
+    return {"org_id": org.id, "name": org.name, "slug": org.slug, "org_role": ctx.org_role}
+
+
+# ── who may sign off a make-or-buy decision ──────────────────────────────────
+class SignoffBody(BaseModel):
+    # "member" (members and admins, the default) | "admin" (admins only); null
+    # returns to the default.
+    signoff_role: Optional[str] = None
+
+
+async def _signoff_payload(session: AsyncSession, org_id: str, ctx: OrgAuthContext) -> dict:
+    from src.services import signoff_service as so
+
+    role = await so.get_role(session, org_id)
+    return {
+        "signoff_role": role,
+        "label": so.ROLE_WORDS[role],
+        "your_org_role": ctx.org_role,
+        "can_sign_off": so.may_sign_off(ctx.org_role, role, is_superadmin=ctx.is_superadmin),
+        "can_change": ctx.is_superadmin or ctx.org_role == "admin",
+    }
+
+
+@router.get("/signoff")
+@limiter.limit("240/hour;2000/day")
+async def get_signoff_setting(
+    request: Request,
+    response: Response,
+    ctx: OrgAuthContext = Depends(require_org_role(OrgRole.viewer)),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Who may sign off a recorded make-or-buy decision in the caller's org."""
+    org_id = await _ctx_org(ctx, session)
+    return await _signoff_payload(session, org_id, ctx)
+
+
+@router.put("/signoff", dependencies=[Depends(require_kill_switch_open)])
+@limiter.limit("60/hour;300/day")
+async def set_signoff_setting(
+    request: Request,
+    response: Response,
+    body: SignoffBody,
+    ctx: OrgAuthContext = Depends(require_org_role(OrgRole.admin)),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Set who may sign off decisions (org admins only). Existing sign-offs stay."""
+    from src.services import signoff_service as so
+
+    org_id = await _ctx_org(ctx, session)
+    try:
+        role = await so.set_role(session, org_id, body.signoff_role)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    await _emit(session, ctx.user_id, "org.signoff_role_changed", org_id,
+                {"org_id": org_id, "signoff_role": role}, org_id=org_id)
+    await session.commit()
+    return await _signoff_payload(session, org_id, ctx)
 
 
 # ── members ───────────────────────────────────────────────────────────────────

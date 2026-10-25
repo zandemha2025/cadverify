@@ -129,4 +129,6 @@ def apply_seating(mesh: trimesh.Trimesh, transform: list[list[float]]) -> trimes
     if matrix.shape != (4, 4) or not np.all(np.isfinite(matrix)):
         raise ValueError("seating transform must be a finite 4x4 matrix")
     out.apply_transform(matrix)
+    # The STEP mesher's B-rep face directions don't move with the vertices.
+    out.metadata.pop("cad_face_normals", None)
     return out

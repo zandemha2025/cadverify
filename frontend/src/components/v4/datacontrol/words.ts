@@ -1,0 +1,236 @@
+/**
+ * Plain wording for deleting a part or the organization, and for share links
+ * that end. Pure functions over the API's answers so every sentence is tested.
+ */
+
+export type LinkStatus = "active" | "expired" | "off";
+export type ExpiryChoice = 30 | 90 | 365 | null;
+
+export const EXPIRY_CHOICES: { value: ExpiryChoice; label: string }[] = [
+  { value: 30, label: "30 days" },
+  { value: 90, label: "90 days" },
+  { value: 365, label: "1 year" },
+  { value: null, label: "No end date" },
+];
+
+export function choiceKey(v: ExpiryChoice): string {
+  return v == null ? "none" : String(v);
+}
+
+export function choiceFromKey(k: string): ExpiryChoice {
+  return k === "none" ? null : k === "90" ? 90 : k === "365" ? 365 : 30;
+}
+
+/** "20 Nov 2026" in the reader's zone; "" for nothing. */
+export function day(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+}
+
+/** One line about a link's end: "Ends 20 Nov 2026", "No end date", "Ended 20 Nov 2026", "Switched off 3 Oct 2026". */
+export function linkEndText(status: LinkStatus | null | undefined, expiresAt: string | null | undefined, endedAt?: string | null): string {
+  if (status === "off") return endedAt ? `Switched off ${day(endedAt)}` : "Switched off";
+  if (status === "expired") return `Ended ${day(endedAt ?? expiresAt)}`;
+  if (status === "active") return expiresAt ? `Ends ${day(expiresAt)}` : "No end date";
+  return "No link";
+}
+
+/** For a link that existed before links had end dates. */
+export function endDateAddedNote(expiresAt: string | null | undefined): string {
+  return `Made before links had an end date. It was given one: ${day(expiresAt) || "30 days after the change"}.`;
+}
+
+export function statusLabel(status: LinkStatus | null | undefined): string {
+  return status === "active" ? "On" : status === "expired" ? "Ended" : status === "off" ? "Switched off" : "Off";
+}
+
+export interface PartPreview {
+  mesh_hash: string;
+  exists: boolean;
+  file_name?: string | null;
+  source_kept?: boolean;
+  will_remove?: {
+    checks: number;
+    cost_records: number;
+    fixed_copies: number;
+    active_share_links: number;
+    actual_costs: number;
+    part_context: number;
+    batch_items: number;
+    rfq_packages_touched: number;
+  };
+  fixed_copies?: string[];
+  can_delete?: boolean;
+  reason?: string | null;
+  kept?: string[];
+  already_deleted?: Receipt;
+}
+
+export interface Receipt {
+  id: string;
+  scope: "part" | "organization" | "account";
+  target: string;
+  status: "removing_files" | "done" | "failed";
+  removed: Record<string, unknown>;
+  files: { steps_total: number; steps_done: number; removed: number; retrying: boolean };
+  created_at: string | null;
+  completed_at: string | null;
+  kept: string[];
+}
+
+function n(count: number, one: string, many = `${one}s`): string {
+  return `${count.toLocaleString("en-US")} ${count === 1 ? one : many}`;
+}
+
+/** What goes, one plain line each, in the order people care about. */
+export function partRemovalLines(p: PartPreview, keepCopies: boolean): string[] {
+  const w = p.will_remove;
+  if (!w) return [];
+  const lines: string[] = [];
+  if (p.source_kept) lines.push("The stored file you uploaded");
+  const results = [w.checks ? n(w.checks, "check") : "", w.cost_records ? n(w.cost_records, "cost record") : ""].filter(Boolean);
+  if (results.length) lines.push(`${results.join(" and ")}, with their results and PDFs`);
+  const copies = p.fixed_copies?.length ?? 0;
+  if (copies && !keepCopies) lines.push(`${n(copies, "copy", "copies")} ScaleCAD fixed from it, with their own checks`);
+  if (w.part_context) lines.push("Its program, assembly and yearly volume");
+  if (w.actual_costs) lines.push(`${n(w.actual_costs, "actual cost")} logged against this file`);
+  if (w.batch_items) lines.push(`Its ${w.batch_items === 1 ? "entry" : "entries"} in ${w.batch_items === 1 ? "a catalog run" : "catalog runs"}`);
+  if (w.rfq_packages_touched) lines.push(`Its items in ${n(w.rfq_packages_touched, "supplier package")}`);
+  return lines;
+}
+
+export function linksLine(p: PartPreview): string | null {
+  const k = p.will_remove?.active_share_links ?? 0;
+  if (!k) return null;
+  return k === 1 ? "The shared link to it stops working now." : `The ${k} shared links to it stop working now.`;
+}
+
+export function fingerprint(hash: string): string {
+  return hash.slice(0, 12);
+}
+
+export function receiptLine(r: Receipt): string {
+  if (r.scope === "account") return accountReceiptLine(r);
+  if (r.status === "done") {
+    if (r.scope === "part") return "Deleted. The stored file and every record of it are gone.";
+    return r.removed.pro_plan_cancelled ? "Deleted. The organization's files and records are gone, and your Pro plan is cancelled." : "Deleted. The organization's files and records are gone.";
+  }
+  if (r.status === "failed") return `The records are deleted. Removing the stored files stopped after repeated errors. Send ScaleCAD support this deletion ID: ${r.id}.`;
+  const f = r.files;
+  return `The records are deleted. Removing the stored files: ${f.steps_done} of ${f.steps_total} storage areas done${f.retrying ? ", retrying" : ""}.`;
+}
+
+export interface OrgPreview {
+  org_id: string;
+  name: string;
+  will_remove: {
+    parts: number;
+    checks: number;
+    cost_records: number;
+    batches: number;
+    designs: number;
+    actual_costs: number;
+    members: number;
+    pending_invites: number;
+    api_keys: number;
+    active_share_links: number;
+  };
+  kept: string[];
+  /** The deleting admin's own plan (billed to them, not the organization). */
+  billing?: { plan: string; subscription_status: string | null; period_end: string | null; cancels_now: boolean };
+}
+
+/** What happens to the deleting admin's Pro plan, said before they confirm; null when there's none. */
+export function orgPlanLine(p: OrgPreview, keep: boolean): string | null {
+  if (!p.billing?.cancels_now) return null;
+  if (keep) return "Your Pro plan stays: you keep paying for it and use it in your other organizations.";
+  const end = day(p.billing.period_end);
+  return `Your Pro plan is cancelled with ${p.name}: nothing more is charged.${end ? ` The rest of the period to ${end} isn't refunded.` : " The rest of this period isn't refunded."}`;
+}
+
+/** Where members end up, said plainly. */
+export function orgMembersAfterLine(p: OrgPreview): string {
+  const others = Math.max(0, p.will_remove.members - 1);
+  return [
+    `Everyone in ${p.name} keeps their sign-in account and loses all access to ${p.name}.`,
+    others ? `The ${n(others, "other member")} ${others === 1 ? "is" : "are"} signed out.` : null,
+    `Each person moves to another organization they belong to, or to their own workspace, named "<first name>'s workspace" (new and empty if they don't have one). Nothing from ${p.name} is in it.`,
+    others ? "Other members' own plans aren't changed." : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+export function orgRemovalLines(p: OrgPreview): string[] {
+  const w = p.will_remove;
+  const lines = [
+    w.parts || w.checks || w.cost_records
+      ? `${n(w.parts, "part")} with their stored files, ${n(w.checks, "check")} and ${n(w.cost_records, "cost record")}`
+      : "No parts, checks or cost records yet",
+  ];
+  if (w.batches) lines.push(n(w.batches, "catalog run"));
+  if (w.designs) lines.push(n(w.designs, "Design Studio design"));
+  if (w.actual_costs) lines.push(n(w.actual_costs, "logged actual cost"));
+  lines.push("Machines, rates, materials, programs, BOMs and settings");
+  if (w.active_share_links) lines.push(`${n(w.active_share_links, "shared link")}: they stop working now`);
+  if (w.api_keys) lines.push(`${n(w.api_keys, "API key")}: they stop working now`);
+  lines.push(`Access for ${n(w.members, "member")}${w.pending_invites ? ` and ${n(w.pending_invites, "pending invite")}` : ""}`);
+  return lines;
+}
+
+/** The typed name must match exactly (spaces at the ends don't count), as the server checks. */
+export function nameMatches(typed: string, name: string): boolean {
+  return typed.trim() !== "" && typed.trim() === name.trim();
+}
+
+/* ── your account ────────────────────────────────────────────────────────── */
+
+export interface AccountPreview {
+  email: string;
+  can_delete: boolean;
+  blockers: { org_id: string; name: string; members: number; message: string }[];
+  orgs_deleted: { org_id: string; name: string; will_remove: OrgPreview["will_remove"] }[];
+  orgs_left: { org_id: string; name: string; role: string; members: number }[];
+  api_keys: number;
+  billing: { plan: string; subscription_status: string | null; period_end: string | null; cancels_now: boolean };
+  kept: string[];
+}
+
+/** "A", "A and B", "A, B and C". */
+function names(list: string[]): string {
+  if (list.length <= 1) return list[0] ?? "";
+  return `${list.slice(0, -1).join(", ")} and ${list[list.length - 1]}`;
+}
+
+/** What deleting the account removes, one plain line each, from the server's counts. */
+export function accountRemovalLines(p: AccountPreview): string[] {
+  const lines = ["Your sign-in: email, name, phone, password and single sign-on links. Every browser and key is signed out."];
+  for (const o of p.orgs_deleted) {
+    const w = o.will_remove;
+    const what = w.parts || w.checks || w.cost_records ? `${n(w.parts, "part")} with their stored files, ${n(w.checks, "check")} and ${n(w.cost_records, "cost record")}` : "no parts yet";
+    lines.push(`${o.name}, which only you are in: ${what}, and its settings`);
+  }
+  if (p.orgs_left.length) lines.push(`Your access to ${names(p.orgs_left.map((o) => o.name))}. What you made there stays with ${p.orgs_left.length === 1 ? "it" : "them"}.`);
+  if (p.api_keys) lines.push(`${n(p.api_keys, "API key")}: they stop working now`);
+  if (p.billing.cancels_now) {
+    const end = day(p.billing.period_end);
+    lines.push(`Your Pro plan, cancelled now: nothing more is charged.${end ? ` The rest of the period to ${end} isn't refunded.` : " The rest of this period isn't refunded."}`);
+  }
+  lines.push("Your free-check and catalog records");
+  return lines;
+}
+
+/** The typed email must be the account's (case and spaces at the ends don't count), as the server checks. */
+export function emailMatches(typed: string, email: string): boolean {
+  return typed.trim() !== "" && typed.trim().toLowerCase() === email.trim().toLowerCase();
+}
+
+export function accountReceiptLine(r: Receipt): string {
+  const orgs = Number(r.removed.organizations_deleted ?? 0);
+  if (r.status === "done") return orgs ? `Deleted. Your account and ${orgs === 1 ? "the organization" : `the ${orgs} organizations`} only you were in are gone.` : "Deleted. Your account is gone.";
+  if (r.status === "failed") return `Your account is deleted. Removing stored files stopped after repeated errors; ScaleCAD support can finish it with this deletion ID: ${r.id}.`;
+  const f = r.files;
+  return `Your account is deleted. Stored files: ${f.steps_done} of ${f.steps_total} storage areas removed${f.retrying ? ", retrying" : ""}. ScaleCAD finishes the rest; nothing more is needed from you.`;
+}

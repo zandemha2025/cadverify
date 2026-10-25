@@ -118,6 +118,12 @@ class Issue:
     required_value: Optional[float] = None    # e.g. minimum wall thickness
     citation: Optional[Citation] = None       # structured standard behind the check
     measurement_unit: Literal["mm", "deg", "ratio", "percent"] | None = None
+    # Per-rule parts of one finding (draft: outside and inside walls, each with
+    # its own rule, smallest reading and the faces short of it).
+    breakdown: Optional[list[dict]] = None
+    # The CAD (B-rep) faces the affected triangles lie on, for a STEP/IGES the
+    # mesher kept them for: the faces a CAD tool shows, not mesh triangles.
+    cad_face_count: Optional[int] = None
 
 
 @dataclass
@@ -143,6 +149,8 @@ class GeometryInfo:
     # degenerate mesh (trimesh yields NaN there); never a fabricated value.
     center_of_mass: tuple[float | None, float | None, float | None]
     units: str = "mm"                   # Detected or assumed
+    # B-rep faces of a STEP/IGES (what its CAD tool counts); face_count is triangles.
+    cad_face_count: Optional[int] = None
 
 
 @dataclass

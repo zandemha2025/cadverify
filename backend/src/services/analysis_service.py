@@ -14,7 +14,7 @@ import math
 import os
 import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -37,6 +37,7 @@ from src.costing.units import mesh_source_units
 from src.db.models import Analysis, UsageEvent
 from src.fixes.fix_suggester import enhance_suggestions, get_priority_fixes
 from src.matcher.profile_matcher import rank_processes, score_process
+from src.services import compute_budget
 
 logger = logging.getLogger("cadverify.analysis_service")
 
@@ -119,6 +120,27 @@ def _force_gc_after_analysis() -> bool:
 # ---------------------------------------------------------------------------
 
 
+async def release_read_connection(session) -> None:
+    """End a web request's read-only transaction before it waits for compute room.
+
+    A session holds its pooled connection from its first query until it
+    commits. ``/validate`` and ``/validate/cost`` read (the cached analysis, the
+    shop) and then wait up to ``COMPUTE_WAIT_SECONDS`` for room and compute for
+    up to a minute; that connection would stay out of the pool all along. When
+    the session has only read, commit it now: the next query takes a
+    connection again. Only in a web process (a worker's session may carry its
+    job's writes), and never with pending changes.
+    """
+    if not isinstance(session, AsyncSession) or compute_budget.default_wait() is None:
+        return
+    try:
+        if not session.in_transaction() or session.new or session.dirty or session.deleted:
+            return
+        await session.commit()
+    except Exception:
+        logger.debug("could not end the read transaction before the compute wait", exc_info=True)
+
+
 def compute_mesh_hash(file_bytes: bytes) -> str:
     """SHA-256 hex digest of raw uploaded file bytes (D-09)."""
     return hashlib.sha256(file_bytes).hexdigest()
@@ -164,7 +186,10 @@ async def _persist_source_evidence(
                 from src.costing.units import scale_mesh_to_mm
 
                 mesh = scale_mesh_to_mm(mesh, source_units)
-        payload = await asyncio.to_thread(mesh.export, file_type="stl")
+        payload = await compute_budget.run_within_budget(
+            mesh.export, file_type="stl", label="costable stl",
+            need_bytes=compute_budget.need_for_data(file_bytes, filename),
+        )
         if not isinstance(payload, (bytes, bytearray, memoryview)) or not payload:
             raise RuntimeError("CAD parser did not produce a costable STL derivative")
         await save_costable_mesh_artifact(org_id, mesh_hash, bytes(payload), source_units=source_units)
@@ -222,7 +247,7 @@ def _nullable_api_key_id(user: AuthedUser) -> int | None:
     return user.api_key_id or None
 
 
-def _sanitize_nonfinite(value):
+def _sanitize_nonfinite(value: Any) -> Any:
     """Recursively replace non-finite floats (NaN / ±Inf) with ``None``.
 
     A degenerate / zero-volume mesh makes trimesh emit NaN for stats like
@@ -389,12 +414,49 @@ async def run_analysis(
     org_id: str | None = None,
     source_units: str | None = None,
     return_persisted_id: bool = False,
+    orientation=None,
+) -> dict | AnalysisRun:
+    """Full analysis pipeline (see ``_run_analysis``), within the compute budget.
+
+    A fresh analysis holds room in the process's compute budget from its parse
+    until it returns (``src.services.compute_budget``; a web request waits at
+    most ``COMPUTE_WAIT_SECONDS`` for it, then answers 429 ``server_busy``). A
+    cached result takes none. Inside a caller's hold (a catalog part, a big
+    file's check) it joins that one.
+    """
+    async with compute_budget.deferred_hold(label="analysis") as room:
+        return await _run_analysis(
+            file_bytes, filename, processes, rule_pack, user, session,
+            include_thickness=include_thickness, org_id=org_id, source_units=source_units,
+            return_persisted_id=return_persisted_id, orientation=orientation, room=room,
+        )
+
+
+async def _run_analysis(
+    file_bytes: bytes,
+    filename: str,
+    processes: str | None,
+    rule_pack: str | None,
+    user: AuthedUser,
+    session: AsyncSession,
+    include_thickness: bool = False,
+    org_id: str | None = None,
+    source_units: str | None = None,
+    return_persisted_id: bool = False,
+    orientation=None,
+    room: "compute_budget.DeferredHold | None" = None,
 ) -> dict | AnalysisRun:
     """Full analysis pipeline: hash -> dedup check -> analyze -> persist -> track.
 
     On cache hit returns stored result_json without running analyzers.
     On cache miss runs the full pipeline, persists, writes usage_event.
     Handles race condition via IntegrityError catch (T-03B-01).
+
+    ``orientation`` (``src.analysis.orientation.Orientation``, or None for the
+    file's own) turns the part before analysis: its +Z is the build direction
+    for printing and the opening direction for molding. The result says which
+    orientation it used (``result["orientation"]``) and is its own cached row.
+    The source evidence is the file's own bytes and mesh, never the turned copy.
     """
     # Suffix gate BEFORE the cache lookup. The fresh path rejects unsupported
     # suffixes inside the parse prelude, but a cache hit (same bytes, new
@@ -465,6 +527,15 @@ async def run_analysis(
         process_fingerprint.append(
             f"rule_pack={pack.name.lower()}@{pack.version}"
         )
+    from src.analysis.orientation import OrientationError, parse_orientation
+
+    try:
+        orientation = parse_orientation(orientation)
+    except OrientationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if orientation is not None:
+        # A turned check answers a different question about the same bytes.
+        process_fingerprint.append(f"orientation={orientation.key}")
     process_set_hash = compute_process_set_hash(
         process_fingerprint
     )
@@ -532,7 +603,13 @@ async def run_analysis(
             stage_timings_ms,
         )
 
-    # 8. Cache MISS — run full pipeline.
+    # 8. Cache MISS — run full pipeline. Room in the compute budget first: the
+    # time limits below start once the work does, not while it waits. The
+    # cache lookup's connection goes back to the pool before the wait. A STEP or
+    # IGES takes room for its parse, then what its mesh needs (size_to_mesh).
+    if room is not None:
+        await release_read_connection(session)
+        await room.take_for_data(file_bytes, filename, provisional=True)
     # Parse via the ASYNC pooled front door (spawn ProcessPool + per-rung hard
     # wall-clock caps that SIGKILL a runaway worker), NOT the synchronous
     # parse_mesh_fn — a sync gmsh call here runs on the event-loop thread and a
@@ -542,6 +619,8 @@ async def run_analysis(
     stage_started = time.perf_counter()
     mesh, suffix = await parse_mesh_async_fn(file_bytes, filename)
     stage_timings_ms["parse"] = _elapsed_ms(stage_started)
+    # Sized from the mesh now it is known (a busy 429 when it can't grow in time).
+    await compute_budget.size_to_mesh(mesh, file_bytes, filename)
     if effective_units != "mm":
         # STL has no units. Convert the parsed mesh at the single geometry seam,
         # before geometry, features, universal checks, process DFM, and persisted
@@ -549,6 +628,22 @@ async def run_analysis(
         from src.costing.units import scale_mesh_to_mm
 
         mesh = scale_mesh_to_mm(mesh, effective_units)
+    # The file's own mesh stays the source evidence; analysis runs on the turned copy.
+    file_mesh = mesh
+    if orientation is not None:
+        mesh = orientation.apply(file_mesh)
+
+    # The cost engine scores every registered process with no rule pack. When
+    # this analysis is exactly that (all processes, no pack), keep a copy of
+    # the analysed part so pricing this file next skips the same work.
+    from src.services import part_geometry_cache
+
+    cost_cache_key = (
+        part_geometry_cache.key(user.user_id, file_bytes, filename, effective_units,
+                                orientation=orientation.key if orientation is not None else None)
+        if not processes and pack is None and getattr(user, "user_id", None) is not None
+        else None
+    )
 
     def _run_analysis_sync():
         sync_timings: dict[str, float] = {}
@@ -571,6 +666,11 @@ async def run_analysis(
         dec_issue = decimation_issue(ctx)
         if dec_issue is not None:
             universal_issues.append(dec_issue)
+        # What the file holds (one solid, or several bodies and what kind of set),
+        # on the analysis mesh so body faces line up with the 3D view.
+        sync_started = time.perf_counter()
+        part_type = _part_type(ctx.mesh)
+        sync_timings["part_type"] = _elapsed_ms(sync_started)
 
         process_scores = []
         sync_started = time.perf_counter()
@@ -592,6 +692,11 @@ async def run_analysis(
             ps = score_process(proc_issues, geometry, proc)
             process_scores.append(ps)
         sync_timings["process_analyzers"] = _elapsed_ms(sync_started)
+        if orientation is not None:
+            from src.analysis.orientation import all_issues, turn_points_to_file
+
+            # Region centres in the file's coordinates, like its 3D view.
+            turn_points_to_file(orientation, all_issues(universal_issues, process_scores))
 
         # Customer-context Slice 1: compute the 18-dim shape signature while the
         # mesh + geometry + ctx are still alive (they are freed before persist).
@@ -601,28 +706,39 @@ async def run_analysis(
         try:
             from src.eval.similarity import feature_vector
 
-            signature_vec = feature_vector(ctx.mesh, geometry, ctx).tolist()
+            # A turned check is the same part: the corpus keeps the file's own signature.
+            if orientation is None:
+                signature_vec = feature_vector(ctx.mesh, geometry, ctx).tolist()
         except Exception:
             logger.warning(
                 "shape-signature computation failed — corpus write-back skipped",
                 exc_info=True,
             )
         sync_timings["signature"] = _elapsed_ms(sync_started)
+        cost_entry = None
+        if cost_cache_key is not None:
+            try:
+                cost_entry = _cost_engine_entry(
+                    mesh, geometry, ctx, universal_issues, process_scores,
+                    suffix, filename,
+                )
+            except Exception:
+                logger.warning("analysed-part reuse skipped", exc_info=True)
         return (
             geometry, ctx, features, universal_issues, process_scores,
-            signature_vec, sync_timings,
+            signature_vec, sync_timings, cost_entry, part_type,
         )
 
     timeout_sec = analysis_timeout_sec_fn()
-    loop = asyncio.get_event_loop()
     try:
+        # On a timeout the thread runs on; it keeps its room until it ends.
         (
             geometry, ctx, features, universal_issues, process_scores,
-            signature_vec, sync_timings,
+            signature_vec, sync_timings, cost_entry, part_type,
         ) = (
-            await asyncio.wait_for(
-                loop.run_in_executor(None, _run_analysis_sync),
-                timeout=timeout_sec,
+            await compute_budget.run_within_budget(
+                _run_analysis_sync, timeout=timeout_sec, label="analysis",
+                need_bytes=compute_budget.need_for_data(file_bytes, filename),
             )
         )
     except asyncio.TimeoutError:
@@ -658,6 +774,18 @@ async def run_analysis(
     stage_started = time.perf_counter()
     result_dict = to_response_fn(result, features, pack)
     result_dict["analysis_mesh_hash"] = analysis_mesh_hash(ctx.mesh)
+    if part_type is not None:
+        result_dict["part_type"] = part_type
+    if orientation is not None:
+        from src.analysis.orientation import record_points_to_file
+
+        # Same faces in the same order as the file's own analysis mesh, so the
+        # face hash is the file-frame one the 3D view checks (when not decimated).
+        decimated = bool(((ctx.metadata or {}).get("decimation") or {}).get("succeeded"))
+        file_face_hash = analysis_mesh_hash(file_mesh if not decimated else orientation.unapply(ctx.mesh))
+        result_dict["analysis_mesh_hash"] = file_face_hash
+        result_dict["orientation"] = orientation.record(file_face_hash=file_face_hash)
+        record_points_to_file(orientation, result_dict)
     stage_timings_ms["serialize"] = _elapsed_ms(stage_started)
     if effective_units != "mm":
         result_dict["source_units"] = {
@@ -706,6 +834,7 @@ async def run_analysis(
     # Release mesh + context memory before async persist
     try:
         mesh._cache.clear()
+        file_mesh._cache.clear()
     except Exception:
         pass
     del ctx, features, universal_issues, process_scores, geometry
@@ -750,7 +879,7 @@ async def run_analysis(
                         mesh_hash,
                         filename,
                         file_bytes,
-                        parsed_mesh=mesh,
+                        parsed_mesh=file_mesh,
                         source_units=effective_units,
                     )
                 )
@@ -813,6 +942,8 @@ async def run_analysis(
                 cached.face_count,
                 org_id=org_id,
             )
+            if cost_entry is not None and cost_cache_key is not None:  # an entry is made only under a key
+                part_geometry_cache.put(cost_cache_key, cost_entry)
             stage_timings_ms["persistence"] = _elapsed_ms(stage_started)
             stage_timings_ms["total"] = _elapsed_ms(request_started)
             return _analysis_return(
@@ -825,6 +956,9 @@ async def run_analysis(
         # (usage event lost but the user still gets their response).
         logger.warning("Re-query after IntegrityError returned None — returning computed result")
 
+    # Persistence is done with the mesh: keep the analysed part for pricing.
+    if cost_entry is not None and cost_cache_key is not None:  # an entry is made only under a key
+        part_geometry_cache.put(cost_cache_key, cost_entry)
     stage_timings_ms["persistence"] = _elapsed_ms(stage_started)
     stage_timings_ms["total"] = _elapsed_ms(request_started)
     return _analysis_return(
@@ -832,6 +966,66 @@ async def run_analysis(
         persisted_analysis_id,
         return_persisted_id,
         stage_timings_ms,
+    )
+
+
+def _part_type(mesh) -> dict | None:
+    """``src.analysis.part_types.describe`` for the check, bounded; None if it fails.
+
+    A one-shell file answers at once; several bodies get their stock shapes and
+    contacts within ``PART_TYPE_BUDGET_SEC`` (default 8 s).
+    """
+    from src.analysis.part_types import describe
+
+    try:
+        budget = float(os.getenv("PART_TYPE_BUDGET_SEC", "8"))
+    except ValueError:
+        budget = 8.0
+    try:
+        out = _sanitize_nonfinite(describe(mesh, single_detail=False, cad_provisional=True,
+                                           time_budget_sec=max(1.0, budget)))
+        return out if isinstance(out, dict) else None
+    except Exception:
+        logger.warning("part type reading failed; the check goes on without it", exc_info=True)
+        return None
+
+
+def _cost_engine_entry(mesh, geometry, ctx, universal_issues, process_scores, suffix, filename):
+    """The analysed part exactly as the cost engine builds it
+    (``routes._run_cost_engine_ctx``) from the objects this analysis made, or
+    None when this analysis didn't score every registered process.
+
+    The cost engine scores the registered processes in registry order with no
+    rule pack and keeps the issues as the analyzers wrote them; this analysis
+    goes on to add cross-process suggestions to its own issues in place, so the
+    entry takes copies first.
+    """
+    import copy
+
+    from src.analysis.processes import base as pbase
+    from src.eval.similarity import feature_vector
+    from src.services import part_geometry_cache
+
+    by_process = {ps.process: ps for ps in process_scores}
+    order = [p for p in pbase._REGISTRY if get_analyzer(p)]
+    if any(p not in by_process for p in order):
+        return None  # an analyzer failed here; the cost engine would run it again
+    result = AnalysisResult(
+        filename=filename,
+        file_type="stl",
+        geometry=geometry,
+        segments=copy.deepcopy(ctx.segments),
+        universal_issues=copy.deepcopy(universal_issues),
+        process_scores=copy.deepcopy([by_process[p] for p in order]),
+    )
+    rank_processes(result)
+    return part_geometry_cache.AnalysedPart(
+        result=result,
+        mesh=mesh,
+        features=ctx.features,
+        identity_vec=feature_vector(mesh, geometry, ctx),
+        suffix=suffix,
+        faces=int(len(mesh.faces)),
     )
 
 
@@ -941,9 +1135,14 @@ async def run_quick_analysis(
     # Cache miss — run quick analysis. Async pooled parse (off the event loop,
     # hard-capped) — same reason as run_analysis: a sync gmsh call here freezes
     # every tenant on a pathological part (gauntlet F1).
-    mesh, suffix = await parse_mesh_async_fn(file_bytes, filename)
-    geometry = analyze_geometry(mesh)
-    issues = run_universal_checks(mesh)
+    async with compute_budget.hold_for_data(file_bytes, filename, label="quick check"):
+        mesh, suffix = await parse_mesh_async_fn(file_bytes, filename)
+
+        def _quick():
+            return analyze_geometry(mesh), run_universal_checks(mesh)
+
+        # Off the event loop, holding its room until the thread ends.
+        geometry, issues = await compute_budget.run_within_budget(_quick, label="quick check")
     has_errors = any(i.severity == Severity.ERROR for i in issues)
 
     duration_ms = round((time.time() - start) * 1000, 1)

@@ -28,14 +28,14 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.responses import PlainTextResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.kill_switch import require_kill_switch_open
 from src.auth.validation_caps import require_paid_access
 from src.auth.org_context import resolve_org
 from src.auth.rate_limit import limiter
-from src.auth.rbac import Role, require_role
+from src.auth.rbac import Role, require_org_writer, require_role
 from src.auth.require_api_key import AuthedUser
 from src.db.engine import get_db_session
 from src.services import groundtruth_service as svc
@@ -100,8 +100,12 @@ class GroundTruthIn(BaseModel):
         description="Engine ProcessType id, e.g. cnc_3axis, sls, injection_molding.",
     )
     quantity: int = Field(..., ge=1, description="Order quantity for this quote.")
-    actual_unit_cost_usd: float = Field(
-        ..., gt=0, description="The KNOWN real per-unit cost / quote."
+    actual_unit_cost_usd: Optional[float] = Field(
+        None, gt=0,
+        description=(
+            "The KNOWN real per-unit cost / quote. May be omitted when "
+            "actual_machine_hours (per part) is given: an hours-only actual."
+        ),
     )
     material_class: str = Field(
         "polymer", description="polymer|aluminum|steel|stainless|titanium"
@@ -128,7 +132,7 @@ class GroundTruthIn(BaseModel):
         None, description="Invoice/quote date when known (YYYY-MM-DD)."
     )
     actual_machine_hours: Optional[float] = Field(
-        None, ge=0, description="Observed machine hours from the real job."
+        None, ge=0, description="Observed machine hours per part from the real job."
     )
     actual_setup_hours: Optional[float] = Field(
         None, ge=0, description="Observed setup hours from the real job."
@@ -162,6 +166,24 @@ class GroundTruthIn(BaseModel):
         None, description="Explicit STL path; else resolved from part_id under parts_dir."
     )
     notes: str = ""
+    part_number: Optional[str] = Field(
+        None, max_length=200, description="The customer's own part number, as given."
+    )
+    machine: Optional[str] = Field(
+        None, max_length=200, description="The machine the job ran on, as given."
+    )
+    match_basis: Optional[Literal["file_hash", "part_number", "file_name", "chosen"]] = Field(
+        None, description="How the record was tied to a checked part (its file hash in evidence_sha256)."
+    )
+
+    @model_validator(mode="after")
+    def _cost_or_hours(self):
+        if self.actual_unit_cost_usd is None and not self.actual_machine_hours:
+            raise ValueError(
+                "Give a cost per part (actual_unit_cost_usd), machine hours per part "
+                "(actual_machine_hours), or both."
+            )
+        return self
 
 
 async def _require_org(session: AsyncSession, user: AuthedUser) -> str:
@@ -177,7 +199,7 @@ async def create_ground_truth(
     request: Request,
     response: Response,
     payload: GroundTruthIn,
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_writer),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Persist one real ground-truth record for the caller's organization.
@@ -243,7 +265,7 @@ async def get_ground_truth(
 async def recalibrate_ground_truth(
     request: Request,
     response: Response,
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_writer),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Re-run the ground-truth loop over THIS org's records and refresh the
@@ -257,7 +279,7 @@ async def recalibrate_ground_truth(
     """
     org_id = await _require_org(session, user)
     try:
-        return await svc.recalibrate_org(session, org_id)
+        summary = await svc.recalibrate_org(session, org_id)
     except svc.InsufficientGroundTruth as exc:
         raise HTTPException(
             status_code=422,
@@ -268,6 +290,13 @@ async def recalibrate_ground_truth(
                 "min_real": exc.min_real,
             },
         )
+    # Saved decisions (and their sign-offs) were priced before this calibration.
+    from src.services import cost_decision_service
+
+    await cost_decision_service.mark_org_decisions_stale(
+        session, org_id, reason=cost_decision_service.CALIBRATION_STALE_REASON)
+    await session.commit()
+    return summary
 
 
 @router.get("/import/template", response_class=PlainTextResponse)
@@ -301,7 +330,7 @@ async def import_ground_truth(
     request: Request,
     response: Response,
     file: Optional[UploadFile] = File(None),
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_writer),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Bulk-import an org's historical costs from a CSV to feed the flywheel.

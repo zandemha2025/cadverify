@@ -9,6 +9,7 @@ export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as {
     email?: unknown;
     turnstileToken?: unknown;
+    next?: unknown;
   };
   if (
     typeof body.email !== "string" ||
@@ -27,6 +28,8 @@ export async function POST(req: Request) {
   const form = new FormData();
   form.set("email", body.email);
   form.set("cf_turnstile_response", body.turnstileToken);
+  // The backend accepts only a same-site path and drops anything else.
+  if (typeof body.next === "string" && body.next.length <= 512) form.set("next", body.next);
   try {
     const res = await fetch(backendUrl(backendPath), {
       method: "POST",

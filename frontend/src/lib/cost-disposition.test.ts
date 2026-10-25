@@ -8,17 +8,29 @@ import {
   isCostDisposition,
   inhouseDispositionError,
   costDispositionBasisLabel,
+  isBuyOutcome,
 } from "./cost-disposition.ts";
 import type { CostReport, CostEstimate } from "./api";
 
-test("four-way disposition keys and labels stay exact", () => {
+test("disposition keys and labels stay exact", () => {
   assert.equal(COST_DISPOSITION_NOTE_MAX_LENGTH, 1000);
   assert.deepEqual(COST_DISPOSITIONS, [
     { key: "inhouse", label: "Make in-house" },
     { key: "outside", label: "Make outside" },
     { key: "acquire", label: "Acquire capability" },
     { key: "redesign", label: "Redesign" },
+    { key: "supplier", label: "Keep buying from our supplier" },
   ]);
+});
+
+test("keep buying from our supplier is a buy outcome with no route of ScaleCAD's", () => {
+  assert.equal(costDispositionLabel("supplier"), "Keep buying from our supplier");
+  assert.equal(isBuyOutcome("supplier"), true);
+  assert.equal(isBuyOutcome("outside"), true);
+  assert.equal(isBuyOutcome("inhouse"), false);
+  const basis = { supplier: true, quantity: 800, usd_each: 89.82, price_source: "parts_list" } as never;
+  assert.equal(costDispositionBasisLabel(basis), "From your supplier · $89.82 each · qty 800");
+  assert.equal(costDispositionBasisLabel({ supplier: true, quantity: null, usd_each: null } as never), "From your supplier · no price entered");
 });
 
 test("labels and guards reject unsupported persisted values", () => {

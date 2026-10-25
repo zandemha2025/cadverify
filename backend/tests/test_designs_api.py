@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from src.auth.validation_caps import require_paid_access
+from src.auth import free_tool_limits
 from src.api.designs import require_design_mutation, router
 from src.auth.rate_limit import limiter
 from src.auth.require_api_key import AuthedUser, require_api_key
@@ -59,7 +59,9 @@ def _rows(status: str = "generating"):
 
 def _app(role: str = "analyst") -> FastAPI:
     app = FastAPI()
-    app.dependency_overrides[require_paid_access] = lambda: None
+    # No plan gate: Design Studio is on every plan. Free-account ceilings are
+    # tested with a real plan lookup in test_validation_caps.
+    app.dependency_overrides[free_tool_limits.limit_free_designs] = lambda: None
     app.state.limiter = limiter
     app.include_router(router, prefix="/api/v1/designs")
     app.dependency_overrides[require_api_key] = lambda: AuthedUser(
@@ -298,3 +300,76 @@ def test_revision_compare_rejects_same_revision_before_lookup(monkeypatch):
     )
     assert response.status_code == 400
     get_revision.assert_not_awaited()
+
+
+def _enclosure_payload(**plan):
+    return {
+        "name": "Open enclosure",
+        "plan": {
+            "kind": "enclosure",
+            "width_mm": 120.0,
+            "depth_mm": 80.0,
+            "height_mm": 40.0,
+            "wall_thickness_mm": 1.0,
+            **plan,
+        },
+    }
+
+
+def test_create_accepts_a_draft_angle_for_the_enclosure(monkeypatch):
+    from src.api import designs
+
+    project, revision, job = _rows()
+    create = AsyncMock(return_value=(project, revision, job))
+    monkeypatch.setattr(designs.svc, "create_design", create)
+    response = TestClient(_app()).post("/api/v1/designs", json=_enclosure_payload(draft_angle_deg=1.5))
+    assert response.status_code == 202, response.text
+    plan = create.await_args.kwargs["plan"]
+    assert plan.kind == "enclosure" and plan.draft_angle_deg == 1.5
+    assert plan.model_dump(mode="json")["draft_angle_deg"] == 1.5
+
+
+def test_revision_rejects_out_of_range_or_unsupported_draft(monkeypatch):
+    from src.api import designs
+
+    create = AsyncMock()
+    revise = AsyncMock()
+    monkeypatch.setattr(designs.svc, "create_design", create)
+    monkeypatch.setattr(designs.svc, "create_revision", revise)
+    client = TestClient(_app())
+    for body in (
+        _enclosure_payload(draft_angle_deg=12.0),
+        _enclosure_payload(draft_angle_deg=-1.0),
+        {"name": "L bracket", "plan": {"kind": "bracket", "width_mm": 70.0, "depth_mm": 35.0,
+                                         "height_mm": 55.0, "thickness_mm": 5.0, "draft_angle_deg": 1.0}},
+    ):
+        assert client.post("/api/v1/designs", json=body).status_code == 422
+        revision = {"plan": body["plan"]}
+        assert client.post("/api/v1/designs/01KZZZZZZZZZZZZZZZZZZZZZZZ/revisions", json=revision).status_code == 422
+    create.assert_not_awaited()
+    revise.assert_not_awaited()
+
+
+def test_revision_compare_reads_a_missing_draft_as_zero():
+    from src.services.design_service import build_revision_comparison
+
+    project, before, _job = _rows(status="ready")
+    before.operation_plan_json = dict(_enclosure_payload()["plan"])
+    after = DesignRevision(
+        id=4,
+        ulid="01KREVISIONTWOXXXXXXXXXXXX",
+        design_id=project.id,
+        org_id=project.org_id,
+        created_by=7,
+        revision_no=2,
+        status="ready",
+        operation_plan_json={**before.operation_plan_json, "draft_angle_deg": 1.5},
+        generation_engine="proofshape-occ-v1",
+    )
+    comparison = build_revision_comparison(project, before, after)
+    assert comparison["plan_changes"] == [
+        {"path": "draft_angle_deg", "before": 0.0, "after": 1.5, "delta": 1.5}
+    ]
+    # Two revisions saved before draft existed still compare as unchanged.
+    same = build_revision_comparison(project, before, before)
+    assert same["plan_changes"] == []

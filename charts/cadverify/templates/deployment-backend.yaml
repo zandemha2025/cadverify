@@ -88,6 +88,8 @@ spec:
             {{- end }}
             - name: AUTH_MODE
               value: {{ .Values.auth.mode | quote }}
+            - name: SSO_ORG_ID
+              value: {{ .Values.auth.ssoOrgId | default "" | quote }}
             - name: PASSWORD_LOGIN_ENABLED
               value: {{ ternary "1" "0" (has .Values.auth.mode (list "password" "hybrid")) | quote }}
             - name: MAGIC_LINK_ENABLED
@@ -104,6 +106,9 @@ spec:
               value: {{ .Values.reconstruction.backend | quote }}
             - name: RECONSTRUCTION_ALLOW_REMOTE_EGRESS
               value: {{ ternary "1" "0" .Values.reconstruction.allowRemoteEgress | quote }}
+            # Import a part from a share link (the worker fetches it); never on the regulated plane.
+            - name: LINK_IMPORT_ENABLED
+              value: {{ ternary "1" "0" (and .Values.linkImport.enabled (not .Values.production.regulated)) | quote }}
             - name: AUDIT_ENABLED
               value: {{ .Values.audit.enabled | quote }}
             - name: AUDIT_RETENTION_DAYS

@@ -802,7 +802,7 @@ async function runSuite(page, account) {
     id: "ENT-01",
     persona: "organization administrator governing rates and declaring the production floor",
     preconditions: ["The six browser-driven manufacturing subpaths completed in the same fresh organization.", "RATE_LIBRARY_ENABLED is active."],
-    actions: ["Publish a governed rate-card version through the authenticated browser boundary.", "Reopen Your machines after form and CSV authoring.", "Verify the exact MJF/CNC 3-axis/CNC 5-axis/DMLS rates and USER provenance, then confirm governed-card state in Calibration & truth."],
+    actions: ["Publish a governed rate-card version through review (propose, then approve as the only admin) at the authenticated browser boundary.", "Reopen Your machines after form and CSV authoring.", "Verify the exact MJF/CNC 3-axis/CNC 5-axis/DMLS rates and USER provenance, then confirm governed-card state in Calibration & truth."],
   }, async () => {
     const draft = await browserApi(page, "/api/proxy/rate-library", {
       method: "POST",
@@ -811,9 +811,18 @@ async function runSuite(page, account) {
         change_note: "Human-simulated manufacturing floor certification.",
       },
     });
-    const published = draft.status < 300 && draft.body?.id
-      ? await browserApi(page, `/api/proxy/rate-library/${draft.body.id}/publish`, { method: "POST", body: {} })
+    // A rate card is published only by approving its change request; the fresh
+    // organization's only admin approves it, and it reads self-approved.
+    const proposed = draft.status < 300 && draft.body?.id
+      ? await browserApi(page, "/api/proxy/governance/change-requests", {
+        method: "POST",
+        body: { asset_type: "rate_card", target_version_id: draft.body.id, title: "Manufacturing CAD QA governed defaults" },
+      })
       : { status: 0, body: null };
+    const approved = proposed.status < 300 && proposed.body?.id
+      ? await browserApi(page, `/api/proxy/governance/change-requests/${proposed.body.id}/approve`, { method: "POST", body: {} })
+      : { status: 0, body: null };
+    const published = { status: approved.status, body: approved.body?.published_version ?? null };
     const effective = await browserApi(page, "/api/proxy/rate-library/effective");
     const machines = await machineList(page);
     const expectedRates = new Map([

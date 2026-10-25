@@ -38,12 +38,13 @@ from fastapi import (
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.api.admission import admit_analysis
 from src.auth.kill_switch import require_kill_switch_open
 from src.auth.validation_caps import require_paid_access
 from src.auth.org_context import resolve_org
 from src.auth.org_limits import enforce_org_limits
 from src.auth.rate_limit import limiter
-from src.auth.rbac import Role, require_role
+from src.auth.rbac import Role, require_org_writer, require_role
 from src.auth.require_api_key import AuthedUser
 from src.db.engine import get_db_session
 from src.services import bom_service as svc
@@ -65,12 +66,22 @@ def _import_cap_bytes() -> int:
 
 
 def _assembly_cap_bytes() -> int:
-    """STEP/IGES upload cap for assembly ingest."""
+    """STEP/IGES upload cap for assembly ingest: the web upload limit.
+
+    The ingest runs the same extraction as ``/validate/assembly``, so it takes
+    that route's cap (MAX_UPLOAD_MB). ``BOM_ASSEMBLY_MAX_MB`` can only lower it.
+    """
+    from src.api.routes import _max_upload_bytes
+
+    web_cap = _max_upload_bytes()
+    raw = os.getenv("BOM_ASSEMBLY_MAX_MB")
+    if raw is None:
+        return web_cap
     try:
-        mb = int(os.getenv("BOM_ASSEMBLY_MAX_MB", "256"))
+        mb = int(raw)
     except ValueError:
-        mb = 256
-    return max(1, mb) * 1024 * 1024
+        return web_cap
+    return min(web_cap, max(1, mb) * 1024 * 1024)
 
 
 async def _require_org(session: AsyncSession, user: AuthedUser) -> str:
@@ -106,9 +117,10 @@ async def ingest_assembly(
     assembly_key: Optional[str] = Query(
         None, description="key to store this tree under (defaults to the filename)"
     ),
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_writer),
     session: AsyncSession = Depends(get_db_session),
     _org_limit: None = Depends(enforce_org_limits),
+    _admission: None = Depends(admit_analysis),
 ):
     """Persist the REAL edge tree of an uploaded STEP/IGES assembly.
 
@@ -127,9 +139,11 @@ async def ingest_assembly(
     filename = file.filename or "upload.step"
     key = (assembly_key or "").strip() or filename
 
-    # Reuse the live assembly extraction path (security gate + pool + honest 400s).
-    from src.api.routes import _extract_assembly_async
+    # Reuse the live assembly extraction path (memory and security gates, pool,
+    # honest 400s).
+    from src.api.routes import _extract_assembly_async, refuse_over_memory_budget
 
+    refuse_over_memory_budget(data, filename)
     model = await _extract_assembly_async(data, filename)
     try:
         summary = await svc.ingest_assembly(session, org_id, key, model)
@@ -148,7 +162,7 @@ async def onboard_bom(
     assembly_key: Optional[str] = Query(
         None, description="key to store this BOM under (or the upload filename)"
     ),
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_writer),
     session: AsyncSession = Depends(get_db_session),
     _org_limit: None = Depends(enforce_org_limits),
 ):

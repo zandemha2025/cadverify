@@ -1,0 +1,37 @@
+/* The Share dialog (./share-dialog.tsx): who can open it, how long, what they will see. */
+.ob .shd-back{position:fixed;inset:0;z-index:60;background:rgba(20,24,31,.28);display:grid;place-items:center;padding:24px;transition:opacity 200ms var(--ease)}
+@starting-style{.ob .shd-back{opacity:0}}
+.ob .shd{width:min(560px,100%);max-height:calc(100dvh - 48px);overflow:auto;background:var(--solid);border-radius:20px;border:1px solid var(--rule);box-shadow:0 18px 50px rgba(20,24,31,.18);padding:18px 20px 20px;transition:transform 260ms var(--sheet),opacity 200ms var(--ease)}
+@starting-style{.ob .shd{transform:translateY(12px);opacity:0}}
+.ob .shd-hd{display:flex;flex-direction:column;gap:2px;margin-bottom:14px}
+.ob .shd-hd h2{margin:0;font-family:var(--v4-disp);font-size:18px;font-weight:600;letter-spacing:-.01em}
+.ob .shd-name{color:var(--ink3);font-size:13px;overflow-wrap:anywhere}
+.ob .shd-body{display:flex;flex-direction:column;gap:14px}
+.ob .shd-row{display:grid;grid-template-columns:120px minmax(0,1fr);gap:10px;align-items:start;font-size:13.5px}
+.ob .shd-k{font-size:12.5px;font-weight:600;color:var(--ink2)}
+.ob .shd-days{display:flex;flex-direction:column;gap:6px;min-width:0}
+.ob .shd-days .seg{flex-wrap:wrap;align-self:flex-start;max-width:100%}
+.ob .shd-days small{color:var(--ink3);font-size:12.5px}
+.ob .shd-date input{height:34px;padding:0 10px;border:1px solid var(--rule2);border-radius:10px;background:#fff;font:inherit;font-size:13.5px}
+.ob .shd-two{display:grid;grid-template-columns:120px minmax(0,1fr);gap:10px}
+.ob .shd-two .field input{width:100%}
+.ob .shd-chk{display:grid;grid-template-columns:20px minmax(0,1fr);gap:8px;align-items:start;font-size:13.5px;color:var(--ink);cursor:pointer}
+.ob .shd-chk input{width:16px;height:16px;margin:2px 0 0;accent-color:var(--ink)}
+.ob .shd-chk small{display:block;color:var(--ink3);font-size:12.5px}
+.ob .shd-chk.off{cursor:default;color:var(--ink3)}
+.ob .shd-warn{margin:-6px 0 0 28px;padding:8px 10px;border-radius:10px;background:var(--warn-bg);color:var(--warn);font-size:12.5px}
+.ob .shd-sees{display:flex;flex-direction:column;gap:4px;padding:10px 12px;border-radius:12px;background:#F4F5F7;font-size:13px}
+.ob .shd-sees ul{margin:2px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:2px}
+.ob .shd-sees li{overflow-wrap:anywhere}
+.ob .shd-sees small{color:var(--ink3);font-size:12px}
+.ob .shd-line{margin:0;color:var(--ink2);font-size:13px}
+.ob .shd-err{margin:0;color:var(--bad);font-size:13px}
+.ob .shd-acts{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.ob .shd-foot{margin:0;color:var(--ink3);font-size:12.5px}
+.ob .shd .field input[readonly]{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
+@media (max-width:560px){
+  .ob .shd-back{padding:10px;place-items:end center}
+  .ob .shd{border-radius:18px;padding:16px}
+  .ob .shd-row,.ob .shd-two{grid-template-columns:minmax(0,1fr);gap:4px}
+  .ob .shd-warn{margin-left:0}
+}

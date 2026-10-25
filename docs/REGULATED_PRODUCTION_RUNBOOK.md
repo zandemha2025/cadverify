@@ -178,6 +178,25 @@ endpoints, HTTPS SAML URLs, and an HTTPS in-boundary OTLP collector. Mount its
 approved CA from `cadverify-otel-ca`; the application refuses a regulated OTLP
 configuration without both HTTPS and the CA path.
 
+Set `auth.ssoOrgId` (the backend's `SSO_ORG_ID`) to the id of the organization
+that owns the agency IdP. Only that organization can create IdP group mappings
+and only its mappings apply at sign-in, so a mapping in any other organization
+cannot pull IdP users in or make their sign-in ambiguous. SAML signs in to an
+existing account with the same email only when that account is already bound to
+the same IdP NameID, belongs to that organization, or was created by SAML before
+bindings existed; any other match answers `409 saml_link_required` and the
+account is left untouched. SCIM provisioning (`/scim/v2`) answers only an admin
+API key issued in that organization; a key from any other organization gets
+`403 sso_org_required`, so no other organization can create accounts for
+addresses no one has registered yet. A production render fails without the value (or with
+the checked-in `replace-me` placeholder), and a released backend with AUTH_MODE
+saml, oidc or hybrid refuses to start without `SSO_ORG_ID`. For a first install,
+set `none`, sign in, create the organization, then set its id and redeploy.
+
+Rollout: set `SSO_ORG_ID` before deploying a release that contains this rule.
+Without it the backend does not start; with `none`, JIT group assignment stops
+until the real id is set.
+
 Bind the workload identity to only the required bucket/prefix operations:
 bucket-level prefix-constrained `s3:ListBucket`, and object-level `s3:GetObject`,
 `s3:PutObject`, `s3:DeleteObject`, and multipart-upload operations. Allow only

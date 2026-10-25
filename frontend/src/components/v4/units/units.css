@@ -1,0 +1,5 @@
+/* The mm | in switch where lengths are shown: compact, beside the figures it changes. */
+.ob .seg.unit-switch{padding:2px;vertical-align:middle}
+.ob .seg.unit-switch button{height:22px;padding:0 9px;font-size:12px}
+/* At the machine, gloves on: the switch is a thumb target on phones (me-17: it was 28 × 22 px). */
+@media (max-width:900px),(pointer:coarse){.ob .seg.unit-switch button{height:44px;min-width:44px;padding:0 12px;font-size:14px;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box}}

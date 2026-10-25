@@ -1,4 +1,5 @@
 import { assertWeakPasswordRejection, isExpectedSignupConsoleError } from "./signup-rejection-validation.mjs";
+import { assertNoDeclaredPartContext, checkPartContextRead, isExpectedNoContextConsoleError } from "./part-context-validation.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { coverageFor, requirements } from "./human-sim-journey-coverage.mjs";
@@ -125,8 +126,8 @@ function completeReports() {
           },
           "ENT-04": {
             quantity: 12000,
-            unitCostUsd: 3.44,
-            annualExposureUsd: 41280,
+            unitCostUsd: 7.16,
+            annualExposureUsd: 85920,
             basis: "decision.recommendation",
             withheldBeforeExactQuantity: true,
           },
@@ -271,4 +272,45 @@ test("only the verified weak-password rejection can classify its exact HTTP cons
     { text: "Failed to load resource: the server responded with a status of 500 (Internal Server Error)" },
     { text: "Uncaught TypeError" },
   ]) assert.equal(isExpectedSignupConsoleError({ ...error, ...changed }, resourceUrl), false);
+});
+
+test("only the verified no-declared-context read can classify its exact HTTP console error", () => {
+  const body = { code: "NOT_FOUND", message: "no declared context for part" };
+  assertNoDeclaredPartContext(404, body);
+  for (const status of [200, 401, 403, 500, 503]) {
+    assert.throws(() => assertNoDeclaredPartContext(status, body));
+  }
+  assert.throws(() => assertNoDeclaredPartContext(404, { code: "NOT_FOUND", message: "Not Found" }));
+  assert.throws(() => assertNoDeclaredPartContext(404, {}));
+  const resourceUrl = `http://localhost:3000/api/proxy/part-context/${cubeSha}`;
+  const error = { sourceUrl: resourceUrl, text: "Failed to load resource: the server responded with a status of 404 (Not Found)" };
+  assert.equal(isExpectedNoContextConsoleError(error, resourceUrl), true);
+  for (const changed of [
+    { sourceUrl: `http://localhost:3000/api/proxy/part-context/${artifactSha}` },
+    { sourceUrl: "http://localhost:3000/api/proxy/validate/cost" },
+    { sourceUrl: undefined },
+    { text: "Failed to load resource: the server responded with a status of 500 (Internal Server Error)" },
+    { text: "Uncaught TypeError" },
+  ]) assert.equal(isExpectedNoContextConsoleError({ ...error, ...changed }, resourceUrl), false);
+});
+
+test("a context read sets aside only its own verified 404 console error", async () => {
+  const resourceUrl = `http://localhost:3000/api/proxy/part-context/${cubeSha}`;
+  const notFound = "Failed to load resource: the server responded with a status of 404 (Not Found)";
+  const response = (status, body) => ({ status: () => status, ok: () => status >= 200 && status < 300, url: () => resourceUrl, json: async () => body });
+  const noContext = { code: "NOT_FOUND", message: "no declared context for part" };
+  const earlier = { sourceUrl: resourceUrl, text: notFound };
+  const own = { sourceUrl: resourceUrl, text: notFound };
+  const other = { sourceUrl: "http://localhost:3000/api/proxy/validate/cost", text: notFound };
+  const consoleErrors = [earlier, other, own, { ...own }];
+  const expectedConsoleErrors = [];
+  const result = await checkPartContextRead(response(404, noContext), { consoleErrors, expectedConsoleErrors, consoleStart: 1 });
+  assert.deepEqual(result, { status: 404, declared: false });
+  assert.deepEqual(expectedConsoleErrors, [own]);
+  assert.deepEqual(consoleErrors, [earlier, other, own]);
+  assert.deepEqual(await checkPartContextRead(response(200, {}), { consoleErrors, expectedConsoleErrors, consoleStart: 0 }), { status: 200, declared: true });
+  assert.equal(consoleErrors.length, 3);
+  await assert.rejects(checkPartContextRead(response(500, {}), { consoleErrors, expectedConsoleErrors, consoleStart: 0 }));
+  await assert.rejects(checkPartContextRead(response(404, { code: "NOT_FOUND", message: "Not Found" }), { consoleErrors, expectedConsoleErrors, consoleStart: 0 }));
+  assert.equal(consoleErrors.length, 3);
 });

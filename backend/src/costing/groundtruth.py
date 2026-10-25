@@ -257,28 +257,46 @@ def split_records(records: list, test_fraction: float = 0.30,
 # ──────────────────────────────────────────────────────────────────────────
 # 3. Baseline engine cost for a record (cached) — drives the real engine
 # ──────────────────────────────────────────────────────────────────────────
+def _within_parts_dir(root: str, name: str) -> Optional[str]:
+    """``name`` joined under the real parts directory ``root``, or None.
+
+    A ground-truth name (``part_id`` or a relative ``part_path``) is
+    network-supplied, so it may only name a file inside the parts directory:
+    an absolute name, a ``..`` segment, a NUL byte, or a symlink whose target is
+    outside the directory never resolves.
+    """
+    if not name or "\x00" in name or os.path.isabs(name) or name.startswith("\\"):
+        return None
+    if ".." in name.replace("\\", "/").split("/"):
+        return None
+    candidate = os.path.realpath(os.path.join(root, name))
+    if candidate == root or not candidate.startswith(root + os.sep):
+        return None
+    return candidate
+
+
 def resolve_part_path(record: GroundTruthRecord, parts_dir: Optional[str]) -> Optional[str]:
+    """The mesh file for ``record``, looked up only inside ``parts_dir``.
+
+    ``part_id`` and a relative ``part_path`` come from API and CSV callers, so
+    both are confined to the parts directory. With no parts directory there is
+    nothing to resolve a relative name against: the lookup returns None rather
+    than reading from the server process's working directory.
+    """
+    root = os.path.realpath(parts_dir) if parts_dir else None
     cands = []
     if record.part_path:
-        # API/CSV-supplied part paths are deliberately relative and confined to
-        # the trusted corpus root.  Joining here is both the functional contract
-        # and the final traversal boundary; checking a bare relative path would
-        # accidentally resolve against the server process working directory.
         if os.path.isabs(record.part_path):
-            # Direct dataclass callers (offline eval/tests) may still provide an
+            # Direct dataclass callers (offline eval/tests, and recalibration
+            # after it resolved a record itself) may still provide an
             # operator-trusted absolute path. Network ingress rejects these.
             cands.append(record.part_path)
-        elif parts_dir:
-            root = os.path.realpath(parts_dir)
-            candidate = os.path.realpath(os.path.join(root, record.part_path))
-            if candidate == root or candidate.startswith(root + os.sep):
-                cands.append(candidate)
-        else:
-            cands.append(record.part_path)
-    if parts_dir:
-        cands.append(os.path.join(parts_dir, record.part_id))
+        elif root:
+            cands.append(_within_parts_dir(root, record.part_path))
+    if root:
+        cands.append(_within_parts_dir(root, record.part_id))
         if not record.part_id.lower().endswith((".stl", ".step", ".stp")):
-            cands.append(os.path.join(parts_dir, record.part_id + ".stl"))
+            cands.append(_within_parts_dir(root, record.part_id + ".stl"))
     for c in cands:
         if c and os.path.isfile(c):
             return c

@@ -13,7 +13,7 @@ import tempfile
 import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, Optional, overload
 
 from sqlalchemy import and_, func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -190,6 +190,8 @@ async def create_batch(
     """Create a Batch row with status='pending'. Returns the Batch object."""
     from src.auth.org_context import resolve_org
 
+    from src.services.webhook_service import seal_webhook_secret
+
     effective_concurrency = validate_batch_concurrency_limit(concurrency_limit)
     batch = Batch(
         ulid=str(ULID()),
@@ -198,7 +200,8 @@ async def create_batch(
         input_mode=input_mode,
         job_type=job_type,
         webhook_url=webhook_url,
-        webhook_secret=webhook_secret,
+        # Stored sealed (Fernet, the connector-credential key); never plaintext.
+        webhook_secret=seal_webhook_secret(webhook_secret),
         concurrency_limit=effective_concurrency,
         api_key_id=_nullable_api_key_id(api_key_id),
     )
@@ -713,10 +716,19 @@ async def get_batch_progress(
         0,
         batch.total_items - completed_items - failed_items - skipped_items,
     )
+    pace_per_hour: float | None = None
+    eta_seconds: int | None = None
+    pace_state: str | None = None
+    if batch.status in ("pending", "processing") and pending_items > 0:
+        per_second, pace_state = await measured_pace(session, batch)
+        if per_second:
+            pace_per_hour = round(per_second * 3600, 1)
+            eta_seconds = int(round(pending_items / per_second))
 
     return {
         "batch_ulid": batch.ulid,
         "status": batch.status,
+        "job_type": batch.job_type,
         "input_mode": batch.input_mode,
         "total_items": batch.total_items,
         "completed_items": completed_items,
@@ -727,7 +739,139 @@ async def get_batch_progress(
         "created_at": batch.created_at.isoformat() if batch.created_at else None,
         "started_at": batch.started_at.isoformat() if batch.started_at else None,
         "completed_at": batch.completed_at.isoformat() if batch.completed_at else None,
+        # The pace the run is going at now, measured from its own parts, and the
+        # time left at that pace (None until a few parts have finished).
+        "pace_per_hour": pace_per_hour,
+        "eta_seconds": eta_seconds,
+        # "measuring" until 10 parts or 10 minutes have finished since the run
+        # (re)started, "stalled" with nothing done in the last 30 minutes (op-26).
+        "pace_state": pace_state,
+        # A catalog run's files counted as its page counts them (op-28).
+        "run_counts": (await catalog_run_counts(session, [batch])).get(batch.id),
     }
+
+
+PACE_WINDOW_SECONDS = 30 * 60
+# No estimate until this many parts, or this long, have finished since the run (re)started (op-26).
+PACE_MIN_PARTS = 10
+PACE_MIN_SECONDS = 10 * 60
+
+
+@overload
+def _aware(t: datetime) -> datetime: ...
+@overload
+def _aware(t: Optional[datetime]) -> Optional[datetime]: ...
+def _aware(t: Optional[datetime]) -> Optional[datetime]:
+    if t is None:
+        return None
+    return t if t.tzinfo is not None else t.replace(tzinfo=timezone.utc)
+
+
+def run_started_at(batch: Batch) -> Optional[datetime]:
+    """When the run last (re)started: its start, a "Check again" that reopened it, or a resume after a stall."""
+    manifest = batch.manifest_json or {}
+    resumes = manifest.get("resumes")
+    if not isinstance(resumes, dict):
+        resumes = {}
+    out = _aware(batch.started_at)
+    for raw in (manifest.get("restarted_at"), resumes.get("at")):
+        try:
+            t = _aware(datetime.fromisoformat(raw)) if raw else None
+        except (TypeError, ValueError):
+            t = None
+        if t is not None and (out is None or t > out):
+            out = t
+    return out
+
+
+def pace_from(
+    finished: list[tuple[Optional[datetime], datetime]],
+    in_flight: list[datetime],
+    *,
+    since: datetime,
+    now: datetime,
+) -> tuple[Optional[float], str]:
+    """Parts a second, smoothed over the run's last 30 minutes, and what it is (op-26).
+
+    ``finished``: (worker started it, it finished) for each part done since the
+    run (re)started at ``since``; ``in_flight``: when a worker started each part
+    it has now. ``"measuring"`` (None) until PACE_MIN_PARTS parts or
+    PACE_MIN_SECONDS have finished since ``since``: the first parts say little
+    about the rest (three landing together once read as 180 an hour).
+
+    Then the pace is the work done in the window (from ``since``, or 30 minutes
+    ago when that's later) over its length: each part that finished in it, the
+    share in it of a part that started before it, and for each part in flight
+    the share of the run's typical time per part it has had. A steady run's
+    pace holds between landings instead of jumping at each one, and a run that
+    stalls slows its own pace; with nothing done in the window, ``"stalled"``.
+    """
+    since, now = _aware(since), _aware(now)
+    done = [(_aware(s), _aware(e)) for s, e in finished if e is not None and _aware(e) >= since]
+    if not done or (len(done) < PACE_MIN_PARTS and (now - since).total_seconds() < PACE_MIN_SECONDS):
+        return None, "measuring"
+    window = max(since, now - timedelta(seconds=PACE_WINDOW_SECONDS))
+    # The run's typical time per part: the mean, which moves a little with each part (a median jumps
+    # between a run's fast and slow parts and moves the estimate with it).
+    took = [(e - s).total_seconds() for s, e in done if s is not None and e > s]
+    typical = sum(took) / len(took) if took else None
+    work = 0.0
+    for s, e in done:
+        if e < window:
+            continue
+        if s is None or s >= window:
+            work += 1.0
+        else:
+            work += (e - window).total_seconds() / max(1.0, (e - s).total_seconds())
+    if typical:
+        for s in in_flight:
+            s = _aware(s)
+            if s is not None and s < now:
+                work += min(1.0, (now - max(s, window)).total_seconds() / typical)
+    span = (now - window).total_seconds()
+    if work <= 0 or span <= 0:
+        return None, "stalled"
+    return work / span, "measured"
+
+
+async def measured_pace(
+    session: AsyncSession,
+    batch: Batch,
+    now: Optional[datetime] = None,
+) -> tuple[Optional[float], str]:
+    """The run's pace now (``pace_from``) from its own parts' start and finish times."""
+    now = now or datetime.now(timezone.utc)
+    since = run_started_at(batch) or now
+    rows = (
+        await session.execute(
+            select(BatchItem.status, BatchItem.started_at, BatchItem.completed_at).where(
+                BatchItem.batch_id == batch.id,
+                or_(
+                    and_(BatchItem.status.in_(["completed", "failed"]), BatchItem.completed_at >= since),
+                    BatchItem.status == "processing",
+                ),
+            )
+        )
+    ).all()
+    finished = [(r.started_at, r.completed_at) for r in rows if r.status != "processing" and r.completed_at]
+    in_flight = [r.started_at for r in rows if r.status == "processing" and r.started_at]
+    return pace_from(finished, in_flight, since=since, now=now)
+
+
+async def catalog_run_counts(session: AsyncSession, batches: list[Batch]) -> dict[int, dict]:
+    """Each catalog run's files counted one way everywhere (``catalog_run_service.run_counts``, op-28)."""
+    from src.services.catalog_run_service import run_counts, run_meta
+
+    runs = {b.id: b for b in batches if b.job_type == "catalog"}
+    if not runs:
+        return {}
+    pairs: dict[int, list[tuple[str, str]]] = {i: [] for i in runs}
+    rows = await session.execute(
+        select(BatchItem.batch_id, BatchItem.filename, BatchItem.status).where(BatchItem.batch_id.in_(list(runs)))
+    )
+    for batch_id, filename, status in rows.all():
+        pairs[batch_id].append((filename, status))
+    return {i: run_counts(run_meta(runs[i]), pairs[i]) for i in runs}
 
 
 async def get_batch_item_status_counts(
@@ -968,15 +1112,13 @@ async def _generate_cost_results_csv(
 
 
 def _csv_escape(value: str) -> str:
-    """Neutralize spreadsheet formulas, then apply RFC-style CSV quoting."""
-    from src.services.cost_decision_service import spreadsheet_safe_cell
+    """One cell of a row joined by hand: formulas neutralized, quoted on a comma, a quote, CR or LF.
 
-    if not value:
-        return ""
-    value = spreadsheet_safe_cell(value)
-    if any(c in value for c in (",", '"', "\n")):
-        return '"' + value.replace('"', '""') + '"'
-    return value
+    The same helper as every other CSV export (``src.services.csv_safe``).
+    """
+    from src.services.csv_safe import csv_field
+
+    return csv_field(value)
 
 
 # ---------------------------------------------------------------------------
@@ -1010,6 +1152,24 @@ async def update_batch_counters(
 # ---------------------------------------------------------------------------
 
 BATCH_ITEM_MAX_ATTEMPTS = 3
+
+# Kept on a part put back in the run after its check was stopped part way (the
+# job's time limit, a worker restart): it says why the next try happens, and
+# why the part failed once its tries are used up.
+STOPPED_MID_CHECK = "Stopped before it finished (the worker was busy or restarting)"
+
+
+def exhausted_reason(item: BatchItem, *, stopped: bool = False) -> str:
+    """Why a part that used up its tries failed, in plain words."""
+    if stopped or (getattr(item, "error_message", None) or "").startswith(STOPPED_MID_CHECK):
+        return (
+            f"Checking was stopped before it finished {BATCH_ITEM_MAX_ATTEMPTS} times; "
+            "the worker was busy or restarting. Check it again."
+        )
+    return (
+        "Temporary storage or database failure persisted after "
+        f"{BATCH_ITEM_MAX_ATTEMPTS} attempts."
+    )
 
 
 @dataclass(frozen=True)
@@ -1071,21 +1231,20 @@ async def recover_stale_batch_item_leases(
     requeued: list[str] = []
     exhausted: list[str] = []
     for item in rows:
+        # A processing lease this old: its worker stopped part way through.
+        stopped = item.status == "processing"
         item.lease_started_at = None
         if _attempt_count(item) >= BATCH_ITEM_MAX_ATTEMPTS:
             item.status = "failed"
             item.completed_at = now
-            item.error_message = (
-                "Temporary storage or database failure persisted after "
-                f"{BATCH_ITEM_MAX_ATTEMPTS} attempts."
-            )
+            item.error_message = exhausted_reason(item, stopped=stopped)
             exhausted.append(item.ulid)
             continue
 
         item.status = "pending"
         item.started_at = None
         item.completed_at = None
-        item.error_message = None
+        item.error_message = STOPPED_MID_CHECK if stopped else item.error_message
         requeued.append(item.ulid)
 
     if exhausted:
@@ -1194,29 +1353,154 @@ async def mark_pending_items_terminal(
     session: AsyncSession,
     batch_id: int,
     terminal_status: str = "skipped",
+    *,
+    error_message: Optional[str] = None,
 ) -> int:
     """Move a batch's non-terminal items to a terminal state (F-ARCH-1/#3).
 
     When a batch is marked failed on the enqueue-failure path, its items would
     otherwise keep their non-terminal 'pending' status, so progress endpoints
     (pending_items = total - completed - failed) would advertise work that will
-    never run. Terminalize them so the read is consistent. Caller commits.
+    never run. Terminalize them so the read is consistent. ``error_message``,
+    when given, is each item's reason. Caller commits.
     """
     now = datetime.now(timezone.utc)
+    values: dict = {
+        "status": terminal_status,
+        "completed_at": func.coalesce(BatchItem.completed_at, now),
+        "lease_started_at": None,
+    }
+    if error_message is not None:
+        values["error_message"] = error_message[:500]
     result = await session.execute(
         update(BatchItem)
         .where(
             BatchItem.batch_id == batch_id,
             BatchItem.status.in_(["pending", "queued", "processing"]),
         )
-        .values(
-            status=terminal_status,
-            completed_at=func.coalesce(BatchItem.completed_at, now),
-            lease_started_at=None,
-        )
+        .values(**values)
         .returning(BatchItem.id)
     )
     return len(result.scalars().all())
+
+
+# A stale run is resumed, not failed, while it can go on: its parts are still
+# stored and it made progress since it was last resumed (or was resumed fewer
+# than this many times without any).
+BATCH_RESUME_LIMIT = max(1, int(os.getenv("BATCH_RESUME_LIMIT", "3")))
+RUN_STOPPED_PREFIX = "The run stopped before this part was checked: "
+FILE_GONE_ITEM = "This part's file is no longer stored. Start a new run with it."
+
+
+def batch_item_lease_seconds() -> int:
+    """How long a processing lease lasts before recovery: the 600 s job ceiling plus a margin.
+
+    Operators may lengthen, but never shorten, this boundary.
+    """
+    try:
+        configured = int(os.getenv("BATCH_ITEM_LEASE_SECONDS", "660"))
+    except (TypeError, ValueError):
+        configured = 660
+    return max(660, configured)
+
+
+def missing_batch_blobs(batch_ulid: str, filenames: list[str]) -> set[str]:
+    """The filenames whose extracted object is no longer in the batch store (blocking I/O)."""
+    store = _batch_store()
+    missing: set[str] = set()
+    for name in filenames:
+        try:
+            if not store.exists(_batch_key(batch_ulid, name)):
+                missing.add(name)
+        except ValueError:
+            missing.add(name)
+    return missing
+
+
+@dataclass
+class _ResumeDecision:
+    resume: bool
+    reason: Optional[str] = None  # why the run stopped (the run's failure message)
+    item_reason: Optional[str] = None  # why each part it skips wasn't checked
+
+
+async def _resume_stale_batch(
+    session: AsyncSession,
+    batch: Batch,
+    *,
+    now: datetime,
+    heartbeat_stale_seconds: int,
+) -> _ResumeDecision:
+    """Resume a stale run whose parts are stored (the caller holds its row lock), or say why not.
+
+    Resuming: parts stuck mid-check past their lease, or queued longer than the
+    heartbeat window, go back in the run (their tries counted); a part whose
+    file is gone fails with that reason; the heartbeat and the resume count are
+    recorded. The caller starts a coordinator after commit.
+    """
+    import asyncio
+
+    remaining = (
+        await session.execute(
+            select(BatchItem.id, BatchItem.filename).where(
+                BatchItem.batch_id == batch.id,
+                BatchItem.status.in_(["pending", "queued", "processing"]),
+            )
+        )
+    ).all()
+    missing = (
+        await asyncio.to_thread(missing_batch_blobs, batch.ulid, [r.filename for r in remaining])
+        if remaining
+        else set()
+    )
+    if remaining and len(missing) == len(remaining):
+        return _ResumeDecision(
+            False,
+            "its files are no longer stored, so its parts can't be checked again here. Start a new run with them",
+            "the run's files are no longer stored. Start a new run with this part.",
+        )
+
+    done = int(batch.completed_items or 0) + int(batch.failed_items or 0)
+    manifest = dict(batch.manifest_json or {})
+    prior = manifest.get("resumes")
+    if not isinstance(prior, dict):
+        prior = {}
+    try:
+        prior_count, prior_done = int(prior.get("count") or 0), int(prior.get("done") or 0)
+    except (TypeError, ValueError):
+        prior_count, prior_done = 0, 0
+    count = prior_count + 1 if prior_count and done <= prior_done else 1
+    if count > BATCH_RESUME_LIMIT:
+        return _ResumeDecision(
+            False,
+            f"it made no progress after {BATCH_RESUME_LIMIT} restarts. Check the parts again",
+            f"the run made no progress after {BATCH_RESUME_LIMIT} restarts. Check it again.",
+        )
+
+    if missing:
+        gone = [r.id for r in remaining if r.filename in missing]
+        await session.execute(
+            update(BatchItem)
+            .where(BatchItem.id.in_(gone), BatchItem.status.in_(["pending", "queued", "processing"]))
+            .values(status="failed", completed_at=now, lease_started_at=None, error_message=FILE_GONE_ITEM)
+        )
+        batch.failed_items = int(batch.failed_items or 0) + len(gone)
+    recovery = await recover_stale_batch_item_leases(
+        session,
+        batch,
+        processing_cutoff=now - timedelta(seconds=batch_item_lease_seconds()),
+        queued_cutoff=now - timedelta(seconds=heartbeat_stale_seconds),
+        now=now,
+    )
+    manifest = dict(batch.manifest_json or {})
+    manifest["resumes"] = {"count": count, "done": done, "at": now.isoformat()}
+    manifest["heartbeat_at"] = now.isoformat()
+    batch.manifest_json = manifest
+    logger.warning(
+        "Resumed stale batch %s (resume %d; %d part(s) back in the run, %d out of tries, %d file(s) gone)",
+        batch.ulid, count, len(recovery.requeued_ulids), len(recovery.exhausted_ulids), len(missing),
+    )
+    return _ResumeDecision(True)
 
 
 async def reconcile_terminal_batch_items(
@@ -1257,8 +1541,11 @@ async def sweep_orphaned_batches(
     ttl_seconds: Optional[int] = None,
     heartbeat_stale_seconds: Optional[int] = None,
     now: Optional[datetime] = None,
+    *,
+    resumed: Optional[list[str]] = None,
+    stopped: Optional[list[str]] = None,
 ) -> int:
-    """Mark dead batches stuck in pending/processing as failed=orphaned.
+    """Resume stale batches that can go on; mark the rest failed=orphaned.
 
     Staleness is measured from the coordinator's heartbeat
     (manifest_json['heartbeat_at']) when present: a batch is reaped only once its
@@ -1267,7 +1554,14 @@ async def sweep_orphaned_batches(
     was ever written -- the coordinator never ran (crash between commit and
     enqueue) -- do we fall back to the wall-clock TTL from started_at/created_at.
 
-    Returns the number of batches reaped. Caller commits.
+    A stale batch whose parts were unpacked (``input_mode`` zip) is resumed
+    while its files are stored and it hasn't been resumed BATCH_RESUME_LIMIT
+    times without progress (``_resume_stale_batch``); its ulid goes in
+    ``resumed`` for the caller to start a coordinator after commit. Otherwise it
+    fails, and each part it skips says why ("The run stopped before this part
+    was checked: ..."); the ulids of those go in ``stopped``.
+
+    Returns the number of batches reaped (failed). Caller commits.
     """
     ttl = BATCH_ORPHAN_TTL_SECONDS if ttl_seconds is None else ttl_seconds
     hb_stale = (
@@ -1309,6 +1603,35 @@ async def sweep_orphaned_batches(
         if not stale:
             continue
 
+        # Every run the sweep stops keeps why (op-25): a run it can't resume says so.
+        stop_reason: Optional[str] = "its worker stopped and the run couldn't be resumed. Check the parts again"
+        item_reason = "its worker stopped and the run couldn't be resumed."
+        if batch.status != "extracting" and batch.input_mode == "zip":
+            # Lock the row and look again: a tick or a part that finished since
+            # the read above wins, and the resume's counters can't race them.
+            locked = (
+                await session.execute(
+                    select(Batch)
+                    .where(Batch.id == batch.id, Batch.status == batch.status)
+                    .with_for_update()
+                    .execution_options(populate_existing=True)
+                )
+            ).scalars().first()
+            if locked is None:
+                continue
+            fresh = _parse_heartbeat(locked.manifest_json)
+            if fresh is not None and fresh > hb_cutoff:
+                continue
+            decision = await _resume_stale_batch(
+                session, locked, now=now, heartbeat_stale_seconds=hb_stale
+            )
+            if decision.resume:
+                if resumed is not None:
+                    resumed.append(locked.ulid)
+                continue
+            stop_reason = decision.reason or stop_reason
+            item_reason = decision.item_reason or item_reason
+
         # Compare-and-swap both active status and the exact manifest observed
         # above. If a coordinator refreshed heartbeat or cancellation committed
         # after our read, this update affects zero rows and the newer state wins.
@@ -1316,6 +1639,11 @@ async def sweep_orphaned_batches(
         old_manifest = batch.manifest_json
         new_manifest = dict(old_manifest or {})
         new_manifest["failure_reason"] = "orphaned"
+        if stop_reason is not None:
+            new_manifest["failure"] = {
+                "code": "run_stopped",
+                "message": f"The run stopped before every part was checked: {stop_reason}.",
+            }
         manifest_predicate = (
             Batch.manifest_json.is_(None)
             if old_manifest is None
@@ -1345,7 +1673,14 @@ async def sweep_orphaned_batches(
         batch.status = "failed"
         batch.completed_at = now
         batch.manifest_json = new_manifest
-        await mark_pending_items_terminal(session, batch.id, "skipped")
+        await mark_pending_items_terminal(
+            session,
+            batch.id,
+            "skipped",
+            error_message=RUN_STOPPED_PREFIX + item_reason,
+        )
+        if stopped is not None:
+            stopped.append(batch.ulid)
         reaped += 1
         logger.warning(
             "Reaped orphaned batch %s (status was %s, heartbeat=%s)",

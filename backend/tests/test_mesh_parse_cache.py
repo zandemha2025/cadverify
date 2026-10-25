@@ -110,6 +110,20 @@ def test_eviction_by_bytes(monkeypatch):
     assert len(c) <= 2
 
 
+
+def test_size_counts_arrays_kept_in_metadata():
+    """A STEP mesh keeps per-triangle CAD face ids and surface normals in its
+    metadata; the byte bound has to see them or a cache of big STEP parts
+    holds more than MESH_PARSE_CACHE_MAX_BYTES."""
+    import numpy as np
+
+    m = _box(1.0)
+    bare = mesh_cache.mesh_nbytes(m)
+    m.metadata["cad_face_ids"] = np.zeros(len(m.faces), dtype=np.int32)
+    m.metadata["cad_face_normals"] = np.zeros((len(m.faces), 3), dtype=np.float32)
+    m.metadata["note"] = "not an array"
+    assert mesh_cache.mesh_nbytes(m) == bare + len(m.faces) * (4 + 12)
+
 # ──────────────────────────────────────────────────────────────
 # End-to-end via _parse_mesh on a real STEP part
 # ──────────────────────────────────────────────────────────────

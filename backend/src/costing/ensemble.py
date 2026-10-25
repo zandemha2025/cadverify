@@ -48,7 +48,7 @@ from src.costing.analogy_estimator import (
     analogy_estimate, ANALOGY_PROVENANCE,
     DEFAULT_K as _AN_DEFAULT_K, DEFAULT_MIN_REAL_NEIGHBORS as _AN_MIN_REAL,
 )
-from src.costing.confidence import _percentile, confidence_interval
+from src.costing.confidence import ResidualProvider, _percentile, confidence_interval
 from src.costing.estimate import EstimateOptions, estimate_decision
 from src.costing.rates import RATE_CARD_V0, _resolve_process_token, process_family, BAND_PCT
 
@@ -189,7 +189,10 @@ def build_member_overrides(coeffs: Sequence[UncertainCoefficient],
         for d, c in enumerate(coeffs):
             h = _halton(m, _PRIMES[d % len(_PRIMES)])
             delta = c.rel_range * (2.0 * h - 1.0)
-            val = bases[d] * (1.0 + delta)
+            base = bases[d]
+            if base is None:  # applicable_coefficients drops keys this rate card lacks
+                raise TypeError(f"coefficient {c.key!r} has no value in this rate card")
+            val = base * (1.0 + delta)
             if c.clamp is not None:
                 lo, hi = c.clamp
                 val = min(max(val, lo), hi)
@@ -306,11 +309,11 @@ def _assumption_band_pct(process: str) -> float:
 def ensemble_estimate(result, mesh, features, options: EstimateOptions,
                       n_members: int = DEFAULT_N_MEMBERS,
                       coefficients: Optional[Sequence[UncertainCoefficient]] = None,
-                      residual_model: object = None,
+                      residual_model: Optional[ResidualProvider] = None,
                       records: Optional[Sequence] = None,
                       geometry: Optional[dict] = None,
-                      analogy_k: int = None,
-                      analogy_min_real: int = None) -> EnsembleResult:
+                      analogy_k: Optional[int] = None,
+                      analogy_min_real: Optional[int] = None) -> EnsembleResult:
     """Run ``estimate_decision`` under K deterministic rate-card perturbations and
     report the per-(process, qty) spread as an honest uncertainty band.
 

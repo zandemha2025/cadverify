@@ -1,22 +1,25 @@
 """Share API — share/unshare endpoints + public share view.
 
 Routes:
-  POST   /analyses/{analysis_id}/share   — create share link (authenticated)
-  DELETE /analyses/{analysis_id}/share   — revoke share link (authenticated)
-  GET    /s/{short_id}                   — public share view (unauthenticated, IP rate limited)
+  POST   /analyses/{analysis_id}/share   — create a share link that ends (authenticated)
+  DELETE /analyses/{analysis_id}/share   — switch the link off (its maker or an org admin)
+  GET    /s/{short_id}                   — public share view (unauthenticated, IP rate limited);
+                                           410 once the link ended or was switched off
 """
 from __future__ import annotations
 
 import logging
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.rate_limit import limiter
-from src.auth.rbac import Role, require_role
+from src.auth.rbac import require_org_writer
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_db_session
 from src.services import share_service
+from src.services.share_links import ShareOptions
 
 logger = logging.getLogger("cadverify.share")
 
@@ -33,12 +36,22 @@ async def create_share(
     analysis_id: str,
     request: Request,
     response: Response,
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    body: Optional[ShareOptions] = None,
+    user: AuthedUser = Depends(require_org_writer),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Share an analysis — generates a public short URL."""
-    result = await share_service.create_share(analysis_id, user.user_id, session)
-    return result
+    """Share an analysis — a public short URL that ends.
+
+    Body (optional): ``{"expires_in_days": 1 | 7 | 30 | 90 | 365 | null}`` or
+    ``{"expires_on": "YYYY-MM-DD"}``; omitted is 7 days, ``null`` is the
+    explicit "no end date" choice kept for API callers.
+    """
+    opts = body or ShareOptions()
+    # ``expires_on`` (validated by ShareOptions: today up to a year ahead) wins,
+    # as on the record and package share routes.
+    return await share_service.create_share(
+        analysis_id, user.user_id, session, opts.expires_in_days, ends_at=opts.ends_at()
+    )
 
 
 @share_router.delete("/{analysis_id}/share")
@@ -47,10 +60,10 @@ async def revoke_share(
     analysis_id: str,
     request: Request,
     response: Response,
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_org_writer),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Revoke sharing — the public link will 404 immediately."""
+    """Switch the link off now (its maker or an org admin). It then says so (410)."""
     await share_service.revoke_share(analysis_id, user.user_id, session)
     return {"message": "Share revoked"}
 

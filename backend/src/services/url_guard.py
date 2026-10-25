@@ -24,7 +24,23 @@ from urllib.parse import urlsplit
 
 
 class UnsafeURLError(ValueError):
-    """Raised when a URL is rejected by the SSRF guard."""
+    """Raised when a URL is rejected by the SSRF guard.
+
+    ``str(exc)`` is safe to show whoever gave the URL, as a clause after
+    "This address can't receive webhooks: ". It never names an address the
+    host resolved to, nor says whether the host resolved at all: either would
+    make the guard an oracle for the internal DNS. ``detail`` has those facts,
+    for server-side logs only.
+    """
+
+    def __init__(self, message: str, *, detail: str | None = None):
+        super().__init__(message)
+        self.detail = detail or message
+
+
+# One answer for a host that doesn't resolve and one that resolves to a
+# private, loopback, link-local or reserved address.
+NOT_PUBLIC = "it doesn't resolve to a public internet address"
 
 
 _ALLOWED_SCHEMES = frozenset({"http", "https"})
@@ -101,7 +117,7 @@ def _resolve_ips(host: str) -> list[ipaddress.IPv4Address | ipaddress.IPv6Addres
     try:
         infos = socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
     except socket.gaierror as exc:
-        raise UnsafeURLError(f"host does not resolve: {host}") from exc
+        raise UnsafeURLError(NOT_PUBLIC, detail=f"host does not resolve: {host}") from exc
 
     ips: list[ipaddress.IPv4Address | ipaddress.IPv6Address] = []
     for info in infos:
@@ -113,7 +129,7 @@ def _resolve_ips(host: str) -> list[ipaddress.IPv4Address | ipaddress.IPv6Addres
         except ValueError:
             continue
     if not ips:
-        raise UnsafeURLError(f"host does not resolve to an IP: {host}")
+        raise UnsafeURLError(NOT_PUBLIC, detail=f"host does not resolve to an IP: {host}")
     return ips
 
 
@@ -127,12 +143,12 @@ def resolve_public_host(host: str) -> list[str]:
     carrier-grade NAT, multicast, or reserved networks.
     """
     if not host:
-        raise UnsafeURLError("URL has no host")
+        raise UnsafeURLError("it has no host name")
     ips = _resolve_ips(host)
     for ip in ips:
         if _ip_is_blocked(ip):
             raise UnsafeURLError(
-                f"URL host '{host}' resolves to a non-routable address ({ip})"
+                NOT_PUBLIC, detail=f"URL host '{host}' resolves to a non-routable address ({ip})"
             )
     return [str(ip) for ip in ips]
 
@@ -157,12 +173,13 @@ def validate_outbound_url(url: str | None) -> list[str] | None:
     scheme = parts.scheme.lower()
     if scheme not in _ALLOWED_SCHEMES:
         raise UnsafeURLError(
-            f"URL scheme must be http or https, got '{parts.scheme or '(none)'}'"
+            "it must start with http:// or https://",
+            detail=f"URL scheme must be http or https, got '{parts.scheme or '(none)'}'",
         )
 
     host = parts.hostname
     if not host:
-        raise UnsafeURLError("URL has no host")
+        raise UnsafeURLError("it has no host name")
 
     return resolve_public_host(host)
 

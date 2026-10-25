@@ -15,15 +15,15 @@ import trimesh
 
 _HAS_CADQUERY = False
 try:
-    import cadquery as cq
+    import cadquery as cq  # pyright: ignore[reportMissingImports]  # optional, not a dependency
     _HAS_CADQUERY = True
 except ImportError:
     pass
 
 _HAS_OCP = False
 try:
-    from OCP.STEPControl import STEPControl_Reader  # noqa: F401
-    from OCP.IFSelect import IFSelect_RetDone  # noqa: F401
+    from OCP.STEPControl import STEPControl_Reader  # noqa: F401  # pyright: ignore[reportMissingImports]  # optional
+    from OCP.IFSelect import IFSelect_RetDone  # noqa: F401  # pyright: ignore[reportMissingImports]  # optional
     _HAS_OCP = True
 except ImportError:
     pass
@@ -60,7 +60,8 @@ def parse_step(file_path: str | Path, linear_deflection: float = 0.1) -> trimesh
 
 def _parse_with_cadquery(path: Path, linear_deflection: float) -> trimesh.Trimesh:
     """Parse STEP using cadquery and tessellate to trimesh."""
-    result = cq.importers.importStep(str(path))
+    # Called only when the cadquery import succeeded (_HAS_CADQUERY).
+    result = cq.importers.importStep(str(path))  # pyright: ignore[reportPossiblyUnboundVariable]
 
     # Tessellate to get vertices and triangles
     vertices_list = []

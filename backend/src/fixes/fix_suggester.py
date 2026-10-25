@@ -11,30 +11,72 @@ from src.analysis.models import (
 )
 
 
-# Cross-process fix suggestions: when an issue blocks one process,
-# suggest alternative processes that don't have that constraint.
-ALTERNATIVE_PROCESS_MAP = {
+# Cross-process fix suggestions: when a check stops one process, name the
+# processes whose own version of that check passed on THIS part. The engine's
+# rules decide, not hand-written text: "Consider SLA (min 0.3mm)" was shown
+# while the SLA wall check failed anything under 0.4 mm (M18). A tuple lists
+# the processes worth naming; a string is advice that names no other process.
+PT = ProcessType
+ALTERNATIVE_PROCESS_MAP: dict[str, dict[ProcessType, tuple[ProcessType, ...] | str]] = {
     "THIN_WALL": {
-        ProcessType.FDM: "Consider SLA (min 0.3mm) or DMLS (min 0.4mm) for thinner walls.",
-        ProcessType.SLS: "Consider SLA/DLP for finer wall resolution.",
+        PT.FDM: (PT.SLA, PT.DLP, PT.MJF, PT.DMLS),
+        PT.SLS: (PT.SLA, PT.DLP),
+        PT.MJF: (PT.SLA, PT.DLP),
     },
     "OVERHANG": {
-        ProcessType.FDM: "SLS/MJF are self-supporting (no overhang limits). Or redesign with <45° angles.",
-        ProcessType.DMLS: "Consider redesigning overhangs or switching to EBM (50° threshold).",
+        PT.FDM: (PT.SLS, PT.MJF),
+        PT.DMLS: (PT.EBM,),
+        PT.SLM: (PT.EBM,),
     },
     "UNDERCUT": {
-        ProcessType.CNC_3AXIS: "Switch to 5-axis CNC, or redesign to eliminate undercuts.",
-        ProcessType.INJECTION_MOLDING: "Add side actions to the mold, or redesign geometry.",
+        PT.CNC_3AXIS: (PT.CNC_5AXIS,),
+        PT.INJECTION_MOLDING: "Add side actions to the mold, or redesign the undercut away.",
     },
     "INSUFFICIENT_DRAFT": {
-        ProcessType.INJECTION_MOLDING: "Add 1-3° draft to all vertical walls. No draft needed for CNC or additive.",
+        PT.INJECTION_MOLDING: "Add 1-3° draft to all vertical walls. Machining and printing need no draft.",
     },
     "EXCEEDS_BUILD_VOLUME": {
-        ProcessType.FDM: "Use BigRep (1m³) or split into multiple parts.",
-        ProcessType.SLA: "Switch to FDM/SLS for larger build volumes.",
-        ProcessType.DMLS: "Consider DED/WAAM for large metal parts (up to 5m).",
+        PT.FDM: (PT.SLS, PT.MJF),
+        PT.SLA: (PT.FDM, PT.SLS, PT.MJF),
+        PT.DMLS: (PT.DED, PT.WAAM),
+        PT.SLM: (PT.DED, PT.WAAM),
     },
 }
+
+# What each check is called in "... pass their wall checks on this part".
+_CHECK_NOUN = {
+    "THIN_WALL": "wall check",
+    "OVERHANG": "overhang check",
+    "UNDERCUT": "undercut check",
+    "EXCEEDS_BUILD_VOLUME": "size check",
+}
+
+
+def _passed_same_check(analysis: AnalysisResult, code: str, candidates) -> list:
+    """Candidates the engine checked on this part that raised no ``code`` at all."""
+    # A size check that couldn't confirm a fit didn't pass either.
+    same = {code, "BUILD_ENVELOPE_UNVERIFIED"} if code == "EXCEEDS_BUILD_VOLUME" else {code}
+    by_process = {ps.process: ps for ps in analysis.process_scores}
+    return [p for p in candidates
+            if p in by_process and not any(i.code in same for i in by_process[p].issues)]
+
+
+def alternative_for(analysis: AnalysisResult, code: str, process: ProcessType) -> str | None:
+    """The "Alternative: ..." text for ``code`` raised on ``process``, or None."""
+    from src.analysis.process_names import join_labels
+
+    rule = ALTERNATIVE_PROCESS_MAP.get(code, {}).get(process)
+    if rule is None:
+        return None
+    if isinstance(rule, str):
+        return rule
+    passed = _passed_same_check(analysis, code, rule)
+    if not passed:
+        return None
+    noun = _CHECK_NOUN.get(code, "check")
+    if len(passed) == 1:
+        return f"{join_labels(passed)} passes its {noun} on this part."
+    return f"{join_labels(passed)} pass their {noun}s on this part."
 
 
 def enhance_suggestions(analysis: AnalysisResult) -> AnalysisResult:
@@ -45,9 +87,8 @@ def enhance_suggestions(analysis: AnalysisResult) -> AnalysisResult:
     """
     for ps in analysis.process_scores:
         for issue in ps.issues:
-            alt_map = ALTERNATIVE_PROCESS_MAP.get(issue.code, {})
-            alt_suggestion = alt_map.get(ps.process)
-            if alt_suggestion and issue.fix_suggestion:
+            alt_suggestion = alternative_for(analysis, issue.code, ps.process)
+            if alt_suggestion and issue.fix_suggestion and "\n\nAlternative: " not in issue.fix_suggestion:
                 issue.fix_suggestion += f"\n\nAlternative: {alt_suggestion}"
 
     return analysis
