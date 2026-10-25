@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useRef, useState } from "react";
 import { ArrowRight, ArrowUpRight, Menu, UserRound, X } from "lucide-react";
 import { SITE_TAGLINE, SITE_NAV, APP_HOME_HREF, SIGNUP_HREF } from "@/lib/site/navigation";
+import { authErrorMessage } from "@/lib/api-recovery";
 import { ANALYTICS_PREFERENCES_EVENT } from "@/lib/analytics";
 export { SITE_TAGLINE, SITE_NAV, PILOT_HREF, UPLOAD_HREF } from "@/lib/site/navigation";
 
@@ -29,17 +30,17 @@ export function SiteNav({ activeHref }: SiteNavProps) {
   const { user, usage } = useSiteSession();
   const [open, setOpen] = useState(false);
   const router = useRouter();
-  const [logoutError, setLogoutError] = useState(false);
+  const [logoutError, setLogoutError] = useState<string | null>(null);
   const toggle = useRef<HTMLButtonElement>(null);
   const active = activeHref ?? pathname;
   async function logout() {
-    setLogoutError(false);
+    setLogoutError(null);
     try {
       const res = await fetch("/api/auth/logout", { method: "POST" });
-      if (!res.ok) throw new Error("Logout failed");
+      if (!res.ok) throw new Error(authErrorMessage(res.status, await res.json().catch(() => ({})), "Could not log out. Please try again."));
       router.push("/");
       router.refresh();
-    } catch { setLogoutError(true); }
+    } catch (error) { setLogoutError(error instanceof Error ? error.message : "Could not log out. Please try again."); }
   }
   return <header className="cv-site-nav" data-signed-in={!!user} onKeyDown={event => { if (event.key === "Escape") { setOpen(false); toggle.current?.focus(); } }}>
     <a className="cv-skip" href="#main">Skip to content</a>
@@ -52,7 +53,7 @@ export function SiteNav({ activeHref }: SiteNavProps) {
       {user ? <>
         {usage && <span className="cv-checks">{usage.remaining} of {usage.cap} checks left</span>}
         <SiteCta className="cv-button cv-button-small cv-button-ink" />
-        <details className="cv-account"><summary aria-label="Account"><UserRound size={18} aria-hidden="true" /></summary><div><span>{user.email}</span><Link href="/settings">Account settings</Link><button type="button" onClick={logout}>Log out</button>{logoutError && <p role="alert">Could not log out. Please try again.</p>}</div></details>
+        <details className="cv-account"><summary aria-label="Account"><UserRound size={18} aria-hidden="true" /></summary><div><span>{user.email}</span><Link href="/settings">Account settings</Link><button type="button" onClick={logout}>Log out</button>{logoutError && <p role="alert">{logoutError}</p>}</div></details>
       </> : <><Link href="/login" className="cv-login-link">Log in</Link><SiteCta className="cv-button cv-button-small" /></>}
       <button ref={toggle} className="cv-menu-toggle" type="button" aria-label={open ? "Close navigation" : "Open navigation"} aria-expanded={open} aria-controls="site-navigation" onClick={() => setOpen(!open)}>{open ? <X /> : <Menu />}</button>
     </div>

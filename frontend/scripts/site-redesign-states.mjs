@@ -7,16 +7,20 @@ import { chromium } from 'playwright-core';
 // Deliberate boundary fixtures: exercise Next's real server/session/proxy code;
 // never send email or grant an actual account during a marketing UI check.
 let sendStatus = 503;
+let logoutStatus = 503;
 let receivedEmail;
+let receivedNext;
 const backend = createServer(async (req, res) => {
   res.setHeader('content-type', 'application/json');
   if (req.url === '/auth/me') {
     if (!req.headers.cookie?.includes('dash_session=site-test')) { res.statusCode=401; res.end('{}'); return; }
     res.end(JSON.stringify({ id: 1, email: 'engineer@factory.example', role: 'member', auth_provider: 'magic_link' }));
   } else if (req.url === '/auth/me/usage') res.end(JSON.stringify({ cap: 15, remaining: 12 }));
+  else if (req.url === '/auth/logout-all') { res.statusCode=logoutStatus; res.end('{}'); }
   else if (req.url === '/auth/magic/start') {
     let body=''; for await (const chunk of req) body+=chunk;
     receivedEmail=body;
+    receivedNext=(await new Response(body,{headers:{"content-type":req.headers["content-type"]}}).formData()).get("next");
     res.statusCode=sendStatus;
     res.end(sendStatus===200 ? '{"ok":true}' : '{"detail":{"message":"Email delivery is temporarily unavailable."}}');
   } else { res.statusCode=404;res.end('{}'); }
@@ -42,7 +46,7 @@ try {
   const context=await browser.newContext();
   const page=await context.newPage();
   await page.route('https://challenges.cloudflare.com/**',r=>r.fulfill({contentType:'application/javascript',body:`window.turnstile={render(el,opts){window.__token=opts;queueMicrotask(()=>opts.callback('ui-test-token'));return 'test'},reset(){queueMicrotask(()=>window.__token.callback('ui-test-token'))},remove(){}};`}));
-  await page.goto(base+'/signup');
+  await page.goto(base+'/signup?next=%2Fapp%2Fmany%3Fnew%3D1');
   const email=page.getByRole('textbox',{name:'Work email',exact:true});
   await page.getByText('Work emails get 15 free checks. Personal emails get 3.',{exact:true}).waitFor();
   await email.fill('person@gmail.com');
@@ -52,6 +56,7 @@ try {
   await page.getByRole('button',{name:'Try ScaleCAD free',exact:true}).click();
   await page.getByRole('alert').filter({hasText:'Email delivery is temporarily unavailable.'}).waitFor();
   assert.match(receivedEmail,/engineer@factory\.example/);
+  assert.equal(receivedNext, '/app/many?new=1');
   sendStatus=200;
   await page.getByRole('button',{name:'Try ScaleCAD free',exact:true}).click();
   await page.getByRole('heading',{name:'Check your inbox.',exact:true}).waitFor();
@@ -69,7 +74,7 @@ try {
   await fileForm.getByRole('textbox', {name:'Work email',exact:true}).fill('engineer@factory.example');
   await fileForm.getByRole('button', {name:'Try ScaleCAD free',exact:true}).click();
   await fileForm.getByRole('heading', {name:'Check your inbox.',exact:true}).waitFor();
-  assert.equal(await page.evaluate(()=>new Promise((resolve,reject)=>{const r=indexedDB.open('scalecad-pending-part',1);r.onsuccess=()=>{const db=r.result;const q=db.transaction('parts').objectStore('parts').get('pending');q.onsuccess=()=>{resolve(q.result.name);db.close();};q.onerror=reject;};r.onerror=reject;})), 'part.step');
+  assert.deepEqual(await page.evaluate(()=>new Promise((resolve,reject)=>{const r=indexedDB.open('scalecad-pending-part',1);r.onsuccess=()=>{const db=r.result;const q=db.transaction('parts').objectStore('parts').get('pending');q.onsuccess=()=>{resolve({name:q.result.name,email:q.result.email});db.close();};q.onerror=reject;};r.onerror=reject;})), {name:'part.step',email:'engineer@factory.example'});
   await page.getByRole('button',{name:'Use a different file'}).click();
   await page.getByRole('heading',{name:'Your part is ready.'}).waitFor({state:'hidden'});
   // With scripts disabled, the first response must already contain the signed-in navigation.
@@ -83,7 +88,20 @@ try {
   await authed.setViewportSize({width:320,height:740});
   assert(await authed.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1), 'Signed-in header fits 320px');
   await signed.close();
-  console.log('PASS: email tiers, real proxy errors/retry/success, reset, local CAD handoff, and server-rendered signed-in navigation');
+  await context.addCookies([{name:'dash_session',value:'site-test',url:base}]);
+  await page.goto(base);
+  await page.getByLabel('Account', {exact:true}).click();
+  await page.getByRole('button', {name:'Log out',exact:true}).click();
+  await page.getByRole('alert').filter({hasText:'This browser signed out'}).waitFor();
+  assert.equal((await context.cookies()).filter(c=>c.name==='dash_session').length,0);
+  logoutStatus=200;
+  await context.addCookies([{name:'dash_session',value:'site-test',url:base}]);
+  await page.goto(base);
+  await page.getByLabel('Account', {exact:true}).click();
+  await page.getByRole('button', {name:'Log out',exact:true}).click();
+  await page.locator('header[data-signed-in="false"]').waitFor();
+
+  console.log('PASS: email tiers, real proxy errors/retry/success, reset, local CAD handoff, server-rendered signed-in navigation, and logout success/failure');
 } finally {
   await browser?.close();
   app.kill('SIGTERM');
