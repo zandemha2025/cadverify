@@ -1,0 +1,39 @@
+{
+  "captured_at": "2026-10-10T19:53:01.321002+00:00",
+  "file_sha256": {
+    "integration-tests/readiness.py": "bff15421e45af4efdf9d75ef7141b09bfbbaf6c071b48443c6cfb37471122bae",
+    "integration-tests/registry.json": "f6bdbb0ed3fa36c85a8bd0741fe8c98f0fb3d3d5e3e96964226f4a30dc81da8c",
+    "integration-tests/tests/test_readiness.py": "c034030702ff3a9e340290d324828ae25e4d4eba1a57df774d53e3d96a39ed7e"
+  },
+  "results": [
+    {
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "integration-tests/tests",
+        "-v"
+      ],
+      "exit_code": 0,
+      "stderr": "test_artifact_path_cannot_escape_authorized_root (test_readiness.EvidenceAccountingTests.test_artifact_path_cannot_escape_authorized_root) ... ok\ntest_cli_rejects_without_writing_partial_matrix (test_readiness.EvidenceAccountingTests.test_cli_rejects_without_writing_partial_matrix) ... Evidence rejected; no report written: provider/workflow mismatch\nok\ntest_connected_flag_without_runtime_action_has_no_credit (test_readiness.EvidenceAccountingTests.test_connected_flag_without_runtime_action_has_no_credit) ... ok\ntest_different_source_builds_cannot_be_combined_into_workflow_credit (test_readiness.EvidenceAccountingTests.test_different_source_builds_cannot_be_combined_into_workflow_credit) ... ok\ntest_duplicate_and_unknown_receipts_stages_and_workflows_are_rejected (test_readiness.EvidenceAccountingTests.test_duplicate_and_unknown_receipts_stages_and_workflows_are_rejected) ... ok\ntest_evidence_paths_are_relative_and_matrix_is_portable (test_readiness.EvidenceAccountingTests.test_evidence_paths_are_relative_and_matrix_is_portable) ... ok\ntest_functional_action_requires_complete_workflow_checks (test_readiness.EvidenceAccountingTests.test_functional_action_requires_complete_workflow_checks) ... ok\ntest_keycloak_cannot_credit_okta (test_readiness.EvidenceAccountingTests.test_keycloak_cannot_credit_okta) ... ok\ntest_latest_observed_failure_removes_current_credit (test_readiness.EvidenceAccountingTests.test_latest_observed_failure_removes_current_credit) ... ok\ntest_missing_and_tampered_artifacts_are_rejected (test_readiness.EvidenceAccountingTests.test_missing_and_tampered_artifacts_are_rejected) ... ok\ntest_mock_fixture_and_simulator_passes_never_receive_real_credit (test_readiness.EvidenceAccountingTests.test_mock_fixture_and_simulator_passes_never_receive_real_credit) ... ok\ntest_mock_manifest_cannot_be_relabelled_vendor (test_readiness.EvidenceAccountingTests.test_mock_manifest_cannot_be_relabelled_vendor) ... ok\ntest_named_vendor_cannot_claim_self_hosted_oss_credit (test_readiness.EvidenceAccountingTests.test_named_vendor_cannot_claim_self_hosted_oss_credit) ... ok\ntest_no_evidence_is_zero_not_failure_or_known_zero_attempts (test_readiness.EvidenceAccountingTests.test_no_evidence_is_zero_not_failure_or_known_zero_attempts) ... ok\ntest_nonfinite_json_constants_are_rejected_in_run_and_reconciliation (test_readiness.EvidenceAccountingTests.test_nonfinite_json_constants_are_rejected_in_run_and_reconciliation) ... ok\ntest_real_oss_target_is_isolated_and_denominator_is_fixed (test_readiness.EvidenceAccountingTests.test_real_oss_target_is_isolated_and_denominator_is_fixed) ... ok\ntest_reconciliation_requires_zero_counts_and_equal_nonempty_snapshots (test_readiness.EvidenceAccountingTests.test_reconciliation_requires_zero_counts_and_equal_nonempty_snapshots) ... ok\ntest_simultaneous_contradictory_results_are_rejected (test_readiness.EvidenceAccountingTests.test_simultaneous_contradictory_results_are_rejected) ... ok\ntest_unknown_vendor_attempt_count_is_distinct_from_zero (test_readiness.EvidenceAccountingTests.test_unknown_vendor_attempt_count_is_distinct_from_zero) ... ok\ntest_vendor_malformed_stages_exit_two_without_traceback_or_output (test_readiness.EvidenceAccountingTests.test_vendor_malformed_stages_exit_two_without_traceback_or_output) ... ok\n\n----------------------------------------------------------------------\nRan 20 tests in 0.046s\n\nOK\n",
+      "stdout": ""
+    },
+    {
+      "command": [
+        "python3",
+        "-m",
+        "py_compile",
+        "integration-tests/readiness.py",
+        "integration-tests/environment/environment.py",
+        "integration-tests/environment/database_receipts.py",
+        "integration-tests/environment/verify_isolation.py"
+      ],
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": ""
+    }
+  ],
+  "scope": "Testing-tool guardrails and syntax only; no vendor readiness credit"
+}

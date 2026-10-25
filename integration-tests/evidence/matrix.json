@@ -1,0 +1,1654 @@
+{
+  "accepted_run_ids": [
+    "local-keycloak-basic-oidc-2026-10-10"
+  ],
+  "file_workflows": [
+    {
+      "id": "sap_manifest_csv",
+      "label": "SAP manifest CSV",
+      "network_coverage": "N/A",
+      "note": "Offline declared part, demand, program and material export. Synthetic CSV parsing/validation does not establish retrieval from or reconciliation with a real SAP system.",
+      "real_source_reconciliation": "NOT_DEMONSTRATED"
+    },
+    {
+      "id": "plm_manifest_csv",
+      "label": "PLM manifest CSV",
+      "network_coverage": "N/A",
+      "note": "Offline declared part registry export from a PLM/BOM system. Synthetic file validation does not establish retrieval from or reconciliation with a real PLM system.",
+      "real_source_reconciliation": "NOT_DEMONSTRATED"
+    },
+    {
+      "id": "ground_truth_csv",
+      "label": "Quote/actuals CSV (supplier quotes / ERP actuals)",
+      "network_coverage": "N/A",
+      "note": "Offline historical quote, invoice or actual-cost export. Synthetic validation does not establish reconciliation with approved real supplier quotes or ERP actual-cost records.",
+      "real_source_reconciliation": "NOT_DEMONSTRATED"
+    },
+    {
+      "id": "cad_file_import_export",
+      "label": "CAD file interchange (separate capability)",
+      "network_coverage": "N/A",
+      "note": "Separate CAD file import/export capability, not one of the three CSV connectors. Core file downloads and synthetic geometry QA are not source-system reconciliation and do not inflate external connection percentages.",
+      "real_source_reconciliation": "NOT_DEMONSTRATED"
+    }
+  ],
+  "method": "six_stage_observed_workflow_coverage",
+  "not_a_success_probability": true,
+  "schema_version": 1,
+  "scope": "Coverage of supplied, operator-reviewed evidence; no live network/provenance certification.",
+  "workflows": [
+    {
+      "allowed_real_classes": [
+        "vendor_sandbox",
+        "customer_test_tenant"
+      ],
+      "denominator": 6,
+      "evidence_state": "NOT_DEMONSTRATED",
+      "functional_checks": [
+        "product_lookup",
+        "full_bom_preview"
+      ],
+      "id": "sap_s4hana_product_bom_preview",
+      "label": "SAP S/4HANA product and BOM preview",
+      "mock_fixture_runs": 0,
+      "note": "Product/BOM preview only; assembly import is not promised by this workflow.",
+      "numerator": 0,
+      "other_context_run_ids": [],
+      "provider_id": "sap",
+      "real_system_classes": [],
+      "real_system_percentage": 0.0,
+      "scope": "customer_advertised",
+      "selected_evidence_context": null,
+      "stages": [
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "configuration_trust",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "authentication_transport",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "functional_action",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "source_result_reconciliation",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "failure_handling",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "recovery_retry",
+          "status": "NOT_DEMONSTRATED"
+        }
+      ],
+      "vendor_attempts": {
+        "known_count": 0,
+        "status": "UNKNOWN",
+        "unknown_runs": 0
+      }
+    },
+    {
+      "allowed_real_classes": [
+        "vendor_sandbox",
+        "customer_test_tenant"
+      ],
+      "denominator": 6,
+      "evidence_state": "NOT_DEMONSTRATED",
+      "functional_checks": [
+        "part_lookup",
+        "full_bom_import"
+      ],
+      "id": "windchill_part_bom_import",
+      "label": "PTC Windchill part/BOM import",
+      "mock_fixture_runs": 0,
+      "numerator": 0,
+      "other_context_run_ids": [],
+      "provider_id": "ptc_windchill",
+      "real_system_classes": [],
+      "real_system_percentage": 0.0,
+      "scope": "customer_advertised",
+      "selected_evidence_context": null,
+      "stages": [
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "configuration_trust",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "authentication_transport",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "functional_action",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "source_result_reconciliation",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "failure_handling",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "recovery_retry",
+          "status": "NOT_DEMONSTRATED"
+        }
+      ],
+      "vendor_attempts": {
+        "known_count": 0,
+        "status": "UNKNOWN",
+        "unknown_runs": 0
+      }
+    },
+    {
+      "allowed_real_classes": [
+        "vendor_sandbox",
+        "customer_test_tenant"
+      ],
+      "denominator": 6,
+      "evidence_state": "NOT_DEMONSTRATED",
+      "functional_checks": [
+        "provider_login",
+        "signed_assertion_callback",
+        "mapped_user_session"
+      ],
+      "id": "okta_saml",
+      "label": "Okta SAML sign-in",
+      "mock_fixture_runs": 0,
+      "numerator": 0,
+      "other_context_run_ids": [],
+      "provider_id": "okta",
+      "real_system_classes": [],
+      "real_system_percentage": 0.0,
+      "scope": "customer_advertised",
+      "selected_evidence_context": null,
+      "stages": [
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "configuration_trust",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "authentication_transport",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "functional_action",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "source_result_reconciliation",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "failure_handling",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "recovery_retry",
+          "status": "NOT_DEMONSTRATED"
+        }
+      ],
+      "vendor_attempts": {
+        "known_count": 0,
+        "status": "UNKNOWN",
+        "unknown_runs": 0
+      }
+    },
+    {
+      "allowed_real_classes": [
+        "vendor_sandbox",
+        "customer_test_tenant"
+      ],
+      "denominator": 6,
+      "evidence_state": "NOT_DEMONSTRATED",
+      "functional_checks": [
+        "provider_login",
+        "signed_assertion_callback",
+        "mapped_user_session"
+      ],
+      "id": "entra_saml",
+      "label": "Microsoft Entra SAML sign-in",
+      "mock_fixture_runs": 0,
+      "numerator": 0,
+      "other_context_run_ids": [],
+      "provider_id": "microsoft_entra",
+      "real_system_classes": [],
+      "real_system_percentage": 0.0,
+      "scope": "customer_advertised",
+      "selected_evidence_context": null,
+      "stages": [
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "configuration_trust",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "authentication_transport",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "functional_action",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "source_result_reconciliation",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "failure_handling",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "recovery_retry",
+          "status": "NOT_DEMONSTRATED"
+        }
+      ],
+      "vendor_attempts": {
+        "known_count": 0,
+        "status": "UNKNOWN",
+        "unknown_runs": 0
+      }
+    },
+    {
+      "allowed_real_classes": [
+        "vendor_sandbox",
+        "customer_test_tenant"
+      ],
+      "denominator": 6,
+      "evidence_state": "NOT_DEMONSTRATED",
+      "functional_checks": [
+        "provider_login",
+        "signed_assertion_callback",
+        "mapped_user_session"
+      ],
+      "id": "pingfederate_saml",
+      "label": "PingFederate SAML sign-in",
+      "mock_fixture_runs": 0,
+      "numerator": 0,
+      "other_context_run_ids": [],
+      "provider_id": "pingfederate",
+      "real_system_classes": [],
+      "real_system_percentage": 0.0,
+      "scope": "customer_advertised",
+      "selected_evidence_context": null,
+      "stages": [
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "configuration_trust",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "authentication_transport",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "functional_action",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "source_result_reconciliation",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "failure_handling",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "recovery_retry",
+          "status": "NOT_DEMONSTRATED"
+        }
+      ],
+      "vendor_attempts": {
+        "known_count": 0,
+        "status": "UNKNOWN",
+        "unknown_runs": 0
+      }
+    },
+    {
+      "allowed_real_classes": [
+        "vendor_sandbox",
+        "customer_test_tenant"
+      ],
+      "denominator": 6,
+      "evidence_state": "NOT_DEMONSTRATED",
+      "functional_checks": [
+        "provider_login",
+        "authorization_code_callback",
+        "mapped_user_session"
+      ],
+      "id": "okta_oidc",
+      "label": "Okta OIDC sign-in",
+      "mock_fixture_runs": 0,
+      "numerator": 0,
+      "other_context_run_ids": [],
+      "provider_id": "okta",
+      "real_system_classes": [],
+      "real_system_percentage": 0.0,
+      "scope": "customer_advertised",
+      "selected_evidence_context": null,
+      "stages": [
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "configuration_trust",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "authentication_transport",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "functional_action",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "source_result_reconciliation",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "failure_handling",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "recovery_retry",
+          "status": "NOT_DEMONSTRATED"
+        }
+      ],
+      "vendor_attempts": {
+        "known_count": 0,
+        "status": "UNKNOWN",
+        "unknown_runs": 0
+      }
+    },
+    {
+      "allowed_real_classes": [
+        "vendor_sandbox",
+        "customer_test_tenant"
+      ],
+      "denominator": 6,
+      "evidence_state": "NOT_DEMONSTRATED",
+      "functional_checks": [
+        "provider_login",
+        "authorization_code_callback",
+        "mapped_user_session"
+      ],
+      "id": "entra_oidc",
+      "label": "Microsoft Entra OIDC sign-in",
+      "mock_fixture_runs": 0,
+      "numerator": 0,
+      "other_context_run_ids": [],
+      "provider_id": "microsoft_entra",
+      "real_system_classes": [],
+      "real_system_percentage": 0.0,
+      "scope": "customer_advertised",
+      "selected_evidence_context": null,
+      "stages": [
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "configuration_trust",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "authentication_transport",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "functional_action",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "source_result_reconciliation",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "failure_handling",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "recovery_retry",
+          "status": "NOT_DEMONSTRATED"
+        }
+      ],
+      "vendor_attempts": {
+        "known_count": 0,
+        "status": "UNKNOWN",
+        "unknown_runs": 0
+      }
+    },
+    {
+      "allowed_real_classes": [
+        "vendor_sandbox",
+        "customer_test_tenant"
+      ],
+      "denominator": 6,
+      "evidence_state": "NOT_DEMONSTRATED",
+      "functional_checks": [
+        "provider_login",
+        "authorization_code_callback",
+        "mapped_user_session"
+      ],
+      "id": "pingfederate_oidc",
+      "label": "PingFederate OIDC sign-in",
+      "mock_fixture_runs": 0,
+      "numerator": 0,
+      "other_context_run_ids": [],
+      "provider_id": "pingfederate",
+      "real_system_classes": [],
+      "real_system_percentage": 0.0,
+      "scope": "customer_advertised",
+      "selected_evidence_context": null,
+      "stages": [
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "configuration_trust",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "authentication_transport",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "functional_action",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "source_result_reconciliation",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "failure_handling",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "recovery_retry",
+          "status": "NOT_DEMONSTRATED"
+        }
+      ],
+      "vendor_attempts": {
+        "known_count": 0,
+        "status": "UNKNOWN",
+        "unknown_runs": 0
+      }
+    },
+    {
+      "allowed_real_classes": [
+        "vendor_sandbox",
+        "customer_test_tenant"
+      ],
+      "denominator": 6,
+      "evidence_state": "NOT_DEMONSTRATED",
+      "functional_checks": [
+        "create_user",
+        "update_user",
+        "group_assignment",
+        "deactivate_user",
+        "reactivate_user"
+      ],
+      "id": "okta_scim",
+      "label": "Okta SCIM provisioning lifecycle",
+      "mock_fixture_runs": 0,
+      "numerator": 0,
+      "other_context_run_ids": [],
+      "provider_id": "okta",
+      "real_system_classes": [],
+      "real_system_percentage": 0.0,
+      "scope": "customer_advertised",
+      "selected_evidence_context": null,
+      "stages": [
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "configuration_trust",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "authentication_transport",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "functional_action",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "source_result_reconciliation",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "failure_handling",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "recovery_retry",
+          "status": "NOT_DEMONSTRATED"
+        }
+      ],
+      "vendor_attempts": {
+        "known_count": 0,
+        "status": "UNKNOWN",
+        "unknown_runs": 0
+      }
+    },
+    {
+      "allowed_real_classes": [
+        "vendor_sandbox",
+        "customer_test_tenant"
+      ],
+      "denominator": 6,
+      "evidence_state": "NOT_DEMONSTRATED",
+      "functional_checks": [
+        "create_user",
+        "update_user",
+        "group_assignment",
+        "deactivate_user",
+        "reactivate_user"
+      ],
+      "id": "entra_scim",
+      "label": "Microsoft Entra SCIM provisioning lifecycle",
+      "mock_fixture_runs": 0,
+      "numerator": 0,
+      "other_context_run_ids": [],
+      "provider_id": "microsoft_entra",
+      "real_system_classes": [],
+      "real_system_percentage": 0.0,
+      "scope": "customer_advertised",
+      "selected_evidence_context": null,
+      "stages": [
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "configuration_trust",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "authentication_transport",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "functional_action",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "source_result_reconciliation",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "failure_handling",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "recovery_retry",
+          "status": "NOT_DEMONSTRATED"
+        }
+      ],
+      "vendor_attempts": {
+        "known_count": 0,
+        "status": "UNKNOWN",
+        "unknown_runs": 0
+      }
+    },
+    {
+      "allowed_real_classes": [
+        "vendor_sandbox",
+        "customer_test_tenant"
+      ],
+      "denominator": 6,
+      "evidence_state": "NOT_DEMONSTRATED",
+      "functional_checks": [
+        "provider_acceptance",
+        "recipient_delivery",
+        "magic_link_redeemed"
+      ],
+      "id": "resend_magic_link",
+      "label": "Resend magic-link email delivery and use",
+      "mock_fixture_runs": 0,
+      "numerator": 0,
+      "other_context_run_ids": [],
+      "provider_id": "resend",
+      "real_system_classes": [],
+      "real_system_percentage": 0.0,
+      "scope": "customer_advertised",
+      "selected_evidence_context": null,
+      "stages": [
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "configuration_trust",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "authentication_transport",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "functional_action",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "source_result_reconciliation",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "failure_handling",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "recovery_retry",
+          "status": "NOT_DEMONSTRATED"
+        }
+      ],
+      "vendor_attempts": {
+        "known_count": 0,
+        "status": "UNKNOWN",
+        "unknown_runs": 0
+      }
+    },
+    {
+      "allowed_real_classes": [
+        "vendor_sandbox",
+        "customer_test_tenant"
+      ],
+      "denominator": 6,
+      "evidence_state": "NOT_DEMONSTRATED",
+      "functional_checks": [
+        "provider_acceptance",
+        "recipient_delivery",
+        "invitation_accepted"
+      ],
+      "id": "resend_invitations",
+      "label": "Resend invitation email delivery and acceptance",
+      "mock_fixture_runs": 0,
+      "numerator": 0,
+      "other_context_run_ids": [],
+      "provider_id": "resend",
+      "real_system_classes": [],
+      "real_system_percentage": 0.0,
+      "scope": "customer_advertised",
+      "selected_evidence_context": null,
+      "stages": [
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "configuration_trust",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "authentication_transport",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "functional_action",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "source_result_reconciliation",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "failure_handling",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "recovery_retry",
+          "status": "NOT_DEMONSTRATED"
+        }
+      ],
+      "vendor_attempts": {
+        "known_count": 0,
+        "status": "UNKNOWN",
+        "unknown_runs": 0
+      }
+    },
+    {
+      "allowed_real_classes": [
+        "vendor_sandbox",
+        "customer_test_tenant"
+      ],
+      "denominator": 6,
+      "evidence_state": "NOT_DEMONSTRATED",
+      "functional_checks": [
+        "provider_acceptance",
+        "recipient_delivery",
+        "expected_pilot_fields"
+      ],
+      "id": "resend_pilot_alert",
+      "label": "Resend pilot-intake alert delivery",
+      "mock_fixture_runs": 0,
+      "numerator": 0,
+      "other_context_run_ids": [],
+      "provider_id": "resend",
+      "real_system_classes": [],
+      "real_system_percentage": 0.0,
+      "scope": "customer_advertised",
+      "selected_evidence_context": null,
+      "stages": [
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "configuration_trust",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "authentication_transport",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "functional_action",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "source_result_reconciliation",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "failure_handling",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "recovery_retry",
+          "status": "NOT_DEMONSTRATED"
+        }
+      ],
+      "vendor_attempts": {
+        "known_count": 0,
+        "status": "UNKNOWN",
+        "unknown_runs": 0
+      }
+    },
+    {
+      "allowed_real_classes": [
+        "vendor_sandbox",
+        "customer_test_tenant",
+        "self_hosted_oss_test"
+      ],
+      "denominator": 6,
+      "evidence_state": "NOT_DEMONSTRATED",
+      "functional_checks": [
+        "batch_completion_payload_delivered",
+        "receiver_payload_validated"
+      ],
+      "id": "batch_webhooks",
+      "label": "Batch webhook delivery and retries",
+      "mock_fixture_runs": 0,
+      "numerator": 0,
+      "other_context_run_ids": [],
+      "provider_id": "customer_webhook_receiver",
+      "real_system_classes": [],
+      "real_system_percentage": 0.0,
+      "scope": "customer_advertised",
+      "selected_evidence_context": null,
+      "stages": [
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "configuration_trust",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "authentication_transport",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "functional_action",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "source_result_reconciliation",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "failure_handling",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "recovery_retry",
+          "status": "NOT_DEMONSTRATED"
+        }
+      ],
+      "vendor_attempts": {
+        "known_count": 0,
+        "status": "UNKNOWN",
+        "unknown_runs": 0
+      }
+    },
+    {
+      "allowed_real_classes": [
+        "vendor_sandbox",
+        "customer_test_tenant"
+      ],
+      "denominator": 6,
+      "evidence_state": "NOT_DEMONSTRATED",
+      "functional_checks": [
+        "real_browser_challenge",
+        "provider_siteverify",
+        "protected_action_completed"
+      ],
+      "id": "turnstile_magic_link",
+      "label": "Cloudflare Turnstile magic-link challenge",
+      "mock_fixture_runs": 0,
+      "numerator": 0,
+      "other_context_run_ids": [],
+      "provider_id": "cloudflare_turnstile",
+      "real_system_classes": [],
+      "real_system_percentage": 0.0,
+      "scope": "customer_advertised",
+      "selected_evidence_context": null,
+      "stages": [
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "configuration_trust",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "authentication_transport",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "functional_action",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "source_result_reconciliation",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "failure_handling",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "recovery_retry",
+          "status": "NOT_DEMONSTRATED"
+        }
+      ],
+      "vendor_attempts": {
+        "known_count": 0,
+        "status": "UNKNOWN",
+        "unknown_runs": 0
+      }
+    },
+    {
+      "allowed_real_classes": [
+        "vendor_sandbox",
+        "customer_test_tenant"
+      ],
+      "denominator": 6,
+      "evidence_state": "NOT_DEMONSTRATED",
+      "functional_checks": [
+        "real_browser_challenge",
+        "provider_siteverify",
+        "protected_action_completed"
+      ],
+      "id": "turnstile_pilot_intake",
+      "label": "Cloudflare Turnstile pilot-intake challenge",
+      "mock_fixture_runs": 0,
+      "numerator": 0,
+      "other_context_run_ids": [],
+      "provider_id": "cloudflare_turnstile",
+      "real_system_classes": [],
+      "real_system_percentage": 0.0,
+      "scope": "customer_advertised",
+      "selected_evidence_context": null,
+      "stages": [
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "configuration_trust",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "authentication_transport",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "functional_action",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "source_result_reconciliation",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "failure_handling",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "recovery_retry",
+          "status": "NOT_DEMONSTRATED"
+        }
+      ],
+      "vendor_attempts": {
+        "known_count": 0,
+        "status": "UNKNOWN",
+        "unknown_runs": 0
+      }
+    },
+    {
+      "allowed_real_classes": [
+        "vendor_sandbox",
+        "customer_test_tenant"
+      ],
+      "denominator": 6,
+      "evidence_state": "NOT_DEMONSTRATED",
+      "functional_checks": [
+        "prediction_created",
+        "prediction_completed",
+        "mesh_imported"
+      ],
+      "id": "replicate_triposr",
+      "label": "Replicate TripoSR reconstruction",
+      "mock_fixture_runs": 0,
+      "note": "Optional disabled workflow; no readiness credit is inferred from disabled status.",
+      "numerator": 0,
+      "other_context_run_ids": [],
+      "provider_id": "replicate",
+      "real_system_classes": [],
+      "real_system_percentage": 0.0,
+      "scope": "optional_disabled",
+      "selected_evidence_context": null,
+      "stages": [
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "configuration_trust",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "authentication_transport",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "functional_action",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "source_result_reconciliation",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "failure_handling",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "recovery_retry",
+          "status": "NOT_DEMONSTRATED"
+        }
+      ],
+      "vendor_attempts": {
+        "known_count": 0,
+        "status": "UNKNOWN",
+        "unknown_runs": 0
+      }
+    },
+    {
+      "allowed_real_classes": [
+        "vendor_sandbox",
+        "customer_test_tenant"
+      ],
+      "denominator": 6,
+      "evidence_state": "NOT_DEMONSTRATED",
+      "functional_checks": [
+        "provider_login",
+        "authorization_code_callback",
+        "mapped_user_session"
+      ],
+      "id": "google_oauth",
+      "label": "Google OAuth sign-in",
+      "mock_fixture_runs": 0,
+      "numerator": 0,
+      "other_context_run_ids": [],
+      "provider_id": "google",
+      "real_system_classes": [],
+      "real_system_percentage": 0.0,
+      "scope": "implemented_not_advertised",
+      "selected_evidence_context": null,
+      "stages": [
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "configuration_trust",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "authentication_transport",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "functional_action",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "source_result_reconciliation",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "failure_handling",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "recovery_retry",
+          "status": "NOT_DEMONSTRATED"
+        }
+      ],
+      "vendor_attempts": {
+        "known_count": 0,
+        "status": "UNKNOWN",
+        "unknown_runs": 0
+      }
+    },
+    {
+      "allowed_real_classes": [
+        "self_hosted_oss_test"
+      ],
+      "denominator": 6,
+      "evidence_state": "PARTIALLY_DEMONSTRATED",
+      "functional_checks": [
+        "provider_login",
+        "authorization_code_callback",
+        "mapped_user_session"
+      ],
+      "id": "keycloak_oidc",
+      "label": "Local Keycloak basic OIDC sign-in (HTTP loopback)",
+      "mock_fixture_runs": 0,
+      "note": "Isolated local HTTP loopback development target only. Basic login and immutable identity reconciliation cover issuer, subject and email; Viewer is the application's default policy. No provider group-to-role or organization mapping is configured or credited. This never credits Okta, Entra, PingFederate or production deployment readiness.",
+      "numerator": 4,
+      "other_context_run_ids": [],
+      "provider_id": "keycloak",
+      "real_system_classes": [
+        "self_hosted_oss_test"
+      ],
+      "real_system_percentage": 66.67,
+      "scope": "local_test_target",
+      "selected_evidence_context": {
+        "environment": {
+          "base_url": "http://localhost:18080/realms/scalecad-integration",
+          "id": "sc-integration-local-keycloak-2026-10-10"
+        },
+        "environment_class": "self_hosted_oss_test",
+        "latest_completed_at": "2026-10-10T19:49:43.103849+00:00",
+        "source": {
+          "build_id": "c52267285f622237250306b81ae24db1da1759c9",
+          "commit": "c52267285f622237250306b81ae24db1da1759c9"
+        }
+      },
+      "stages": [
+        {
+          "environment_class": "self_hosted_oss_test",
+          "evidence_path": "2026-10-10-keycloak/actual-run.json",
+          "mock_fixture_passes": 0,
+          "real_system_credit": true,
+          "run_id": "local-keycloak-basic-oidc-2026-10-10",
+          "stage_id": "configuration_trust",
+          "status": "PASS"
+        },
+        {
+          "environment_class": "self_hosted_oss_test",
+          "evidence_path": "2026-10-10-keycloak/actual-run.json",
+          "mock_fixture_passes": 0,
+          "real_system_credit": true,
+          "run_id": "local-keycloak-basic-oidc-2026-10-10",
+          "stage_id": "authentication_transport",
+          "status": "PASS"
+        },
+        {
+          "environment_class": "self_hosted_oss_test",
+          "evidence_path": "2026-10-10-keycloak/actual-run.json",
+          "mock_fixture_passes": 0,
+          "real_system_credit": true,
+          "run_id": "local-keycloak-basic-oidc-2026-10-10",
+          "stage_id": "functional_action",
+          "status": "PASS"
+        },
+        {
+          "environment_class": "self_hosted_oss_test",
+          "evidence_path": "2026-10-10-keycloak/actual-run.json",
+          "mock_fixture_passes": 0,
+          "real_system_credit": true,
+          "run_id": "local-keycloak-basic-oidc-2026-10-10",
+          "stage_id": "source_result_reconciliation",
+          "status": "PASS"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "failure_handling",
+          "status": "NOT_DEMONSTRATED"
+        },
+        {
+          "environment_class": null,
+          "evidence_path": null,
+          "mock_fixture_passes": 0,
+          "real_system_credit": false,
+          "run_id": null,
+          "stage_id": "recovery_retry",
+          "status": "NOT_DEMONSTRATED"
+        }
+      ],
+      "vendor_attempts": {
+        "known_count": 0,
+        "status": "KNOWN",
+        "unknown_runs": 0
+      }
+    }
+  ]
+}

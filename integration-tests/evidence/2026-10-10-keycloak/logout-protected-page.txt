@@ -1,0 +1,24 @@
+Browser tab: 989204249, Title: "ScaleCad — Know what you can make", URL: "http://localhost:18300/login?next=%2Fsettings%2Fsecurity".
+1 AXWebArea ScaleCad — Know what you can make, URL: localhost:18300/login?next=%2Fsettings%2Fsecurity
+	2 container
+		3 link Description: Skip to content, Value: localhost:18300/login?next=%2Fsettings%2Fsecurity#main
+		4 link Description: ScaleCad home, Value: localhost:18300/
+		5 container Description: Primary, ID: site-navigation
+			6 link Description: Workflows, Value: localhost:18300/teams
+			7 link Description: How it works, Value: localhost:18300/method
+			8 link Description: Platform, Value: localhost:18300/platform
+			9 link Description: Security, Value: localhost:18300/security
+			10 link Description: Log in, Value: localhost:18300/login
+			11 link Description: Try a sample, Value: localhost:18300/sample
+	12 container
+		13 text Secure workspace
+		14 heading Log in to ScaleCad, Value: 1
+			15 text Log in to ScaleCad
+		16 text Continue through your organization's approved identity provider.
+		17 link Description: Continue with enterprise SSO, Value: localhost:18800/auth/oidc/login
+		18 text Access is managed by your organization administrator.
+	19 container Notifications alt+T
+	20 pop up button (collapsed) Description: Open Next.js Dev Tools, ID: next-logo, Secondary Actions: Expand
+		21 image
+
+The focused UI element is 1 AXWebArea ScaleCad — Know what you can make, URL: localhost:18300/login?next=%2Fsettings%2Fsecurity

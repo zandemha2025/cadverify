@@ -1,0 +1,109 @@
+{
+  "captured_at": "2026-10-10T19:48:00.404771+00:00",
+  "result": "PASS",
+  "source_revision": "c52267285f622237250306b81ae24db1da1759c9",
+  "checks": [
+    "no inherited provider credentials",
+    "storage entirely in ignored isolated state",
+    "secret file permissions 600 and directory 700",
+    "all Docker listeners loopback only",
+    "all Docker volumes project scoped",
+    "API/worker/DB/Redis healthy",
+    "actual Keycloak discovery"
+  ],
+  "runtime": [
+    {
+      "service": "postgres",
+      "container_id": "2c9b4a416e0638c1d8ea0f8b2a17a98b11b8eb44f2b1b050b892069b325e9197",
+      "image": "postgres:16-alpine",
+      "image_id": "sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685",
+      "repo_digests": [
+        "postgres@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685"
+      ],
+      "port_bindings": {
+        "5432/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": "18832"
+          }
+        ]
+      },
+      "mounts": [
+        {
+          "Type": "volume",
+          "Name": "sc-integration-local_postgres_data",
+          "Destination": "/var/lib/postgresql/data",
+          "RW": true
+        }
+      ]
+    },
+    {
+      "service": "redis",
+      "container_id": "30cbaae7c3a5eacde8f551df3d451556c76606b48cb82d24e1faf218d909fd38",
+      "image": "redis:7-alpine",
+      "image_id": "sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf",
+      "repo_digests": [
+        "redis@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf"
+      ],
+      "port_bindings": {
+        "6379/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": "18879"
+          }
+        ]
+      },
+      "mounts": [
+        {
+          "Type": "volume",
+          "Name": "sc-integration-local_redis_data",
+          "Destination": "/data",
+          "RW": true
+        }
+      ]
+    },
+    {
+      "service": "keycloak",
+      "container_id": "5d75065c46397ed17ac86876408a07cc436dc2ffe22506b0a9633f8cd4706414",
+      "image": "quay.io/keycloak/keycloak:26.8.0",
+      "image_id": "sha256:27b3230fbabb8c9ff3c66c864cf09dcd8a41aca82e5100679d109ef0eeb05741",
+      "repo_digests": [
+        "quay.io/keycloak/keycloak@sha256:27b3230fbabb8c9ff3c66c864cf09dcd8a41aca82e5100679d109ef0eeb05741"
+      ],
+      "port_bindings": {
+        "8080/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": "18080"
+          }
+        ]
+      },
+      "mounts": [
+        {
+          "Type": "volume",
+          "Name": "sc-integration-local_keycloak_data",
+          "Destination": "/opt/keycloak/data",
+          "RW": true
+        },
+        {
+          "Type": "bind",
+          "Name": null,
+          "Destination": "/opt/keycloak/data/import",
+          "RW": false
+        }
+      ]
+    }
+  ],
+  "configuration_sha256": {
+    "compose.yml": "6de9be5bb1614b8226b249a1cbe4087d1f0d125eabacbed92e11b41eb74edfe3",
+    "environment.py": "c1eed10061763af9887e22d26da8b5b0c508f5d6194b7f3b279bf9e3784c48ad",
+    "verify_isolation.py": "e65fe22e6f10deb5e62e87b8f0750627ac80bc3ea8f0171d1c36f503aa62a7ce"
+  },
+  "boundaries": [
+    "local HTTP only",
+    "Next development server",
+    "not vendor-specific certification",
+    "no SAP/Windchill/Okta/Entra/Ping tenant connected",
+    "no outbound email provider configured"
+  ]
+}

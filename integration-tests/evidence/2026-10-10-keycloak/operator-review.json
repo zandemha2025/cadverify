@@ -1,0 +1,20 @@
+{
+  "limits": [
+    "Only basic local OIDC identity workflow. HTTP loopback and Next development runtime.",
+    "Wrong provider password and normal signout/relogin are retained observations, but do not establish ScaleCad rejection/outage handling and recovery stages.",
+    "No state/nonce/replay/issuer-negative, provider outage, group-role mapping, SCIM offboarding or production HTTPS test.",
+    "No claim that every platform surface in this new local environment passed. Quota UI said unavailable; direct browser JSON navigation was blocked by client. Actual UI account and independent database read-back prove identity.",
+    "No named vendor credit; no customer records or outbound email."
+  ],
+  "observations": [
+    "CUA browser followed ScaleCad enterprise SSO to actual Keycloak UI; invalid password rejected, then valid password completed authorization code callback.",
+    "Account menu showed integration.qa@scalecad.invalid and Viewer.",
+    "ScaleCad sign-out redirected protected security page to login. Fresh Keycloak SSO completed second app login.",
+    "Independent Keycloak admin read-back recorded LOGIN_ERROR, two LOGIN and two CODE_TO_TOKEN events. Maintenance admin token was neither retained nor counted as app authentication.",
+    "Read-only ScaleCad PostgreSQL query found exactly one identity and one email account, with matching actual issuer, subject and email.",
+    "Actual default user role viewer observed; own-workspace admin membership is an app provisioning outcome, not a Keycloak group-to-role mapping."
+  ],
+  "reviewed_at": "2026-10-10T19:49:43.103849+00:00",
+  "reviewer": "Codex engineering operator",
+  "source_commit": "c52267285f622237250306b81ae24db1da1759c9"
+}

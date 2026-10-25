@@ -1,0 +1,121 @@
+{
+  "audit_events": [
+    {
+      "action": "api_key.created",
+      "detail_allowlisted": {},
+      "id": 1,
+      "org_id": "01M4KNGPR2MCC6XAHZQWGKZYN2",
+      "resource_id": "1",
+      "resource_type": "api_key",
+      "timestamp": "2026-10-10T19:44:24.312842+00:00",
+      "user_id": 1
+    },
+    {
+      "action": "user.provisioned",
+      "detail_allowlisted": {
+        "auth_provider": "oidc",
+        "role": "viewer"
+      },
+      "id": 2,
+      "org_id": "01M4KNGPR2MCC6XAHZQWGKZYN2",
+      "resource_id": "1",
+      "resource_type": "user",
+      "timestamp": "2026-10-10T19:44:24.312842+00:00",
+      "user_id": 1
+    },
+    {
+      "action": "auth.login",
+      "detail_allowlisted": {
+        "auth_provider": "oidc",
+        "issuer": "http://localhost:18080/realms/scalecad-integration"
+      },
+      "id": 3,
+      "org_id": "01M4KNGPR2MCC6XAHZQWGKZYN2",
+      "resource_id": null,
+      "resource_type": "session",
+      "timestamp": "2026-10-10T19:44:24.312842+00:00",
+      "user_id": 1
+    },
+    {
+      "action": "user.sessions_revoked",
+      "detail_allowlisted": {},
+      "id": 4,
+      "org_id": "01M4KNGPR2MCC6XAHZQWGKZYN2",
+      "resource_id": "1",
+      "resource_type": "user",
+      "timestamp": "2026-10-10T19:45:13.831201+00:00",
+      "user_id": 1
+    },
+    {
+      "action": "auth.login",
+      "detail_allowlisted": {
+        "auth_provider": "oidc",
+        "issuer": "http://localhost:18080/realms/scalecad-integration"
+      },
+      "id": 5,
+      "org_id": "01M4KNGPR2MCC6XAHZQWGKZYN2",
+      "resource_id": null,
+      "resource_type": "session",
+      "timestamp": "2026-10-10T19:45:22.633975+00:00",
+      "user_id": 1
+    }
+  ],
+  "captured_at": "2026-10-10T19:48:23.442020+00:00",
+  "database_read_only": true,
+  "identities": [
+    {
+      "auth_provider": "oidc",
+      "created_at": "2026-10-10T19:44:24.312842+00:00",
+      "email": "integration.qa@scalecad.invalid",
+      "id": 1,
+      "is_active": true,
+      "issuer": "http://localhost:18080/realms/scalecad-integration",
+      "last_login_at": "2026-10-10T19:45:22.633975+00:00",
+      "provider": "oidc",
+      "role": "viewer",
+      "session_version": 1,
+      "subject": "ba7b6d4f-3c01-4309-abe2-ec582c13dcc6",
+      "user_id": 1
+    }
+  ],
+  "memberships": [
+    {
+      "created_at": "2026-10-10T19:44:24.312842+00:00",
+      "id": "01M4KNGPR3B0RT1KRRGP08MV59",
+      "org_id": "01M4KNGPR2MCC6XAHZQWGKZYN2",
+      "org_role": "admin",
+      "user_id": 1
+    }
+  ],
+  "provider_receipt_artifact": "keycloak-provider-receipts.json",
+  "provider_receipt_sha256": "db0ea8fbb05376bb98628404fae7a396e773bd866fb4efc64a02940205078ab8",
+  "reconciliation": {
+    "exactly_one_email_account": true,
+    "exactly_one_identity": true,
+    "group_mapping_claim": "not tested; no group-to-role mapping was created",
+    "issuer_subject_email_match": true,
+    "provider_login_receipt_count": 2,
+    "provider_wrong_password_receipt_count": 1
+  },
+  "repository_revision": "c52267285f622237250306b81ae24db1da1759c9",
+  "source_identity": {
+    "email": "integration.qa@scalecad.invalid",
+    "email_verified": true,
+    "groups": [
+      "/integration-testers"
+    ],
+    "issuer": "http://localhost:18080/realms/scalecad-integration",
+    "subject": "ba7b6d4f-3c01-4309-abe2-ec582c13dcc6"
+  },
+  "source_revision": "c52267285f622237250306b81ae24db1da1759c9",
+  "users": [
+    {
+      "auth_provider": "oidc",
+      "email": "integration.qa@scalecad.invalid",
+      "id": 1,
+      "is_active": true,
+      "role": "viewer",
+      "session_version": 1
+    }
+  ]
+}
