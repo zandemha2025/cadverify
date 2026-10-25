@@ -200,6 +200,11 @@ def assert_production_operations() -> None:
                 "regulated production prohibits the external SENTRY_DSN sink; "
                 "use the in-boundary OTLP collector"
             )
+        if _enabled("LINK_IMPORT_ENABLED"):
+            raise RuntimeError(
+                "regulated production keeps import from a link off; set "
+                "LINK_IMPORT_ENABLED=0"
+            )
 
     if _enabled("PRODUCTION_TLS_REQUIRED"):
         for origin_var in ("DASHBOARD_ORIGIN", "API_ORIGIN"):

@@ -25,7 +25,7 @@ import logging
 import math
 import os
 import re
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import date
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -452,6 +452,9 @@ def row_to_public(r: GroundTruthRecordRow) -> dict:
         "stand_in": r.stand_in,
         "part_path": r.part_path,
         "notes": r.notes,
+        "part_number": r.part_number,
+        "machine": r.machine,
+        "match_basis": r.match_basis,
         "created_at": r.created_at.isoformat() if r.created_at else None,
     }
 
@@ -463,6 +466,9 @@ def _row_to_gt(r: GroundTruthRecordRow) -> GroundTruthRecord:
     can activate the analogy-to-quote k-NN member (``geometry_features`` property);
     a row with NULL geometry stays skippable by the analogy exactly as before.
     """
+    if r.actual_unit_cost_usd is None:
+        # An hours-only row is not a cost record (load_org_ground_truth skips it).
+        raise TypeError("a ground-truth row without an actual unit cost is not a cost record")
     return GroundTruthRecord(
         part_id=r.part_id,
         process=r.process,
@@ -548,6 +554,98 @@ def _extract_geometry_features(gt: GroundTruthRecord,
 
 
 # ── ingest / read (org-scoped) ───────────────────────────────────────────────
+# How an imported actual was matched to a checked part (migration 0054).
+MATCH_BASES = frozenset({"file_hash", "part_number", "file_name", "chosen"})
+_SHORT_TEXT = 200
+
+
+def _short(value) -> Optional[str]:
+    s = str(value).strip() if value is not None else ""
+    return s[:_SHORT_TEXT] or None
+
+
+@dataclass(frozen=True)
+class _HoursOnly:
+    """An actual with machine hours and no cost: the fields a row needs."""
+
+    part_id: str
+    process: str
+    quantity: int
+    actual_unit_cost_usd: None
+    material_class: str
+    shop: Optional[str]
+    region: Optional[str]
+    currency: str
+    source: str
+    source_type: str
+    vendor_quote_id: Optional[str]
+    actual_machine_hours: float
+    actual_setup_hours: Optional[float]
+    actual_labor_hours: Optional[float]
+    actual_inspection_hours: Optional[float]
+    actual_cycle_seconds: Optional[float]
+    source_units: str
+    evidence_uri: Optional[str]
+    stand_in: bool
+    part_path: Optional[str]
+    notes: str
+
+
+def _finite_nonneg(name: str, value) -> Optional[float]:
+    if value is None:
+        return None
+    v = float(value)
+    if not math.isfinite(v) or v < 0:
+        raise ValueError(f"{name} must be a finite number >= 0")
+    return v
+
+
+def _hours_only_record(payload: dict, *, source_type: str, stand_in: bool,
+                       invoice_date, evidence_sha256) -> _HoursOnly:
+    """Validate an hours-only actual the way ``GroundTruthRecord`` validates a cost one."""
+    part_id = (payload.get("part_id") or "").strip()
+    if not part_id:
+        raise ValueError("An actual needs a part_id")
+    process = payload.get("process") or ""
+    if process not in KNOWN_PROCESSES:
+        raise ValueError(f"unknown process '{process}'")
+    hours = _finite_nonneg("actual_machine_hours", payload.get("actual_machine_hours"))
+    if hours is None or hours <= 0:
+        raise ValueError("An actual needs a cost per part, machine hours per part, or both")
+    material_class = payload.get("material_class") or "polymer"
+    if material_class not in KNOWN_MATERIAL_CLASSES:
+        raise ValueError(f"unknown material_class '{material_class}'")
+    source_units = payload.get("source_units") or "mm"
+    if source_units not in {"mm", "inch"}:
+        raise ValueError("source_units must be mm or inch")
+    source = payload.get("source") or ""
+    if stand_in and "STAND-IN" not in source.upper():
+        source = (source + " " if source else "") + "[STAND-IN — not real]"
+    return _HoursOnly(
+        part_id=part_id,
+        process=process,
+        quantity=int(payload["quantity"]),
+        actual_unit_cost_usd=None,
+        material_class=material_class,
+        shop=payload.get("shop"),
+        region=payload.get("region"),
+        currency=payload.get("currency") or "USD",
+        source=source,
+        source_type=source_type,
+        vendor_quote_id=payload.get("vendor_quote_id"),
+        actual_machine_hours=hours,
+        actual_setup_hours=_finite_nonneg("actual_setup_hours", payload.get("actual_setup_hours")),
+        actual_labor_hours=_finite_nonneg("actual_labor_hours", payload.get("actual_labor_hours")),
+        actual_inspection_hours=_finite_nonneg("actual_inspection_hours", payload.get("actual_inspection_hours")),
+        actual_cycle_seconds=_finite_nonneg("actual_cycle_seconds", payload.get("actual_cycle_seconds")),
+        source_units=source_units,
+        evidence_uri=payload.get("evidence_uri"),
+        stand_in=stand_in,
+        part_path=sanitize_part_path(payload.get("part_path")),
+        notes=payload.get("notes") or "",
+    )
+
+
 async def ingest_record(
     session: AsyncSession, org_id: str, user_id: Optional[int], payload: dict,
     *, parts_dir: Optional[str] = None,
@@ -575,56 +673,77 @@ async def ingest_record(
     stand_in = bool(payload.get("stand_in", False)) or _is_synthetic_source_type(source_type)
     invoice_date = _normal_invoice_date(payload.get("invoice_date"))
     evidence_sha256 = _normal_evidence_sha256(payload.get("evidence_sha256"))
+    match_basis = payload.get("match_basis") or None
+    if match_basis is not None and match_basis not in MATCH_BASES:
+        raise ValueError(f"match_basis must be one of {', '.join(sorted(MATCH_BASES))}")
 
-    gt = GroundTruthRecord(
-        part_id=payload["part_id"],
-        process=payload["process"],
-        quantity=int(payload["quantity"]),
-        actual_unit_cost_usd=float(payload["actual_unit_cost_usd"]),
-        material_class=payload.get("material_class") or "polymer",
-        shop=payload.get("shop"),
-        region=payload.get("region"),
-        currency=payload.get("currency") or "USD",
-        source=payload.get("source") or "",
-        source_type=source_type,
-        vendor_quote_id=payload.get("vendor_quote_id"),
-        invoice_date=invoice_date.isoformat() if invoice_date else None,
-        actual_machine_hours=payload.get("actual_machine_hours"),
-        actual_setup_hours=payload.get("actual_setup_hours"),
-        actual_labor_hours=payload.get("actual_labor_hours"),
-        actual_inspection_hours=payload.get("actual_inspection_hours"),
-        actual_cycle_seconds=payload.get("actual_cycle_seconds"),
-        evidence_sha256=evidence_sha256,
-        source_units=payload.get("source_units") or "mm",
-        evidence_uri=payload.get("evidence_uri"),
-        stand_in=stand_in,
-        # network-supplied path is confined to a safe relative corpus path
-        # (raises UnsafePartPath -> ValueError -> the API maps it to 400).
-        part_path=sanitize_part_path(payload.get("part_path")),
-        notes=payload.get("notes") or "",
-    )
-
-    # Best-effort MEASURED geometry (off the event loop — CPU-bound mesh analysis).
-    # None when the mesh does not resolve or extraction fails => geometry stays
-    # NULL and the analogy k-NN skips this record; the ingest is never failed.
-    # Bounded by a timeout so a pathological/slow mesh can never hang a worker
-    # thread indefinitely (defense-in-depth alongside the part_path confinement).
-    try:
-        geom = await asyncio.wait_for(
-            asyncio.get_event_loop().run_in_executor(
-                None, _extract_geometry_features, gt, parts_dir
-            ),
-            timeout=_GEOM_EXTRACT_TIMEOUT_S,
+    geom = None
+    if payload.get("actual_unit_cost_usd") is None:
+        # Machine hours only (migration 0054): a real actual for the hours
+        # comparison. It never enters the cost loop, so no cost is invented and
+        # no geometry is extracted for the cost analogy.
+        gt = _hours_only_record(payload, source_type=source_type, stand_in=stand_in,
+                                invoice_date=invoice_date, evidence_sha256=evidence_sha256)
+    else:
+        gt = GroundTruthRecord(
+            part_id=payload["part_id"],
+            process=payload["process"],
+            quantity=int(payload["quantity"]),
+            actual_unit_cost_usd=float(payload["actual_unit_cost_usd"]),
+            material_class=payload.get("material_class") or "polymer",
+            shop=payload.get("shop"),
+            region=payload.get("region"),
+            currency=payload.get("currency") or "USD",
+            source=payload.get("source") or "",
+            source_type=source_type,
+            vendor_quote_id=payload.get("vendor_quote_id"),
+            invoice_date=invoice_date.isoformat() if invoice_date else None,
+            actual_machine_hours=payload.get("actual_machine_hours"),
+            actual_setup_hours=payload.get("actual_setup_hours"),
+            actual_labor_hours=payload.get("actual_labor_hours"),
+            actual_inspection_hours=payload.get("actual_inspection_hours"),
+            actual_cycle_seconds=payload.get("actual_cycle_seconds"),
+            evidence_sha256=evidence_sha256,
+            source_units=payload.get("source_units") or "mm",
+            evidence_uri=payload.get("evidence_uri"),
+            stand_in=stand_in,
+            # network-supplied path is confined to a safe relative corpus path
+            # (raises UnsafePartPath -> ValueError -> the API maps it to 400).
+            part_path=sanitize_part_path(payload.get("part_path")),
+            notes=payload.get("notes") or "",
         )
-    except asyncio.TimeoutError:
-        logger.warning(
-            "ground-truth geometry extraction timed out for part_id=%.60s — "
-            "storing record with NULL geometry (analogy skips it)",
-            gt.part_id,
-        )
-        geom = None
 
-    # last-wins dedup within the org
+        # Best-effort MEASURED geometry (off the event loop — CPU-bound mesh analysis).
+        # None when the mesh does not resolve or extraction fails => geometry stays
+        # NULL and the analogy k-NN skips this record; the ingest is never failed.
+        # Bounded by a timeout so a pathological/slow mesh can never hang a worker
+        # thread indefinitely (defense-in-depth alongside the part_path confinement).
+        from src.services import compute_budget
+
+        try:
+            # Holds room in the compute budget until the thread really ends.
+            geom = await compute_budget.run_within_budget(
+                _extract_geometry_features, gt, parts_dir,
+                timeout=_GEOM_EXTRACT_TIMEOUT_S, label="ground truth geometry",
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "ground-truth geometry extraction timed out for part_id=%.60s — "
+                "storing record with NULL geometry (analogy skips it)",
+                gt.part_id,
+            )
+            geom = None
+        except compute_budget.ComputeBusy:
+            # Best effort, like a timeout: the record is kept without geometry.
+            logger.warning(
+                "no compute room for ground-truth geometry of part_id=%.60s — "
+                "storing record with NULL geometry (analogy skips it)",
+                gt.part_id,
+            )
+            geom = None
+
+    # last-wins dedup within the org. Two parts can share a file name (two
+    # revisions); a row bound to a part's file hash only replaces that part's.
     await session.execute(
         delete(GroundTruthRecordRow).where(
             GroundTruthRecordRow.org_id == org_id,
@@ -632,6 +751,7 @@ async def ingest_record(
             GroundTruthRecordRow.process == gt.process,
             GroundTruthRecordRow.quantity == int(gt.quantity),
             func.coalesce(GroundTruthRecordRow.shop, "") == (gt.shop or ""),
+            func.coalesce(GroundTruthRecordRow.evidence_sha256, "") == (evidence_sha256 or ""),
         )
     )
     row = GroundTruthRecordRow(
@@ -640,7 +760,8 @@ async def ingest_record(
         part_id=gt.part_id,
         process=gt.process,
         quantity=int(gt.quantity),
-        actual_unit_cost_usd=float(gt.actual_unit_cost_usd),
+        actual_unit_cost_usd=(float(gt.actual_unit_cost_usd)
+                              if gt.actual_unit_cost_usd is not None else None),
         material_class=gt.material_class,
         shop=gt.shop,
         region=gt.region,
@@ -664,6 +785,9 @@ async def ingest_record(
         surface_area_cm2=(geom or {}).get("surface_area_cm2"),
         max_bbox_mm=(geom or {}).get("max_bbox_mm"),
         face_count=(geom or {}).get("face_count"),
+        part_number=_short(payload.get("part_number")),
+        machine=_short(payload.get("machine")),
+        match_basis=match_basis,
     )
     session.add(row)
     await session.flush()
@@ -693,8 +817,17 @@ async def get_record(
 
 
 async def load_org_ground_truth(session: AsyncSession, org_id: str) -> list:
-    """All of ONE org's records as costing dataclasses (the recalibration feed)."""
-    return [_row_to_gt(r) for r in await list_records(session, org_id)]
+    """All of ONE org's cost records as costing dataclasses (the recalibration feed).
+
+    A row that carries machine hours but no cost (migration 0054) is a real
+    actual for the hours comparison, not a cost datum: the cost loop and the
+    analogy k-NN skip it rather than invent a cost.
+    """
+    return [
+        _row_to_gt(r)
+        for r in await list_records(session, org_id)
+        if r.actual_unit_cost_usd is not None
+    ]
 
 
 # ── recalibration trigger (item 4) ───────────────────────────────────────────
@@ -798,8 +931,9 @@ async def recalibrate_org(
     """Load an org's records (async) then run the CPU-bound loop off the event
     loop, refreshing the served bundle. The manual/callable recalibration
     trigger (an async cron wrapper is a separate concern)."""
+    from src.services import compute_budget
+
     records = await load_org_ground_truth(session, org_id)
-    ev = asyncio.get_event_loop()
 
     # Historical actuals can bind to source CAD by ``evidence_sha256``. The
     # source bytes were durably captured by a successful Verify/Should-cost run
@@ -808,11 +942,12 @@ async def recalibrate_org(
     # no provider locator or cross-tenant key enters the record/API response.
     evidence_records = [r for r in records if r.evidence_sha256]
     if not evidence_records:
-        return await ev.run_in_executor(
-            None,
+        # Costs every record's part: CPU-heavy CAD work, within the compute budget.
+        return await compute_budget.run_within_budget(
             lambda: recalibrate_from_records(
                 org_id, records, parts_dir=parts_dir, store_dir=store_dir
             ),
+            label="recalibrate",
         )
 
     from src.costing.groundtruth import resolve_part_path
@@ -848,14 +983,14 @@ async def recalibrate_org(
                 replace(record, part_path=existing) if existing else record
             )
 
-        return await ev.run_in_executor(
-            None,
+        return await compute_budget.run_within_budget(
             lambda: recalibrate_from_records(
                 org_id,
                 resolved_records,
                 parts_dir=temp_root,
                 store_dir=store_dir,
             ),
+            label="recalibrate",
         )
 
 

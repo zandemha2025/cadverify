@@ -1,3 +1,5 @@
+import { getPlans } from "@/lib/plans";
+import { SignedInProvider } from "./signed-in";
 import { headers } from "next/headers";
 import { getUser } from "@/lib/dal";
 import { getSessionToken } from "@/lib/session";
@@ -5,7 +7,7 @@ import { backendUrl } from "@/lib/api-base";
 import { SiteSessionProvider, type SiteSession } from "./site-shell";
 
 export async function SiteSessionBoundary({ children }: { children: React.ReactNode }) {
-  const user = await getUser();
+  const [user, { free }] = await Promise.all([getUser(), getPlans()]);
   let usage: SiteSession["usage"] = null;
   if (user) {
     try {
@@ -17,5 +19,5 @@ export async function SiteSessionBoundary({ children }: { children: React.ReactN
       }
     } catch { /* Usage is optional; never invent an allowance during an outage. */ }
   }
-  return <SiteSessionProvider value={{ user: user ? { email: user.email } : null, usage, siteKey: process.env.MAGIC_LINK_UI_ENABLED === "1" ? process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || process.env.TURNSTILE_SITE_KEY || "" : "", nonce: (await headers()).get("x-nonce") || undefined, ssoLoginPath: (process.env.SSO_LOGIN_PATH || "").trim() }}>{children}</SiteSessionProvider>;
+  return <SiteSessionProvider value={{ freeChecks: { work: free.work_checks, personal: free.personal_checks }, user: user ? { email: user.email } : null, usage, siteKey: process.env.MAGIC_LINK_UI_ENABLED === "1" ? process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || process.env.TURNSTILE_SITE_KEY || "" : "", nonce: (await headers()).get("x-nonce") || undefined, ssoLoginPath: (process.env.SSO_LOGIN_PATH || "").trim() }}><SignedInProvider signedIn={!!user}>{children}</SignedInProvider></SiteSessionProvider>;
 }

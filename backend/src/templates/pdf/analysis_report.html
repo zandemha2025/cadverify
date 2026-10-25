@@ -19,7 +19,7 @@
     </p>
     <p>File type: {{ file_type | upper }} &middot; Faces: {{ face_count | format_number }} &middot; Analysis time: {{ duration_ms | format_duration }}</p>
     {% if best_process %}
-    <p>Recommended route: {{ best_process }}</p>
+    <p>Recommended process: {{ best_process | process_name }}</p>
     {% endif %}
   </div>
 
@@ -49,7 +49,7 @@
           <p class="issue-head"><strong>{{ issue.code }}</strong> &middot; {{ issue.message }}</p>
           <table class="issue-facts">
             {% if issue.get('_process') or issue.get('process') %}
-            <tr><th>Process</th><td>{{ issue.get('_process') or issue.get('process') }}</td></tr>
+            <tr><th>Process</th><td>{{ (issue.get('_process') or issue.get('process')) | process_name }}</td></tr>
             {% endif %}
             {% if issue.get('measured_value') is not none or issue.get('required_value') is not none %}
             {% set unit = {'mm': ' mm', 'deg': '°', 'ratio': ':1', 'percent': '%'}.get(issue.get('measurement_unit'), '') %}
@@ -95,7 +95,7 @@
     <tbody>
       {% for ps in process_scores %}
       <tr>
-        <td>{{ ps.process }}</td>
+        <td>{{ ps.process | process_name }}</td>
         <td>{{ ps.score }}</td>
         <td class="verdict-{{ ps.verdict }}">{{ ps.verdict | upper }}</td>
         <td>{{ ps.recommended_material or '—' }}</td>
@@ -146,7 +146,7 @@
         <td>{{ entry.tolerance_type }}</td>
         <td>{{ entry.value_mm }}</td>
         <td>{{ entry.get('datum_refs', []) | join(', ') }}</td>
-        <td>{{ best.process }}</td>
+        <td>{{ best.process | process_name }}</td>
         <td class="verdict-{{ best.verdict }}">{{ best.verdict | replace('_', ' ') }}</td>
       </tr>
     {% endfor %}
@@ -188,7 +188,7 @@
 
   <!-- Section 9: Footer -->
   <div class="footer">
-    ScaleCad {{ engine_version }} &middot; analysis engine {{ analysis_version }}{% if build_commit %} &middot; build {{ build_commit[:12] }}{% endif %} &middot; mesh {{ mesh_hash }} &middot; analysis {{ analysis_id }} &middot; {{ created_at }}
+    ScaleCAD {{ engine_version }} &middot; analysis engine {{ analysis_version }}{% if build_commit %} &middot; build {{ build_commit[:12] }}{% endif %} &middot; mesh {{ mesh_hash }} &middot; analysis {{ analysis_id }} &middot; {{ created_at }}
   </div>
 
 </body>

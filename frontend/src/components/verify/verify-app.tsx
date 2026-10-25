@@ -2,13 +2,12 @@
 
 /**
  * The Verify workspace is wired to the real engine and mounted inside the shared
- * authenticated ScaleCad shell. This component owns only Verify-local screens
+ * authenticated ScaleCAD shell. This component owns only Verify-local screens
  * and tools; platform navigation, theme, search, and account controls live in the
  * common shell.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
-import { takePendingPart } from "@/lib/site/pending-part";
 import { C, MONO, SANS } from "@/lib/verify/tokens";
 import {
   QTY_LADDER,
@@ -50,8 +49,18 @@ import {
   type WorkspaceScreen,
 } from "@/lib/verify/workspace-screen-route";
 import type { OrganizationAccess } from "@/lib/organization-access";
-import { isQuotaErrorMessage, isLifetimeQuotaErrorMessage } from "@/lib/api-recovery";
+import { isQuotaErrorMessage, isLifetimeQuotaErrorMessage, isPhoneVerificationMessage } from "@/lib/api-recovery";
+import { useAuth } from "@/components/ui/auth-provider";
+import { UpgradeButton } from "@/components/billing/upgrade-button";
+import { browserPendingPartStore, takePendingPart } from "@/lib/pending-part";
+import { PhoneGate } from "./phone-gate";
 import { resolvedAnnualVolume } from "@/lib/verify/program-rollup";
+import type { ServiceEnvironment } from "@/lib/verify/part-context";
+import {
+  hasServiceConditions,
+  saveServiceConditions,
+  storedServiceEnvironment,
+} from "@/lib/verify/service-conditions";
 
 // The shared hotkey nav map — matches the design 1:1 (support.js keydown handler):
 // H/V/P/R/G/M/T/C jump between the surfaces, `?` opens the shortcuts sheet. `c`
@@ -98,7 +107,6 @@ export function VerifyApp({
     "idle" | "running" | "ready" | "error"
   >("idle");
   const [guidedSummaryOpen, setGuidedSummaryOpen] = useState(false);
-  const [env, setEnv] = useState({ temp: false, sour: false, pressure: false });
   const [materialClass, setMaterialClass] = useState("polymer");
   const [materialTouched, setMaterialTouched] = useState(false);
   const [result, setResult] = useState<VerifyResult | null>(null);
@@ -135,13 +143,23 @@ export function VerifyApp({
     | null
   >(null);
   const designImportStarted = useRef(false);
+  const { user } = useAuth();
+  const [phoneRequired, setPhoneRequired] = useState(false);
+  const [upgradedNotice, setUpgradedNotice] = useState(false);
+  // A part held through sign-in, waiting on phone verification if required.
+  const heldPart = useRef<File | null>(null);
+  const heldPartChecked = useRef(false);
   const workspaceDestinationApplied = useRef(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
-  // The last part the user verified — so a change to the declared world can re-run
-  // the verification (re-persist the env + re-cost against it) for the same part.
+  // The last part the user verified — so a material or inventory change can re-run
+  // the verification for the same part.
   const latestFile = useRef<File | null>(null);
+  // Conditions set before any part's record is shown ride the next verification,
+  // which saves them only if that part's record has none. A ref: editing them
+  // never re-renders or re-runs anything.
+  const pendingConditions = useRef<ServiceEnvironment | null>(null);
   const inventoryDirty = useRef(false);
-  // Monotonic run token. Selecting a material class (or toggling the world) while a
+  // Monotonic run token. Selecting a material class (or re-verifying) while a
   // prior verification is still in flight dispatches a NEW run; without this guard the
   // two async runs can resolve OUT OF ORDER and a stale result clobbers the fresh one
   // — the material-chip race where the walk still reads "Polymer" after clicking Steel.
@@ -238,9 +256,8 @@ export function VerifyApp({
             machinesError: null,
             verification: null,
             quantities: QTY_LADDER,
-            env,
-            envDeclared: env.temp || env.sour || env.pressure,
-            envCaptured: false,
+            serviceEnvironment: {},
+            envDeclared: false,
             envError: null,
             meshHash: null,
             partContext: null,
@@ -312,7 +329,7 @@ export function VerifyApp({
       let progressiveResult: VerifyResult | null = null;
       try {
         const r = await runVerification(
-          { file: f, env, materialClass },
+          { file: f, materialClass, declare: pendingConditions.current },
           {
             onValidation: ({ validation, validationError }) => {
               if (runSeq.current !== seq || !validation) return;
@@ -329,9 +346,8 @@ export function VerifyApp({
                 machinesError: null,
                 verification: null,
                 quantities: QTY_LADDER,
-                env,
-                envDeclared: env.temp || env.sour || env.pressure,
-                envCaptured: false,
+                serviceEnvironment: {},
+                envDeclared: false,
                 envError: null,
                 meshHash: null,
                 partContext: null,
@@ -342,6 +358,9 @@ export function VerifyApp({
             },
           }
         );
+        // The part's record was resolved, so the held conditions were applied or
+        // deliberately not (its own conditions win); from here edits are saves.
+        if (r.meshHash) pendingConditions.current = null;
         // Drop a result that a newer run has superseded — last dispatch wins, so the
         // displayed verdict/material always matches the most recent selection.
         if (runSeq.current === seq) {
@@ -369,9 +388,8 @@ export function VerifyApp({
                 machinesError: null,
                 verification: null,
                 quantities: QTY_LADDER,
-                env,
-                envDeclared: env.temp || env.sour || env.pressure,
-                envCaptured: false,
+                serviceEnvironment: {},
+                envDeclared: false,
                 envError: null,
                 meshHash: null,
                 partContext: null,
@@ -386,17 +404,8 @@ export function VerifyApp({
         if (runSeq.current === seq) setRunning(false);
       }
     },
-    [env, materialClass, runAssemblyAnalysis]
+    [materialClass, runAssemblyAnalysis]
   );
-
-  const pendingHandoff = useRef(false);
-  useEffect(() => {
-    if (!hasActiveOrganization || pendingHandoff.current) return;
-    pendingHandoff.current = true;
-    void takePendingPart().then(part => {
-      if (part) { setWelcomeOpen(false); void runVerify(part); }
-    }).catch(() => { /* The normal file picker remains available if browser storage is blocked. */ });
-  }, [hasActiveOrganization, runVerify]);
 
   const onReverify = useCallback(() => {
     if (file) void runVerify(file);
@@ -413,15 +422,40 @@ export function VerifyApp({
     setRunning(true);
     try {
       const retried = await retryVerificationCost(
-        { file, env, materialClass },
+        { file, materialClass },
         previous.machines,
         resolvedAnnualVolume(previous.partContext)
       );
-      if (runSeq.current === seq) setResult({ ...previous, ...retried });
+      // The retried cost read the conditions now on the record (a saved edit
+      // included), so the result states those as the ones it applied.
+      const applied = storedServiceEnvironment(previous.partContext);
+      if (runSeq.current === seq) {
+        setResult({
+          ...previous,
+          ...retried,
+          serviceEnvironment: applied,
+          envDeclared: hasServiceConditions(applied),
+        });
+      }
     } finally {
       if (runSeq.current === seq) setRunning(false);
     }
-  }, [env, file, materialClass, onReverify, result]);
+  }, [file, materialClass, onReverify, result]);
+
+  // An explicit conditions edit is the ONLY write of a part's service conditions.
+  // It updates the record shown with this result but does not re-run: the door
+  // flags that the verdict used the previous conditions and offers a re-verify,
+  // so editing never spends another part check by itself.
+  const onSaveConditions = useCallback(async (next: ServiceEnvironment) => {
+    const meshHash = result?.meshHash;
+    if (!meshHash) return { ok: false, error: "Verify a part before saving its conditions." };
+    const saved = await saveServiceConditions(meshHash, next, result?.partContext ?? null);
+    const context = saved.context;
+    if (saved.ok && context) {
+      setResult((prev) => (prev && prev.meshHash === meshHash ? { ...prev, partContext: context } : prev));
+    }
+    return { ok: saved.ok, error: saved.error };
+  }, [result]);
 
   const runSample = useCallback(() => {
     const guidedSeq = ++guidedRunSeq.current;
@@ -531,6 +565,53 @@ export function VerifyApp({
       });
   }, [hasActiveOrganization, runVerify]);
 
+  // Allowance gate + sign-in handoff: a part dropped before the email link
+  // checks itself here, once, for the account that dropped it.
+  useEffect(() => {
+    if (!hasActiveOrganization || !user?.email || heldPartChecked.current) return;
+    heldPartChecked.current = true;
+    let live = true;
+    void (async () => {
+      const usage = await fetch("/api/auth/me/usage").then((res) => (res.ok ? res.json() : null)).catch(() => null);
+      const held = await takePendingPart(browserPendingPartStore(), user.email);
+      if (!live) return;
+      if (held) setWelcomeOpen(false);
+      if (usage?.phone_verification_required) {
+        heldPart.current = held;
+        setPhoneRequired(true);
+      } else if (held) {
+        void runVerify(held);
+      }
+    })();
+    return () => { live = false; };
+  }, [hasActiveOrganization, user?.email, runVerify]);
+
+  // Back from Stripe Checkout: the webhook may land a moment later.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("upgraded") !== "1") return;
+    setUpgradedNotice(true);
+    params.delete("upgraded");
+    const rest = params.toString();
+    window.history.replaceState(null, "", `${window.location.pathname}${rest ? `?${rest}` : ""}`);
+    const refresh = window.setTimeout(() => window.dispatchEvent(new Event("proofshape:usage-changed")), 4000);
+    return () => window.clearTimeout(refresh);
+  }, []);
+
+  const phoneBlocked = phoneRequired
+    || isPhoneVerificationMessage(uploadRejection?.action)
+    || isPhoneVerificationMessage(result?.validationError)
+    || isPhoneVerificationMessage(result?.costError);
+
+  const onPhoneVerified = useCallback(() => {
+    setPhoneRequired(false);
+    setUploadRejection(null);
+    window.dispatchEvent(new Event("proofshape:usage-changed"));
+    const next = heldPart.current ?? latestFile.current;
+    heldPart.current = null;
+    if (next) void runVerify(next);
+  }, [runVerify]);
+
   // Recompute the retained file when returning from a changed machine inventory.
   useEffect(() => {
     if (screen === "verify" && inventoryDirty.current && latestFile.current) {
@@ -551,19 +632,6 @@ export function VerifyApp({
     );
     return () => { live = false; };
   }, [hasActiveOrganization]);
-
-  // The environment door is REAL: when the declared world changes and a part is
-  // loaded, re-run the verification so the new world is persisted to the part's
-  // record and the cost/verdict are recomputed against it. Skips the first mount.
-  const firstEnv = useRef(true);
-  useEffect(() => {
-    if (firstEnv.current) {
-      firstEnv.current = false;
-      return;
-    }
-    if (latestFile.current) void runVerify(latestFile.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [env]);
 
   const firstMaterial = useRef(true);
   useEffect(() => {
@@ -755,7 +823,15 @@ export function VerifyApp({
 
       {/* main */}
       <div className="cv-verify-main" style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-        {uploadRejection && (
+        {phoneBlocked && <PhoneGate onVerified={onPhoneVerified} />}
+        {upgradedNotice && (
+          <div role="status" style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 12, padding: "10px 20px", borderBottom: `1px solid ${C.hair}`, background: "#eef7f1", color: C.ink, fontSize: 13 }}>
+            <span style={{ fontWeight: 650 }}>You&apos;re on Pro.</span>
+            <span style={{ color: C.ink55 }}>Your monthly checks are ready. Your receipt is on its way by email.</span>
+            <button type="button" aria-label="Dismiss" onClick={() => setUpgradedNotice(false)} style={{ marginLeft: "auto", border: 0, background: "transparent", cursor: "pointer", fontSize: 18, color: "inherit" }}>×</button>
+          </div>
+        )}
+        {uploadRejection && !isPhoneVerificationMessage(uploadRejection.action) && (
           <div
             role="alert"
             data-testid="verify-upload-rejection"
@@ -783,7 +859,7 @@ export function VerifyApp({
                 Sign in again
               </Link>
             ) : isLifetimeQuotaErrorMessage(uploadRejection.action) ? (
-              <a href="/history" style={{ marginLeft: "auto", color: "inherit", fontWeight: 600 }}>Review usage and contact options</a>
+              <span style={{ marginLeft: "auto" }}><UpgradeButton style={{ minHeight: 40, border: "1px solid currentColor", borderRadius: 999, background: "#fff", color: "inherit", padding: "8px 14px", cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }} /></span>
             ) : <button
               type="button"
               onClick={() => uploadRejection.retryFile ? void runVerify(uploadRejection.retryFile) : pickOwnFile()}
@@ -882,7 +958,7 @@ export function VerifyApp({
                   : undefined
               }
               bbox={stageGeometry?.bbox_mm ?? null}
-              hostile={env.temp || env.sour || env.pressure}
+              hostile={hasServiceConditions(storedServiceEnvironment(result?.partContext))}
               autoOrbit={running && !stageAssembly}
               context={result?.partContext ?? null}
               contextError={result?.partContextError ?? null}
@@ -906,8 +982,10 @@ export function VerifyApp({
                 running={running}
                 guided={guidedSampleState !== "idle"}
                 fileName={result?.file?.name ?? file?.name ?? null}
-                env={env}
-                setEnv={setEnv}
+                onSaveConditions={onSaveConditions}
+                onPendingConditions={(next) => {
+                  pendingConditions.current = next;
+                }}
                 materialClass={materialClass}
                 materialProvenance={materialTouched ? "USER" : "DEFAULT"}
                 setMaterialClass={(next) => {
@@ -1020,14 +1098,14 @@ function GuidedExampleBar({
         </p>
         <p style={{ margin: "3px 0 0", color: C.ink55, fontSize: 11.5, lineHeight: 1.5 }}>
           {state === "running"
-            ? "ScaleCad is measuring geometry, checking manufacturability, choosing processes, and estimating cost."
+            ? "ScaleCAD is measuring geometry, checking manufacturability, choosing processes, and estimating cost."
             : quota ? error : failed
               ? "No completed result was created. Retry the example or check one of your own CAD files."
               : "Read geometry and DFM first; route, first issue, resource cost, and shop fit follow in decision order."}
         </p>
       </div>
       {lifetimeQuota ? (
-        <a href="/history" style={guidedBarButton(C.cond)}>Review usage and contact options</a>
+        <UpgradeButton style={guidedBarButton(C.cond)} />
       ) : failed ? (
         <button type="button" onClick={onRetry} style={guidedBarButton(C.cond)}>
           Retry example
@@ -1102,7 +1180,7 @@ function OrganizationAccessGate({
         </h1>
         <p style={{ margin: "12px 0 0", color: C.ink55, fontSize: 14, lineHeight: 1.65 }}>
           {unavailable
-            ? "ScaleCad stopped before requesting organization CAD, machine, or ground-truth data. Retry the check; if it continues, your administrator can verify the workspace connection."
+            ? "ScaleCAD stopped before requesting organization CAD, machine, or ground-truth data. Retry the check; if it continues, your administrator can verify the workspace connection."
             : hasMemberships
               ? "Your account has an organization membership, but no workspace is active. Select it in Organization settings before opening org-scoped records or CAD tools."
               : "Open the invitation link sent by your organization administrator. If you do not have one, ask them to invite this exact account email. No organization data has been loaded or treated as empty."}

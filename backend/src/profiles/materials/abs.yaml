@@ -2,7 +2,8 @@ name: ABS
 aliases: [Acrylonitrile Butadiene Styrene]
 alloy_designation: null
 standards: [ASTM D256, ASTM D638, UL 94 HB, ISO 2580]
-processes: [fdm, injection_molding]
+# Molded ABS is the ABS (Molded) pellet row in profiles/database.py (same polymer, src.profiles.identity).
+processes: [fdm]
 mechanical:
   density_g_cm3: 1.04
   tensile_mpa: 40

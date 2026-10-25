@@ -17,6 +17,28 @@ class StrictPlan(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
 
+# Templates whose side walls release along +Z and can take a draft angle.
+DRAFT_TEMPLATES = frozenset({"plate", "enclosure"})
+MAX_DRAFT_DEG = 10.0
+
+
+def _draft_field():
+    """Optional draft in degrees. 0 is today's straight-walled geometry and is
+    left out of the stored plan, so saved designs keep their exact JSON."""
+    return Field(
+        default=0.0,
+        ge=0.0,
+        le=MAX_DRAFT_DEG,
+        allow_inf_nan=False,
+        exclude_if=lambda value: value == 0,
+    )
+
+
+def draft_run(height_mm: float, draft_angle_deg: float) -> float:
+    """Horizontal lean of a side wall of ``height_mm`` drafted ``draft_angle_deg``."""
+    return height_mm * math.tan(math.radians(draft_angle_deg))
+
+
 class Hole(StrictPlan):
     """A through-hole whose centre is measured from the part centre in mm."""
 
@@ -31,11 +53,23 @@ class PlatePlan(StrictPlan):
     depth_mm: float = Field(ge=10.0, le=1000.0)
     thickness_mm: float = Field(ge=0.5, le=100.0)
     holes: list[Hole] = Field(default_factory=list, max_length=32)
+    # Width, depth and hole diameters hold at the bottom face. With draft the
+    # edges lean in and the holes open up toward the top face, so the part
+    # releases upward (+Z) from a mold.
+    draft_angle_deg: float = _draft_field()
 
     @model_validator(mode="after")
     def holes_fit_inside_plate(self) -> "PlatePlan":
+        # At the top face each edge sits ``run`` further in and each hole is
+        # ``run`` wider in radius, so edge margins and the gaps between holes
+        # shrink by ``2 * run``; check them there, where they are smallest.
+        run = draft_run(self.thickness_mm, self.draft_angle_deg)
+        if run > 0 and 4.0 * run >= min(self.width_mm, self.depth_mm):
+            raise ValueError(
+                "draft would shrink the plate's top face below half its width or depth"
+            )
         for hole in self.holes:
-            radius = hole.diameter_mm / 2.0
+            radius = hole.diameter_mm / 2.0 + 2.0 * run
             # One millimetre of material around every hole is the minimum safe
             # boundary for this template. Manufacturing validation may demand
             # more for the selected process; this only guarantees valid geometry.
@@ -51,7 +85,7 @@ class PlatePlan(StrictPlan):
                 )
                 minimum_distance = (
                     left.diameter_mm + right.diameter_mm
-                ) / 2.0 + 0.5
+                ) / 2.0 + 2.0 * run + 0.5
                 if centre_distance < minimum_distance:
                     raise ValueError(
                         "holes overlap or leave less than 0.5 mm between edges"
@@ -79,6 +113,10 @@ class EnclosurePlan(StrictPlan):
     depth_mm: float = Field(ge=20.0, le=1000.0)
     height_mm: float = Field(ge=10.0, le=1000.0)
     wall_thickness_mm: float = Field(ge=0.5, le=50.0)
+    # Width and depth hold at the open rim. With draft the four walls lean in
+    # toward the base, inside and out, so the wall stays wall_thickness_mm
+    # thick (measured square to the wall) and the part releases along +Z.
+    draft_angle_deg: float = _draft_field()
 
     @model_validator(mode="after")
     def walls_fit_enclosure(self) -> "EnclosurePlan":
@@ -87,6 +125,15 @@ class EnclosurePlan(StrictPlan):
             raise ValueError("wall thickness leaves no usable enclosure interior")
         if wall * 2.0 >= self.height_mm:
             raise ValueError("wall thickness must be less than half the enclosure height")
+        if self.draft_angle_deg > 0:
+            # The inside is narrowest on the floor; keep it wider than two walls,
+            # the same rule as the straight enclosure above.
+            floor = min(self.width_mm, self.depth_mm) - 2.0 * (
+                draft_run(self.height_mm - wall, self.draft_angle_deg)
+                + wall / math.cos(math.radians(self.draft_angle_deg))
+            )
+            if floor <= 2.0 * wall:
+                raise ValueError("draft and wall thickness leave no usable interior at the base")
         return self
 
 

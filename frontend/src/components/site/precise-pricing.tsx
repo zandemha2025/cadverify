@@ -1,6 +1,9 @@
-import { SiteShell, SiteCta } from "./site-shell";
+"use client";
 
-export function PrecisePricing() { return <SiteShell><div className="precise precise-pricing">
+import { SiteShell, SiteCta, useSiteSession } from "./site-shell";
+
+export function PrecisePricing() {
+ const { freeChecks } = useSiteSession(); return <SiteShell><div className="precise precise-pricing">
 <section className="s-dark" style={{"position": "relative", "overflow": "hidden"}}>
 <div className="horizon" aria-hidden="true" style={{"height": "600px"}}><div className="hz-glow" style={{"bottom": "-640px"}}></div><div className="hz-arc" style={{"top": "calc(100% - 110px)"}}></div></div>
 <div className="wrap" style={{"position": "relative", "zIndex": 2, "paddingTop": "110px", "paddingBottom": "190px", "display": "flex", "flexDirection": "column", "alignItems": "center", "textAlign": "center", "gap": "22px"}}>
@@ -12,7 +15,7 @@ export function PrecisePricing() { return <SiteShell><div className="precise pre
 <div className="wrap" style={{"paddingTop": "72px", "paddingBottom": "120px"}}>
 <div style={{"display": "grid", "gridTemplateColumns": "repeat(auto-fit, minmax(min(280px, 100%), 1fr))", "gap": "12px", "marginTop": "-150px", "position": "relative", "zIndex": 3}}>
 <div className="tier " style={{}}>
-<div style={{"display": "flex", "flexDirection": "column", "gap": "10px", "position": "relative"}}><span className="lbl" style={{"color": "var(--fg)"}}>Free</span><span className="disp" style={{"fontSize": "60px", "fontWeight": 200}}>$0</span><span style={{"fontSize": "15.5px", "lineHeight": 1.5, "color": "var(--fg2)", "minHeight": "70px"}}>15 checks with a work email, 3 with a personal one.</span></div>
+<div style={{"display": "flex", "flexDirection": "column", "gap": "10px", "position": "relative"}}><span className="lbl" style={{"color": "var(--fg)"}}>Free</span><span className="disp" style={{"fontSize": "60px", "fontWeight": 200}}>$0</span><span style={{"fontSize": "15.5px", "lineHeight": 1.5, "color": "var(--fg2)", "minHeight": "70px"}}>{freeChecks.work} checks with a work email, {freeChecks.personal} with a personal one.</span></div>
 <SiteCta className="btn btn-cta">Try ScaleCAD free</SiteCta>
 <ul className="inc" style={{"position": "relative"}}><li><i></i><span>The full answer on every part</span></li><li><i></i><span>Checks 21 ways to make it</span></li><li><i></i><span>Uses your own machines and prices</span></li><li><i></i><span>Shows where every number came from</span></li></ul>
 </div>
@@ -40,7 +43,7 @@ export function PrecisePricing() { return <SiteShell><div className="precise pre
 <div style={{"marginTop": "32px", "overflowX": "auto", "borderRadius": "24px", "background": "var(--card)", "padding": "22px 16px 6px"}}>
 <table className="cmp">
 <thead><tr><th scope="col" style={{"fontFamily": "'Instrument Sans', system-ui, sans-serif", "fontSize": "14px", "fontWeight": 600, "color": "var(--fg2)"}}>What you get</th><th scope="col">Free</th><th scope="col">Pro</th><th scope="col">Pilot</th><th scope="col">Enterprise</th></tr></thead>
-<tbody><tr><th scope="row">Checks</th><td>15 work · 3 personal</td><td>Contact us</td><td>Up to 500 parts</td><td>Sized to you</td></tr><tr><th scope="row">The full answer, 21 ways to make it</th><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td></tr><tr><th scope="row">Your own machines and prices</th><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td></tr><tr><th scope="row">Checks materials hold up where it’s used</th><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td></tr><tr><th scope="row">API access</th><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td></tr><tr><th scope="row">Multi-piece parts and broken-file repair</th><td className="no">—</td><td>Yes</td><td>Yes</td><td>Yes</td></tr><tr><th scope="row">Learns from your real costs</th><td className="no">—</td><td>Yes</td><td>Yes</td><td>Yes</td></tr><tr><th scope="row">Sort a whole parts list at once</th><td className="no">—</td><td className="no">—</td><td>Yes</td><td>Up to 10,000</td></tr><tr><th scope="row">Company login and automatic user setup</th><td className="no">—</td><td className="no">—</td><td className="no">—</td><td>Yes</td></tr><tr><th scope="row">Runs on your own servers</th><td className="no">—</td><td className="no">—</td><td>Set up with you</td><td>Yes</td></tr></tbody>
+<tbody><tr><th scope="row">Checks</th><td>{freeChecks.work} work · {freeChecks.personal} personal</td><td>Contact us</td><td>Up to 500 parts</td><td>Sized to you</td></tr><tr><th scope="row">The full answer, 21 ways to make it</th><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td></tr><tr><th scope="row">Your own machines and prices</th><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td></tr><tr><th scope="row">Checks materials hold up where it’s used</th><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td></tr><tr><th scope="row">API access</th><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td></tr><tr><th scope="row">Multi-piece parts and broken-file repair</th><td className="no">—</td><td>Yes</td><td>Yes</td><td>Yes</td></tr><tr><th scope="row">Learns from your real costs</th><td className="no">—</td><td>Yes</td><td>Yes</td><td>Yes</td></tr><tr><th scope="row">Sort a whole parts list at once</th><td className="no">—</td><td className="no">—</td><td>Yes</td><td>Up to 10,000</td></tr><tr><th scope="row">Company login and automatic user setup</th><td className="no">—</td><td className="no">—</td><td className="no">—</td><td>Yes</td></tr><tr><th scope="row">Runs on your own servers</th><td className="no">—</td><td className="no">—</td><td>Set up with you</td><td>Yes</td></tr></tbody>
 </table>
 </div>
 </div>

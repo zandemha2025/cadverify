@@ -2,9 +2,7 @@
 
 This folder is the **design reference** for rebuilding the public marketing site.
 It is **not runnable code** — it's the design source so an engineer (Codex, or
-anyone) can port it into the real Next.js app. The design was never implemented;
-that's why the live homepage still says "Know which of your parts you should be
-making."
+anyone) can port it into the real Next.js app. The implementation on this branch is documented in `IMPLEMENTATION.md`.
 
 **Source of truth / live design:** the Claude canvas "ScaleCAD Site Redesign"
 → https://claude.ai/artifact/3rdvLMrt1HwnnSRvVmSfRL (open it in a browser to see

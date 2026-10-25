@@ -65,7 +65,11 @@ try {
   await page.getByRole('alert').filter({hasText:'STEP, STL and IGES'}).waitFor();
   await page.locator('.cv-upload-choice input').setInputFiles({name:'part.step',mimeType:'application/octet-stream',buffer:Buffer.from('ISO-10303-21;')});
   await page.getByRole('heading',{name:'Your part is ready.'}).waitFor();
-  assert.equal(await page.evaluate(()=>new Promise((resolve,reject)=>{const r=indexedDB.open('scalecad-pending-part',1);r.onsuccess=()=>{const db=r.result;const q=db.transaction('part').objectStore('part').get('pending');q.onsuccess=()=>{resolve(q.result.file.name);db.close();};q.onerror=reject;};r.onerror=reject;})), 'part.step');
+  const fileForm = page.locator('.cv-upload-signup');
+  await fileForm.getByRole('textbox', {name:'Work email',exact:true}).fill('engineer@factory.example');
+  await fileForm.getByRole('button', {name:'Try ScaleCAD free',exact:true}).click();
+  await fileForm.getByRole('heading', {name:'Check your inbox.',exact:true}).waitFor();
+  assert.equal(await page.evaluate(()=>new Promise((resolve,reject)=>{const r=indexedDB.open('scalecad-pending-part',1);r.onsuccess=()=>{const db=r.result;const q=db.transaction('parts').objectStore('parts').get('pending');q.onsuccess=()=>{resolve(q.result.name);db.close();};q.onerror=reject;};r.onerror=reject;})), 'part.step');
   await page.getByRole('button',{name:'Use a different file'}).click();
   await page.getByRole('heading',{name:'Your part is ready.'}).waitFor({state:'hidden'});
   // With scripts disabled, the first response must already contain the signed-in navigation.

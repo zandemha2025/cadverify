@@ -31,6 +31,12 @@ def client_with_limits(monkeypatch):
     monkeypatch.delenv("RATE_LIMIT_DISABLED", raising=False)
     import src.auth.rate_limit as rl
 
+    # The reload builds the module's limiter afresh under this env. The module is
+    # put back as it was afterwards: every route was decorated with the original
+    # limiter, and later tests switch limits on through ``rl.limiter``. A leftover
+    # reloaded limiter left those routes unlimited (test_two_step's per-visitor
+    # challenge limits answered 401 where they must answer 429).
+    original = dict(vars(rl))
     importlib.reload(rl)
     from src.auth.require_api_key import AuthedUser
 
@@ -53,7 +59,10 @@ def client_with_limits(monkeypatch):
     ):
         return {"ok": True}
 
-    return TestClient(app)
+    try:
+        yield TestClient(app)
+    finally:
+        vars(rl).update(original)
 
 
 def test_within_limit(client_with_limits):

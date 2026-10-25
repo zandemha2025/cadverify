@@ -48,7 +48,8 @@ try {
   await page.getByRole('link', { name: 'Sample part', exact: true }).click();
   await page.waitForURL('**/sample');
   await page.getByRole('button', { name: 'Design review', exact: true }).click();
-  await page.getByText('1 sidewall < 1.0° draft', { exact: true }).waitFor();
+  // The injection-molding row names its blocking finding: "Blocked: <finding>" (a5bc6367).
+  await page.locator('.cv-evidence-rows > div', { has: page.getByText('Injection molding', { exact: true }) }).getByText('Blocked: 1 sidewall < 1.0° draft', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Resource estimate', exact: true }).click();
   await page.getByText('$14.14', { exact: true }).waitFor();
   assert.match(await page.locator('.cv-sample-note').innerText(), /No measured outcomes/);

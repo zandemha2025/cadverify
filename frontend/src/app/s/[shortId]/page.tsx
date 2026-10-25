@@ -1,8 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Box } from "lucide-react";
-import { fetchSharedAnalysis } from "@/lib/api";
 import type { SharedAnalysis, Issue, ProcessScore } from "@/lib/api";
+import { UI_V4 } from "@/lib/ui-v4-flag";
+import { SharedCheck } from "@/components/v4/home/shared-check";
+import { SharedOff } from "@/components/v4/home/shared-frame";
+import { linkOffWords } from "@/components/v4/home/states";
+import { readPublicShare } from "@/components/v4/datacontrol/public-share";
+import { day } from "@/components/v4/datacontrol/words";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -27,8 +32,10 @@ export async function generateMetadata({
   params: Promise<{ shortId: string }>;
 }): Promise<Metadata> {
   const { shortId } = await params;
-  try {
-    const data = await fetchSharedAnalysis(shortId);
+  // The same signed read as the page (the visitor's IP, not this server's).
+  const res = await readPublicShare<SharedAnalysis>(`/s/${shortId}`);
+  if (res.ok) {
+    const data = res.data;
     const processCount = data.process_scores?.length ?? 0;
     return {
       title: `${data.filename} - DFM Analysis`,
@@ -36,14 +43,13 @@ export async function generateMetadata({
         title: `${data.filename} - DFM Analysis`,
         description: `Verdict: ${data.verdict} | ${processCount} processes evaluated | ${data.face_count} faces`,
         type: "article",
-        siteName: "ScaleCad",
+        siteName: "ScaleCAD",
       },
       twitter: { card: "summary" },
       robots: { index: false, follow: false },
     };
-  } catch {
-    return { title: "Shared Analysis - ScaleCad", robots: { index: false, follow: false } };
   }
+  return { title: "Shared Analysis - ScaleCAD", robots: { index: false, follow: false } };
 }
 
 /* ------------------------------------------------------------------ */
@@ -56,7 +62,7 @@ function PublicShell({ children }: { children: React.ReactNode }) {
       <header className="border-b border-border bg-card">
         <div className="mx-auto flex h-14 max-w-3xl items-center gap-2 px-4">
           <Box className="size-5 text-primary" />
-          <span className="font-semibold text-foreground">ScaleCad</span>
+          <span className="font-semibold text-foreground">ScaleCAD</span>
           <span className="ml-2 text-xs text-muted-foreground">
             Shared analysis · read-only
           </span>
@@ -97,12 +103,13 @@ export default async function SharedAnalysisPage({
 }) {
   const { shortId } = await params;
 
-  let data: SharedAnalysis | null = null;
-  try {
-    data = await fetchSharedAnalysis(shortId);
-  } catch {
-    /* 404 or network error */
-  }
+  // 410 when the link ended or was switched off (no record data), 404 when unknown.
+  const res = await readPublicShare<SharedAnalysis>(`/s/${shortId}`);
+  const data: SharedAnalysis | null = res.ok ? res.data : null;
+  const off = res.ok ? null : { reason: res.reason, endedOn: day(res.endedAt) };
+
+  // v4 ("object first") look behind NEXT_PUBLIC_UI_V4; today's page below is unchanged when it's off.
+  if (UI_V4) return data ? <SharedCheck data={data} /> : <SharedOff reason={off?.reason} endedOn={off?.endedOn} />;
 
   if (!data) {
     return (
@@ -110,14 +117,13 @@ export default async function SharedAnalysisPage({
         <Card>
           <CardContent className="py-12 text-center">
             <h1 className="text-xl font-semibold text-foreground">
-              Analysis not available
+              {linkOffWords(off?.reason ?? "missing", off?.endedOn ?? "").title}
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              This shared analysis is no longer available. It may have been
-              revoked by its owner.
+              {linkOffWords(off?.reason ?? "missing", off?.endedOn ?? "").body}
             </p>
             <Button asChild className="mt-6">
-              <Link href="/">Go to ScaleCad</Link>
+              <Link href="/">Go to ScaleCAD</Link>
             </Button>
           </CardContent>
         </Card>
@@ -279,10 +285,10 @@ export default async function SharedAnalysisPage({
       <Card>
         <CardContent className="text-center">
           <p className="text-sm text-muted-foreground">
-            This is a shared analysis from ScaleCad.
+            This is a shared analysis from ScaleCAD.
           </p>
           <Button asChild className="mt-3">
-            <Link href="/">View on ScaleCad</Link>
+            <Link href="/">View on ScaleCAD</Link>
           </Button>
         </CardContent>
       </Card>

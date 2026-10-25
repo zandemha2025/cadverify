@@ -31,6 +31,8 @@ from typing import Any
 import numpy as np
 import trimesh
 
+from src.parsers.sigpipe import ignore_sigpipe
+
 logger = logging.getLogger("cadverify.step_mesher")
 
 _HAS_GMSH = False
@@ -51,6 +53,269 @@ _CURVATURE_PTS = 12.0        # min facets around a full circle
 _TARGET_DIAG_SEGMENTS = 200  # MeshSizeMax ~ bbox_diagonal / this
 _MIN_SIZE_MM = 0.05          # floor so tiny parts still tessellate
 _MAX_SIZE_MM = 50.0          # ceiling so huge parts don't vanish
+
+# ── Fitting the analysis budget ──────────────────────────────────────────
+# The engine decimates any mesh over MAX_ANALYSIS_FACES (vertex clustering),
+# which blurs the exact geometry the checks measure: small fillets read as
+# sharp again and wall thickness becomes unavailable. A B-rep can instead be
+# re-tessellated to fit. Only meshes over the budget are touched; every part
+# under it keeps its first-pass mesh byte for byte.
+#
+# Why they go over: gmsh grows planar-face triangles from the size of their
+# boundary edges (Mesh.MeshSizeExtendFromBoundary). A 0.5 mm fillet along a
+# 120 mm edge has ~0.26 mm boundary segments, so the whole adjoining wall is
+# meshed at that size: the 120 x 80 x 40 mm Design Studio enclosure goes from
+# 212,526 faces to 672,924 with 0.5 mm inside fillets, 98% of them on its flat
+# walls. Pass 2 stops that propagation and keeps everything else (curvature
+# sizing on curved faces, MeshSizeMax on flat ones): with 1 mm fillets the
+# enclosure meshes to 218,356 faces instead of 291,482, the same flat-wall
+# sampling as its unfilleted self (with 0.5 mm, 231,636 instead of 672,924 --
+# but that first pass alone takes ~25 s and is past the triangle cap below, so
+# that part stays as it was).
+# Pass 2 runs only when flat faces really are inflated (_flat_inflation), so a
+# part that is simply big at the default size goes straight to coarsening:
+# MeshSizeMax grows (flat faces only; curved faces stay curvature-sized) by at
+# most _FIT_MAX_COARSEN in all; past that the engine's decimation applies as
+# before.
+_FIT_TARGET = 0.9            # coarsening target, as a fraction of the budget
+_FIT_MAX_COARSEN = 2.0       # MeshSizeMax may grow to at most 2x (diag / 100)
+_FIT_INFLATED = 1.2          # flat faces this much denser than asked: pass 2
+#
+# Predicted over the budget: thin-walled parts. Flat faces at diag / 200 make
+# a 40 x 40 x 30 mm open box with 0.5 mm walls 286,290 triangles; that first
+# pass alone took ~28 s, past the refit time cap, so it went to the engine's
+# vertex-clustering decimation, whose grid is coarser than the 0.5 mm walls:
+# the walls disappeared and every thin-wall check passed. The B-rep tells the
+# count before meshing (every face's area over the triangle size; curvature
+# and boundary refinement only add to it). When that is clearly over the
+# budget, the first pass would be over it anyway and is skipped: flat faces and
+# the straight edges between them are meshed at diag / _FLAT_DIAG_SEGMENTS
+# (a flat face needs no interior refinement to be exact), curved faces keep
+# their curvature sizing under the usual MeshSizeMax. The open box meshes to
+# 3,726 triangles in under a second with its walls intact. Parts predicted
+# under the budget never take this path, so their first pass stays byte for byte.
+_PREDICT_OVER = 1.05         # predicted first pass this far over the budget: skip it
+_FLAT_DIAG_SEGMENTS = 20     # flat faces in that case: diag / this (10x the usual size)
+
+
+def _fit_budget_enabled() -> bool:
+    """STEP_MESH_FIT_ANALYSIS_BUDGET (default on). Off = first-pass mesh always."""
+    return os.getenv("STEP_MESH_FIT_ANALYSIS_BUDGET", "1").strip().lower() not in ("0", "false", "no", "off")
+
+
+def _analysis_face_budget() -> int:
+    from src.analysis.context import _max_analysis_faces
+
+    return _max_analysis_faces()
+
+
+def _triangle_count() -> int:
+    return int(sum(len(tags) for tags in gmsh.model.mesh.getElements(dim=2)[1]))
+
+
+def _flat_inflation(size_max: float) -> float:
+    """How much denser than ``size_max`` the current mesh is on flat faces.
+
+    1.0 means flat faces are meshed at the size asked for; the 120 x 80 x 40 mm
+    enclosure reads 1.01 with sharp corners, 1.38 with 1 mm fillets and 3.2 with
+    0.5 mm fillets (their small boundary segments spread over the walls).
+    """
+    expected = actual = 0.0
+    per_tri = 0.433 * size_max * size_max  # equilateral triangle of edge size_max
+    for _dim, tag in gmsh.model.getEntities(2):
+        if gmsh.model.getType(2, tag) != "Plane":
+            continue
+        expected += float(gmsh.model.occ.getMass(2, tag)) / per_tri
+        actual += sum(len(t) for t in gmsh.model.mesh.getElements(2, tag)[1])
+    return actual / expected if expected > 0 else 1.0
+
+
+def _predicted_faces(size_max: float) -> float:
+    """Triangles a first pass at ``size_max`` makes at least: each face's area
+    over an equilateral triangle of that edge (the open box: 283,941 predicted,
+    286,290 made)."""
+    per_tri = 0.433 * size_max * size_max
+    area = sum(float(gmsh.model.occ.getMass(2, tag)) for _dim, tag in gmsh.model.getEntities(2))
+    return area / per_tri if per_tri > 0 else 0.0
+
+
+def _flat_coarse_sizing(size_max: float, diag: float) -> dict | None:
+    """Mesh flat faces coarse and curved ones as usual, when the first pass is
+    predicted clearly over the budget (see ``_PREDICT_OVER``). Returns the
+    sizing record (its ``curved`` cap is what later coarsening grows), or None
+    when the first pass should run as always."""
+    if not _fit_budget_enabled():
+        return None
+    budget = _analysis_face_budget()
+    predicted = _predicted_faces(size_max)
+    if predicted < _PREDICT_OVER * budget:
+        return None
+    planes = {int(tag) for _dim, tag in gmsh.model.getEntities(2) if gmsh.model.getType(2, tag) == "Plane"}
+    if not planes:
+        return None
+    flat_curves = set()
+    for _dim, curve in gmsh.model.getEntities(1):
+        if gmsh.model.getType(1, curve) != "Line":
+            continue
+        surfaces, _points = gmsh.model.getAdjacencies(1, curve)
+        if len(surfaces) and all(int(s) in planes for s in surfaces):
+            flat_curves.add(int(curve))
+    flat_points = set()
+    curved_points = set()
+    for _dim, curve in gmsh.model.getEntities(1):
+        _surfaces, points = gmsh.model.getAdjacencies(1, curve)
+        (flat_points if int(curve) in flat_curves else curved_points).update(int(p) for p in points)
+    flat_points -= curved_points
+    coarse = max(size_max, min(diag / _FLAT_DIAG_SEGMENTS, _MAX_SIZE_MM))
+    sizing = {"predicted": int(predicted), "flat_size": coarse, "curved": size_max}
+
+    def size_at(dim, tag, _x, _y, _z, lc):
+        if ((dim == 2 and tag in planes) or (dim == 1 and tag in flat_curves)
+                or (dim == 0 and tag in flat_points)):
+            return lc
+        return min(lc, sizing["curved"])
+
+    gmsh.option.setNumber("Mesh.MeshSizeMax", coarse)
+    gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
+    gmsh.model.mesh.setSizeCallback(size_at)
+    return sizing
+
+
+# The refit's gate counts triangles, never time. A part's mesh must not depend
+# on how busy the machine is: gated on wall time, the rounded 120 x 80 x 40 mm
+# Studio enclosure refit to 218,356 faces on an idle box but kept its
+# 291,482-face first pass at load average 14 on 4 CPUs (that first pass took
+# 18 s there, and the refit no longer fit). CPU time is no better: contention
+# stretches it too, and the enclosure, whose refit fits within a few per cent
+# of the cap, flipped between the two meshes from one loaded run to the next.
+# So a pass's cost is its triangle count at a fixed meshing rate, and the same
+# part gets the same passes on any box at any load. The clocks stay outer
+# bounds, in the parse pool: a rung that uses its CPU cap is killed and the
+# ladder tries its next strategy, and running out of the ladder's wall time
+# ends as busy.
+#
+# The rate. gmsh 4.15.2, single-threaded (General.NumThreads 1), on this
+# project's 4-vCPU build box (Xeon @ 2.80 GHz) at load average 9 to 14, in CPU
+# seconds per generate(2) pass:
+#   enclosure, 1 mm fillets  pass 1: 291,482 in 9.78 / 10.19 / 10.98 s
+#                            (29.8k / 28.6k / 26.5k per s); pass 2: 218,356
+#                            in 7.30 s (29.9k per s); rung 0 in all 18.1 s
+#   perf part 0 (sphere pocket)  194,454 in 6.15 s (31.6k per s)
+#   rounded pocket (0.5 mm)      181,312 in 5.37 s (33.8k per s)
+# _FIT_TRIANGLES_PER_SEC is 27,000, about the slowest of those runs. A pass
+# starts only while the triangles meshed so far plus the next pass's expected
+# triangles stay within that rate x _fit_time_cap_sec(): 518,400 triangles at
+# the default 60 s budget. That cap is 80% of the pool's rung-0 CPU cap
+# (24 s), so the most meshing the gate allows still finishes inside the rung-0
+# cap on a CPU that meshes 22,500 triangles per CPU second (518,400 in 23 s,
+# with 1 s of import), about three quarters of this box's measured rate. On a
+# slower CPU rung 0 can use up its cap, and the ladder moves on as for any
+# rung that does; time never swaps the first-pass mesh in for the refit. A
+# lower rate would refuse the enclosure's refit everywhere: it needs
+# 291,482 + 291,482 / 1.38 = 502,701.
+_FIT_TRIANGLES_PER_SEC = 27_000
+
+
+def _fit_time_cap_sec() -> float:
+    """Seconds of meshing a refit may bring one tessellation to: 80% of the pool's
+    rung-0 CPU cap. The gate turns it into triangles (``_fit_triangle_cap``) and
+    never reads a clock."""
+    from src.parsers.parse_pool import _budget_sec, _rung_caps
+
+    return 0.8 * _rung_caps(_budget_sec(), len(_MESH_RUNGS))[0]
+
+
+def _fit_triangle_cap() -> int:
+    """Triangles one tessellation may mesh in all passes, first pass included."""
+    return int(_FIT_TRIANGLES_PER_SEC * _fit_time_cap_sec())
+
+
+def _fit_to_budget(size_max: float, flat: dict | None = None) -> dict | None:
+    """Re-mesh the loaded model until it fits the analysis budget.
+
+    Called after the first ``generate(2)``. Returns None when the first pass
+    already fits (nothing changed), else a record of the passes for logging.
+    Pass 2 runs only when flat faces are inflated by their boundaries; the
+    coarsening passes then grow MeshSizeMax (at most ``_FIT_MAX_COARSEN`` in
+    all). The last pass has the fewest triangles and is the one kept. A pass
+    that would bring the triangles meshed in all past ``_fit_triangle_cap`` is
+    not started: the part then keeps its first-pass mesh and the engine
+    decimates it, as before. The decision reads triangle counts only, so a part
+    gets the same passes on an idle box and a loaded one.
+    """
+    budget = _analysis_face_budget()
+    count = _triangle_count()
+    if flat is not None:
+        return _fit_flat_coarse(size_max, flat, budget, count)
+    if count <= budget or not _fit_budget_enabled():
+        return None
+    cap = _fit_triangle_cap()
+    meshed = count
+
+    def affordable(expected_faces: float) -> bool:
+        return meshed + expected_faces <= cap
+
+    inflation = _flat_inflation(size_max)
+    passes = [{"pass": 1, "faces": count, "size_max": size_max, "extend_from_boundary": 1,
+               "flat_inflation": round(inflation, 2)}]
+    record = {"budget": budget, "triangle_cap": cap, "passes": passes, "fits": False}
+    gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
+    if inflation > _FIT_INFLATED:
+        if not affordable(count / inflation):
+            record["stopped"] = "time"
+            return record
+        gmsh.model.mesh.clear()
+        gmsh.model.mesh.generate(2)
+        count = _triangle_count()
+        meshed += count
+        passes.append({"pass": len(passes) + 1, "faces": count, "size_max": size_max,
+                       "extend_from_boundary": 0})
+    size = size_max
+    while count > budget and size < _FIT_MAX_COARSEN * size_max - 1e-12:
+        if not affordable(_FIT_TARGET * budget):
+            record["stopped"] = "time"
+            break
+        factor = max(1.05, (count / (_FIT_TARGET * budget)) ** 0.5)
+        size = min(size * factor, _FIT_MAX_COARSEN * size_max)
+        gmsh.option.setNumber("Mesh.MeshSizeMax", size)
+        gmsh.model.mesh.clear()
+        gmsh.model.mesh.generate(2)
+        count = _triangle_count()
+        meshed += count
+        passes.append({"pass": len(passes) + 1, "faces": count, "size_max": size,
+                       "extend_from_boundary": 0})
+    record["fits"] = count <= budget
+    return record
+
+
+def _fit_flat_coarse(size_max: float, flat: dict, budget: int, count: int) -> dict:
+    """The flat-coarse pass is meshed; if curved faces alone still put it over
+    the budget, grow their size cap (at most ``_FIT_MAX_COARSEN``) under the
+    same triangle cap as any refit. Always returns the record, so the log says
+    which path a part took."""
+    cap = _fit_triangle_cap()
+    meshed = count
+    passes = [{"pass": 1, "faces": count, "size_max": size_max, "flat_size": flat["flat_size"],
+               "predicted_first_pass": flat["predicted"], "extend_from_boundary": 0}]
+    record = {"budget": budget, "triangle_cap": cap, "passes": passes, "fits": False,
+              "flat_coarse": True}
+    size = size_max
+    while count > budget and size < _FIT_MAX_COARSEN * size_max - 1e-12:
+        if meshed + _FIT_TARGET * budget > cap:
+            record["stopped"] = "time"
+            break
+        factor = max(1.05, (count / (_FIT_TARGET * budget)) ** 0.5)
+        size = min(size * factor, _FIT_MAX_COARSEN * size_max)
+        flat["curved"] = size
+        gmsh.model.mesh.clear()
+        gmsh.model.mesh.generate(2)
+        count = _triangle_count()
+        meshed += count
+        passes.append({"pass": len(passes) + 1, "faces": count, "size_max": size,
+                       "flat_size": flat["flat_size"], "extend_from_boundary": 0})
+    record["fits"] = count <= budget
+    return record
+
 
 # ── Retry ladder ──────────────────────────────────────────────────────────
 # ~19% of real NIST STEP parts hit gmsh's "Impossible to mesh periodic surface N"
@@ -258,6 +523,84 @@ def step_to_trimesh_from_bytes(data: bytes, filename: str = "upload.step") -> tr
             pass
 
 
+# What the B-rep says about each triangle, kept on the mesh's metadata (same face
+# order as ``mesh.faces``). Checks that measure a surface's direction (draft) read
+# the CAD surface's own normal instead of a triangle's, and a finding can count
+# the CAD faces it lies on (the faces a CAD tool shows) instead of triangles.
+# Orientation turns rotate CAD_NORMALS_KEY with the mesh; anything that rebuilds
+# the faces (decimation) drops both, and readers check the length first.
+CAD_FACES_KEY = "cad_face_ids"        # (M,) int32: B-rep face index, 0..K-1
+CAD_NORMALS_KEY = "cad_face_normals"  # (M, 3) float32: the surface's unit normal at the triangle
+CAD_FACE_COUNT_KEY = "cad_face_count"  # K: B-rep faces in the solid
+# Per B-rep face (index 0..K-1), for cylinders: {"radius_mm", "arc_deg", "length_mm"}
+# (an inside corner rounded R0.5 over 90° and 20 mm deep); None for other faces.
+CAD_FACE_SHAPES_KEY = "cad_face_shapes"
+# The last tessellation's B-rep data, read back under ``_GMSH_LOCK`` by ``_run_rung``
+# (``_tessellate_once`` keeps its two-array return).
+_LAST_CAD: dict = {}
+
+
+def _cylinder_shape(tag: int) -> dict | None:
+    """A B-rep cylinder's radius, the arc it spans and its length (frame-free numbers)."""
+    if gmsh.model.getType(2, tag) != "Cylinder":
+        return None
+    lo, hi = gmsh.model.getParametrizationBounds(2, tag)
+    curvature = gmsh.model.getCurvature(2, tag, [(lo[0] + hi[0]) / 2.0, (lo[1] + hi[1]) / 2.0])
+    k = float(curvature[0]) if len(curvature) else 0.0
+    if not (k > 0 and np.isfinite(k)):
+        return None
+    return {"radius_mm": 1.0 / k, "arc_deg": float(np.degrees(abs(hi[0] - lo[0]))),
+            "length_mm": float(abs(hi[1] - lo[1]))}
+
+
+def _cad_face_data() -> dict | None:
+    """Per-triangle B-rep face index and the surface's exact normal there.
+
+    gmsh lists a surface's triangles entity by entity in the same order as
+    ``getElements(dim=2)``, so the arrays line up with the mesh's faces. The
+    normal is the B-rep surface's own (``getNormal`` at each node's parameters),
+    averaged over the triangle's three nodes: a 3.0° drafted cone reads 3.0° on
+    every triangle, where its facets read 2.6–3.3°. Its sign follows the surface
+    parametrisation, which a draft reading (``|90° - angle from +Z|``) ignores.
+    None when any surface can't be read this way (the mesh is used as before).
+    """
+    ids: list[np.ndarray] = []
+    normals: list[np.ndarray] = []
+    entities = gmsh.model.getEntities(2)
+    shapes: list[dict | None] = []
+    for _dim, tag in entities:
+        try:
+            shapes.append(_cylinder_shape(tag))
+        except Exception:
+            shapes.append(None)
+    for index, (_dim, tag) in enumerate(entities):
+        etypes, _etags, enodes = gmsh.model.mesh.getElements(2, tag)
+        conn = [c for et, c in zip(etypes, enodes) if et == 2]
+        if not conn:
+            continue
+        tri = np.concatenate(conn).astype(np.int64).reshape(-1, 3)
+        node_tags, _coords, uv = gmsh.model.mesh.getNodes(2, tag, includeBoundary=True,
+                                                          returnParametricCoord=True)
+        if len(uv) != 2 * len(node_tags) or not len(node_tags):
+            return None
+        at = np.asarray(gmsh.model.getNormal(tag, uv), dtype=np.float64).reshape(-1, 3)
+        order = np.argsort(node_tags)
+        sorted_tags = np.asarray(node_tags, dtype=np.int64)[order]
+        pos = np.searchsorted(sorted_tags, tri)
+        if np.any(pos >= len(sorted_tags)) or np.any(sorted_tags[np.minimum(pos, len(sorted_tags) - 1)] != tri):
+            return None
+        mean = at[order[pos]].sum(axis=1)
+        length = np.linalg.norm(mean, axis=1)
+        if not np.all(np.isfinite(length)) or np.any(length < 1e-9):
+            return None
+        normals.append((mean / length[:, None]).astype(np.float32))
+        ids.append(np.full(len(tri), index, dtype=np.int32))
+    if not ids:
+        return None
+    return {CAD_FACES_KEY: np.concatenate(ids), CAD_NORMALS_KEY: np.concatenate(normals),
+            CAD_FACE_COUNT_KEY: len(entities), CAD_FACE_SHAPES_KEY: shapes}
+
+
 def _tessellate_once(
     path: str,
     algorithm,
@@ -265,6 +608,7 @@ def _tessellate_once(
     heal: bool,
     *,
     target_diag_segments: int = _TARGET_DIAG_SEGMENTS,
+    cad: dict | None = None,
 ):
     """One full gmsh initialize -> import -> generate(2) -> extract -> finalize
     cycle for a single retry rung. Returns ``(verts Nx3, faces Mx3)``.
@@ -283,6 +627,7 @@ def _tessellate_once(
     # ThreadPoolExecutor (A.5), so the default would raise "signal only works in
     # main thread of the main interpreter".
     gmsh.initialize(interruptible=False)
+    ignore_sigpipe()  # gmsh just reset it to terminate the process
     try:
         gmsh.option.setNumber("General.Terminal", 0)          # no stdout spew
         _configure_cad_import(path)
@@ -307,7 +652,13 @@ def _tessellate_once(
         if algorithm is not None:               # rung 0 keeps gmsh's default algo
             gmsh.option.setNumber("Mesh.Algorithm", algorithm)
 
+        # None (and no change at all) unless the B-rep predicts a first pass
+        # clearly over the analysis budget; see _PREDICT_OVER.
+        flat = _flat_coarse_sizing(size_max, diag)
         gmsh.model.mesh.generate(2)          # 2D surface mesh = triangulated shell
+        fit = _fit_to_budget(size_max, flat)  # no-op unless over the analysis budget
+        if fit is not None:
+            logger.info("STEP mesh refit to the analysis budget: %s", fit)
 
         node_tags, node_coords, _ = gmsh.model.mesh.getNodes()
         if node_coords.size == 0:
@@ -324,6 +675,15 @@ def _tessellate_once(
         if not tris:
             raise ValueError("STEP file contains no surface triangles after tessellation.")
         faces = np.vstack(tris)
+        try:
+            data = _cad_face_data()
+        except Exception:
+            logger.warning("B-rep face data unavailable; using the mesh alone", exc_info=True)
+            data = None
+        if data is not None and len(data[CAD_FACES_KEY]) == len(faces):
+            _LAST_CAD.update(data)
+            if cad is not None:
+                cad.update(data)
         return verts, faces
     finally:
         gmsh.finalize()
@@ -358,7 +718,9 @@ def prewarm_step_from_bytes(
                 heal=False,
                 target_diag_segments=1,
             )
-        return trimesh.Trimesh(vertices=verts, faces=faces, process=False)
+        mesh = trimesh.Trimesh(vertices=verts, faces=faces, process=False)
+        mesh.metadata["source_format"] = "cad"  # ScaleCAD made these triangles
+        return mesh
     finally:
         try:
             os.unlink(tmp.name)
@@ -385,12 +747,19 @@ def _run_rung(path: str, idx: int) -> trimesh.Trimesh:
     """
     _name, algorithm, curvature_pts, heal = _MESH_RUNGS[idx]
     with _GMSH_LOCK:                         # serialize the global gmsh context
+        _LAST_CAD.clear()
         verts, faces = _tessellate_once(path, algorithm, curvature_pts, heal)
+        cad = dict(_LAST_CAD)
+        _LAST_CAD.clear()
     # process=True merges coincident vertices -> recovers watertightness on single
     # solids whose faces share edges.
     mesh = trimesh.Trimesh(vertices=verts, faces=faces, process=True)
     if len(mesh.vertices) == 0 or len(mesh.faces) == 0:
         raise _EmptyMeshError("STEP tessellation yielded an empty mesh.")
+    if cad and len(cad[CAD_FACES_KEY]) == len(mesh.faces):
+        # Merging vertices keeps the faces in order (no validation pass drops any);
+        # fix_normals below only flips windings, which a draft reading ignores.
+        mesh.metadata.update(cad)
     if not mesh.is_winding_consistent:
         # gmsh emits triangles per B-rep surface patch, and patch windings can
         # disagree after the vertex merge — an artifact of OUR tessellation, not
@@ -402,6 +771,9 @@ def _run_rung(path: str, idx: int) -> trimesh.Trimesh:
             mesh.fix_normals(multibody=True)
         except Exception:
             logger.warning("fix_normals failed on gmsh shell; leaving winding as-is")
+    # ScaleCAD tessellated this CAD file itself: advice about the file's own
+    # triangles (an STL's) doesn't apply (base_analyzer.decimation_issue).
+    mesh.metadata["source_format"] = "cad"
     return mesh
 
 

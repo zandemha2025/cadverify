@@ -3,6 +3,7 @@
 from src.analysis.context import GeometryContext
 from src.analysis.models import Issue, ProcessType, Severity
 from src.analysis.processes.base import register
+from src.profiles.envelopes import common_envelope
 from src.analysis.processes.checks import (
     check_build_volume,
     check_small_features,
@@ -25,8 +26,8 @@ class BinderJettingAnalyzer:
         # Self-supporting — no overhang check.
         i.extend(check_small_features(ctx, 0.5, self.process,
                  cite="Desktop Metal: 0.5mm min feature."))
-        i.extend(check_build_volume(ctx, (800, 500, 400), self.process,
-                 cite="ExOne S-Max Pro."))
+        i.extend(check_build_volume(ctx, common_envelope(self.process), self.process,
+                 cite="Common size; e.g. ExOne X1 25PRO."))
         i.extend(self._check_sintering_shrinkage(ctx))
         return i
 

@@ -4,11 +4,12 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useRef, useState } from "react";
 import { ArrowRight, ArrowUpRight, Menu, UserRound, X } from "lucide-react";
-import { SITE_TAGLINE, SITE_NAV } from "@/lib/site/navigation";
+import { SITE_TAGLINE, SITE_NAV, APP_HOME_HREF, SIGNUP_HREF } from "@/lib/site/navigation";
+import { ANALYTICS_PREFERENCES_EVENT } from "@/lib/analytics";
 export { SITE_TAGLINE, SITE_NAV, PILOT_HREF, UPLOAD_HREF } from "@/lib/site/navigation";
 
-export type SiteSession = { user: { email: string } | null; usage: { cap: number; remaining: number } | null; siteKey: string; nonce?: string; ssoLoginPath: string };
-const SiteSessionContext = createContext<SiteSession>({ user: null, usage: null, siteKey: "", ssoLoginPath: "" });
+export type SiteSession = { user: { email: string } | null; usage: { cap: number; remaining: number } | null; siteKey: string; nonce?: string; ssoLoginPath: string; freeChecks: { work: number; personal: number } };
+const SiteSessionContext = createContext<SiteSession>({ user: null, usage: null, siteKey: "", ssoLoginPath: "", freeChecks: { work: 15, personal: 3 } });
 export const SiteSessionProvider = SiteSessionContext.Provider;
 export const useSiteSession = () => useContext(SiteSessionContext);
 
@@ -19,7 +20,7 @@ export function SiteMark() {
 export function SiteCta({ className = "cv-button", children }: { className?: string; children?: React.ReactNode }) {
   const { user } = useSiteSession();
   const pathname = usePathname();
-  return <Link className={className} href={user ? "/verify" : pathname === "/" ? "#start" : "/signup"}>{user ? <>Open ScaleCAD <ArrowRight size={16} aria-hidden="true" /></> : children || <>Try ScaleCAD free <ArrowRight size={16} aria-hidden="true" /></>}</Link>;
+  return <Link className={className} href={user ? APP_HOME_HREF : pathname === "/" ? "#start" : SIGNUP_HREF}>{user ? <>Open ScaleCAD <ArrowRight size={16} aria-hidden="true" /></> : children || <>Try ScaleCAD free <ArrowRight size={16} aria-hidden="true" /></>}</Link>;
 }
 
 export type SiteNavProps = { variant?: "cinematic" | "document"; activeHref?: string };
@@ -63,8 +64,8 @@ export function SiteFooter() {
     <div><Link href="/" className="cv-brand"><SiteMark />ScaleCAD</Link><p>{SITE_TAGLINE}</p><SiteCta /><a className="cv-text-link" href="mailto:nazeem@scalecad.ai">Talk to our team <ArrowUpRight size={15} aria-hidden="true" /></a></div>
     <nav aria-label="Explore"><h2>Explore</h2><Link href="/sample">Sample part</Link><Link href="/teams">Your workflow</Link><Link href="/method">How it works</Link><Link href="/platform">The platform</Link><Link href="/pricing">Pricing</Link></nav>
     <nav aria-label="Teams"><h2>Teams</h2><Link href="/teams/in-house-manufacturing">In-house manufacturing</Link><Link href="/teams/design-engineering">Design engineering</Link><Link href="/teams/cost-engineering">Cost engineering</Link><Link href="/teams/sourcing">Sourcing</Link><Link href="/teams/shop-owners">Shop owners</Link></nav><nav aria-label="Resources"><h2>Resources</h2><Link href="/developers">Developers</Link><Link href="/api-reference">API reference</Link><Link href="/security">Security</Link><Link href="/pilot-report">Pilot report</Link></nav>
-    <nav aria-label="Company"><h2>ScaleCad</h2><Link href="/company">Company</Link><Link href="/contact">Contact</Link><Link href="/pilot">Plan a pilot</Link><Link href="/status">Service status</Link><Link href="/login">Log in</Link></nav>
-  </div><div className="cv-footer-bottom"><span>© {new Date().getFullYear()} ScaleCAD</span><nav aria-label="Legal"><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><Link href="/dpa">Data processing</Link></nav><span>Built for decisions that matter.</span></div><div className="cv-footer-wordmark" aria-hidden="true">ScaleCAD</div></footer>;
+    <nav aria-label="Company"><h2>ScaleCAD</h2><Link href="/company">Company</Link><Link href="/contact">Contact</Link><Link href="/pilot">Plan a pilot</Link><Link href="/status">Service status</Link><Link href="/login">Log in</Link></nav>
+  </div><div className="cv-footer-bottom"><span>© {new Date().getFullYear()} ScaleCAD</span><nav aria-label="Legal"><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><Link href="/dpa">Data processing</Link><button type="button" className="cv-footer-pref" onClick={() => window.dispatchEvent(new Event(ANALYTICS_PREFERENCES_EVENT))}>Privacy choices</button></nav><span>Built for decisions that matter.</span></div><div className="cv-footer-wordmark" aria-hidden="true">ScaleCAD</div></footer>;
 }
 
 export function SiteFooterTagline({ className }: { className?: string }) {

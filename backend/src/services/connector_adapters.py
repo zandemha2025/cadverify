@@ -12,7 +12,7 @@ import math
 import re
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
-from typing import Any, Iterable, Protocol
+from typing import TYPE_CHECKING, Any, Iterable, Protocol
 
 from src.services.integration_service import (
     BOUNDARY_SANDBOX,
@@ -93,6 +93,9 @@ class ReadOnlyConnectorAdapter(Protocol):
 
 class _BaseReadOnlyAdapter:
     source_system = "enterprise"
+
+    if TYPE_CHECKING:  # each adapter defines it; declared for dry_run_diff, for the checker only
+        def normalize(self, records: Iterable[dict[str, Any]]) -> NormalizedConnectorPayload: ...
 
     def __init__(self, settings: ConnectorAdapterSettings):
         self.settings = settings

@@ -100,7 +100,18 @@ primary_region = "iad"
 [deploy]
   release_command = "sh -c 'DATABASE_URL=$DATABASE_URL_DIRECT alembic upgrade head'"
 
+# Sized from the measured memory model (docs/BIG_FILES.md): one check gets 0.6 of
+# its machine's memory, so a 4 GB web machine checks a STEP file up to about
+# 6 MB on the web path and an 8 GB worker about 22 MB STEP / 173 MB STL; larger
+# files go to the worker, which refuses what it can't hold, with nothing charged.
 [[vm]]
-  memory = "2gb"
+  processes = ["web"]
+  memory = "4gb"
   cpu_kind = "shared"
   cpus = 2
+
+[[vm]]
+  processes = ["worker"]
+  memory = "8gb"
+  cpu_kind = "shared"
+  cpus = 4

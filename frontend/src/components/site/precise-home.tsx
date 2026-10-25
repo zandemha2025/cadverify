@@ -23,7 +23,7 @@ export function PreciseHome() {
  const envOn=on(1), g1=on(1), g2=on(2), g3=on(3), g4=on(4), g5=on(5);
  const scanning=s.phase >= 1 && s.phase <= 4, walking=s.phase < 6;
  const replayLabel=walking ? "Checking the sample part…" : "Watch it again";
- const workChecks=15, personalChecks=3;
+ const { freeChecks: { work: workChecks, personal: personalChecks } } = session;
  const startTitle=session.user ? "Open ScaleCAD." : "Try ScaleCAD free.";
     const tab = s.tab || 'inhouse';
     const tabDefs = [

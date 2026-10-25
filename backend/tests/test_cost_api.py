@@ -441,6 +441,9 @@ def test_cost_parse_timeout_is_clean_504(client, cube_10mm, stl_bytes_of, monkey
     # shortcut makes that cache hit effective; clearing here restores the
     # cold-cache precondition the timeout assertion depends on.
     mesh_cache.get_cache().clear()
+    # Same for the analysed part a previous price of this cube left for re-pricing.
+    from src.services import part_geometry_cache
+    part_geometry_cache.clear()
 
     real_parse = routes._parse_mesh
 

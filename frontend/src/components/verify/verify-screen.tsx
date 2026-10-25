@@ -19,6 +19,15 @@ import {
 } from "@/lib/dfm-scope";
 import { C, MONO, USD, NUM, procLabel, statusColor, normProv } from "@/lib/verify/tokens";
 import type { VerifyResult } from "@/lib/verify/run";
+import type { ServiceEnvironment } from "@/lib/verify/part-context";
+import {
+  conditionsChangedSinceRun,
+  draftFromServiceEnvironment,
+  sameServiceEnvironment,
+  serviceEnvironmentFromDraft,
+  storedServiceEnvironment,
+  type ServiceConditionsDraft,
+} from "@/lib/verify/service-conditions";
 import { resolvedAnnualVolume } from "@/lib/verify/program-rollup";
 import { fetchCostDecision, setCostDecisionDisposition } from "@/lib/api";
 import type { CostReport, CostComparison } from "@/lib/api";
@@ -65,6 +74,7 @@ import { interpUnitCost, scrubSelection, type InterpPoint } from "@/lib/verify/s
 import {
   verdictBannerModel,
   verificationForRoute,
+  ownedAlternativeSub,
   perRouteRows,
   envStrikes,
   marginalRate,
@@ -101,8 +111,10 @@ interface Props {
   running: boolean;
   guided?: boolean;
   fileName: string | null;
-  env: { temp: boolean; sour: boolean; pressure: boolean };
-  setEnv: (e: { temp: boolean; sour: boolean; pressure: boolean }) => void;
+  /** Explicitly save the edited service conditions to the part's record. */
+  onSaveConditions: (env: ServiceEnvironment) => Promise<{ ok: boolean; error: string | null }>;
+  /** Conditions set before any part's record is shown, for the next verification. */
+  onPendingConditions: (env: ServiceEnvironment | null) => void;
   materialClass: string;
   materialProvenance: "DEFAULT" | "USER";
   setMaterialClass: (materialClass: string) => void;
@@ -112,11 +124,41 @@ interface Props {
   nav: Nav;
 }
 
-const ENV_CHIPS: { key: "temp" | "sour" | "pressure"; label: string }[] = [
-  { key: "temp", label: "120 °C service" },
-  { key: "sour", label: "sour service (H₂S)" },
-  { key: "pressure", label: "35 MPa pressure" },
+// Quick chips over the real fields: the two presets fill a value (120 °C max
+// temperature, 35 MPa = 350 bar), the flags toggle a boolean.
+const CONDITION_CHIPS: (
+  | { label: string; field: "max_temp_c" | "pressure_bar"; value: string }
+  | { label: string; flag: "corrosive" | "sour_service" }
+)[] = [
+  { label: "120 °C service", field: "max_temp_c", value: "120" },
+  { label: "sour service (H₂S)", flag: "sour_service" },
+  { label: "35 MPa pressure", field: "pressure_bar", value: "350" },
+  { label: "corrosive", flag: "corrosive" },
 ];
+
+const CONDITION_FIELDS: {
+  key: "min_temp_c" | "max_temp_c" | "pressure_bar" | "medium" | "standard";
+  label: string;
+  placeholder?: string;
+  inputMode?: "decimal";
+}[] = [
+  { key: "min_temp_c", label: "MIN TEMP (°C)" },
+  { key: "max_temp_c", label: "MAX TEMP (°C)" },
+  { key: "pressure_bar", label: "PRESSURE (bar)", inputMode: "decimal" },
+  { key: "medium", label: "MEDIUM", placeholder: "e.g. sour gas (H2S)" },
+  { key: "standard", label: "STANDARD", placeholder: "e.g. NACE MR0175" },
+];
+
+const conditionInputStyle: CSSProperties = {
+  width: "100%",
+  background: "#ffffff",
+  border: `1px solid ${C.hair}`,
+  borderRadius: 8,
+  padding: "8px 10px",
+  fontSize: 12.5,
+  color: C.ink,
+  fontFamily: "inherit",
+};
 
 const MATERIAL_CLASSES = [
   { key: "polymer", label: "Polymer" },
@@ -138,8 +180,8 @@ export function VerifyScreen(props: Props) {
   const {
     result,
     running,
-    env,
-    setEnv,
+    onSaveConditions,
+    onPendingConditions,
     materialClass,
     materialProvenance,
     setMaterialClass,
@@ -205,6 +247,7 @@ export function VerifyScreen(props: Props) {
               setDisclose={setDisclose}
               decision={decision}
               setDecision={setDecision}
+              onPickFile={onPickFile}
               onReverify={onReverify}
               onRetryCost={onRetryCost}
               nav={nav}
@@ -215,8 +258,9 @@ export function VerifyScreen(props: Props) {
         <PersonalizationDoor
           result={result}
           running={running}
-          env={env}
-          setEnv={setEnv}
+          onSaveConditions={onSaveConditions}
+          onPendingConditions={onPendingConditions}
+          onReverify={onReverify}
           materialClass={materialClass}
           materialProvenance={materialProvenance}
           setMaterialClass={setMaterialClass}
@@ -242,8 +286,9 @@ export function VerifyScreen(props: Props) {
 function PersonalizationDoor({
   result,
   running,
-  env,
-  setEnv,
+  onSaveConditions,
+  onPendingConditions,
+  onReverify,
   materialClass,
   materialProvenance,
   setMaterialClass,
@@ -251,15 +296,22 @@ function PersonalizationDoor({
   Props,
   | "result"
   | "running"
-  | "env"
-  | "setEnv"
+  | "onSaveConditions"
+  | "onPendingConditions"
+  | "onReverify"
   | "materialClass"
   | "materialProvenance"
   | "setMaterialClass"
 >) {
-  const hostile = env.temp || env.sour || env.pressure;
-  // The env door tells the exact truth about the last persistence round-trip.
-  const door = envDoorStatus(hostile, running, result);
+  // Once a part's record was read, the editor shows its STORED conditions and
+  // only an explicit save writes them; if the read failed, editing is off so a
+  // save can never overwrite values the user has not seen. Before that, edits are
+  // held for the next part (saved only if its record has none).
+  const bound = !!result?.meshHash;
+  const record = storedServiceEnvironment(result?.partContext);
+  const stale = !!result && conditionsChangedSinceRun(result.serviceEnvironment, result.partContext);
+  const editable = !running && !(bound && result?.envError);
+  const door = envDoorStatus(running, result, stale);
   const materialAssumption = result?.cost?.assumptions.find(
     (assumption) => assumption.name === "material_class"
   );
@@ -273,10 +325,10 @@ function PersonalizationDoor({
     ? normProv(materialAssumption.provenance)
     : materialProvenance;
   const answerBasis = effectiveMaterialProvenance === "USER"
-    ? "The answer above uses your declared material and any service conditions you selected."
+    ? "The answer above uses your declared material and the service conditions stored on this part."
     : effectiveMaterialProvenance === "CAD"
       ? "The answer above uses the material class read from this CAD file; confirm it if the annotation is not authoritative."
-      : "The answer above uses a default material and ambient service until you declare otherwise.";
+      : "The answer above uses a default material until you declare one, and the service conditions stored on this part (ambient when none).";
 
   return (
     <section
@@ -301,39 +353,22 @@ function PersonalizationDoor({
         <Kicker>SERVICE CONDITIONS</Kicker>
         <span style={{ fontFamily: MONO, fontSize: 10.5, color: door.chipColor }}>{door.chip}</span>
       </div>
-      <div
-        role="group"
-        aria-label="Service conditions"
-        style={{ marginTop: 14, display: "flex", flexWrap: "wrap", gap: 8 }}
-      >
-        {ENV_CHIPS.map((chip) => {
-          const on = env[chip.key];
-          return (
-            <button
-              key={chip.key}
-              type="button"
-              aria-pressed={on}
-              onClick={() => setEnv({ ...env, [chip.key]: !on })}
-              style={{
-                border: on ? `1px solid ${C.ink}` : `1px solid ${C.hair}`,
-                background: on ? C.ink : "#ffffff",
-                color: on ? "#ffffff" : C.ink,
-                borderRadius: 999,
-                padding: "8px 16px",
-                fontSize: 12.5,
-                cursor: "pointer",
-                fontFamily: "inherit",
-                transition: "all 150ms",
-              }}
-            >
-              {chip.label}
-            </button>
-          );
-        })}
-      </div>
+      <ServiceConditionsEditor
+        key={bound ? `${result?.meshHash}:${JSON.stringify(record)}` : "next-part"}
+        record={bound ? record : {}}
+        mode={bound ? "record" : "pending"}
+        editable={editable}
+        onSave={onSaveConditions}
+        onPendingChange={onPendingConditions}
+      />
       <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10.5, color: door.color, lineHeight: 1.6 }}>
         {door.line}
       </p>
+      {stale && !running && (
+        <div style={{ marginTop: 10 }}>
+          <GhostButton onClick={onReverify}>Re-verify with saved conditions</GhostButton>
+        </div>
+      )}
       <div style={{ marginTop: 16, borderTop: `1px solid ${C.hair2}`, paddingTop: 14 }}>
         <Kicker>
           MATERIAL CLASS ·{" "}
@@ -375,63 +410,197 @@ function PersonalizationDoor({
   );
 }
 
-/** The env door's exact-truth status. The "captured on the record" claim is made
- *  ONLY when the last run actually persisted the world (result.envCaptured); a
- *  failed persistence says exactly what is true ("drives this preview only"). */
+/** The env door's exact-truth status. Conditions come from the part's record; a
+ *  run never writes over them, and a saved edit is flagged until a re-verify
+ *  applies it. */
 function envDoorStatus(
-  hostile: boolean,
   running: boolean,
-  result: VerifyResult | null
+  result: VerifyResult | null,
+  stale: boolean
 ): { chip: string; chipColor: string; line: string; color: string } {
-  if (running && hostile) {
+  if (running) {
     return {
-      chip: "capturing…",
+      chip: "reading record…",
       chipColor: C.ink40,
-      line: "declaring these service conditions on the part's record, then re-costing against them…",
-      color: C.cond,
-    };
-  }
-  if (result && result.envDeclared) {
-    if (result.envCaptured) {
-      return {
-        chip: "● USER · on the record",
-        chipColor: C.user,
-        line: "service conditions declared — captured on this part's record. The verification below reflects them: materials that can't survive these conditions are struck with their cited standard.",
-        color: C.pass,
-      };
-    }
-    return {
-      chip: "drives this preview only",
-      chipColor: C.cond,
-      line:
-        "service conditions declared — drives this preview only, NOT captured to the record" +
-        (result.envError ? ` (${result.envError})` : "") +
-        ".",
-      color: C.cond,
-    };
-  }
-  if (result && !result.envDeclared) {
-    return {
-      chip: "ambient",
-      chipColor: C.ink40,
-      line: "no service conditions declared — the part is verified at ambient.",
+      line: "reading this part's stored service conditions; the verification applies them…",
       color: C.ink40,
     };
   }
-  if (hostile) {
+  if (result?.envError) {
     return {
-      chip: "captured on verify",
-      chipColor: C.ink40,
-      line: "service conditions declared — they'll be captured on the part's record when you verify, and any material that can't survive them is struck with its cited standard.",
+      chip: "unavailable",
+      chipColor: C.cond,
+      line: `this part's stored service conditions could not be read (${result.envError}). Editing is off so nothing on the record is overwritten.`,
       color: C.cond,
+    };
+  }
+  if (!result?.meshHash) {
+    return {
+      chip: "next part",
+      chipColor: C.ink40,
+      line: "service conditions live on each part's record. Set them here for the next part you verify (saved only if its record has none), or verify a part to see and edit its stored ones.",
+      color: C.ink40,
+    };
+  }
+  if (result.declaredBeforeRun?.outcome === "failed") {
+    return {
+      chip: "not saved",
+      chipColor: C.cond,
+      line: `the conditions you set could not be saved to this part's record (${result.declaredBeforeRun.error ?? "unknown error"}), so it was verified with the record as it was.`,
+      color: C.cond,
+    };
+  }
+  if (stale) {
+    return {
+      chip: "● USER · saved",
+      chipColor: C.user,
+      line: "saved to this part's record. The verification above used the previous conditions; re-verify to apply these (a re-verify is a new part check).",
+      color: C.cond,
+    };
+  }
+  if (result.declaredBeforeRun?.outcome === "kept_stored") {
+    return {
+      chip: "● USER · on the record",
+      chipColor: C.user,
+      line: "this part already had service conditions on its record, so those were applied instead of the ones you set beforehand. They are shown here; edit and save to change them.",
+      color: C.cond,
+    };
+  }
+  if (result.envDeclared) {
+    return {
+      chip: "● USER · on the record",
+      chipColor: C.user,
+      line: "these are the conditions on this part's record, and the verification above reflects them: materials that can't survive them are struck with their cited standard.",
+      color: C.pass,
     };
   }
   return {
     chip: "ambient",
     chipColor: C.ink40,
-    line: "no service conditions declared — the part will be verified at ambient.",
+    line: "no service conditions on this part's record, so it is verified at ambient.",
     color: C.ink40,
   };
+}
+
+/** A plain editor over every field the part-context API accepts. In "record"
+ *  mode, Save is the only write: it sends the complete edited set and re-runs
+ *  nothing. In "pending" mode (no part's record shown yet) edits are handed to the
+ *  next verification, which saves them only onto a record with no conditions. */
+function ServiceConditionsEditor({
+  record,
+  mode,
+  editable,
+  onSave,
+  onPendingChange,
+}: {
+  record: ServiceEnvironment;
+  mode: "record" | "pending";
+  editable: boolean;
+  onSave: Props["onSaveConditions"];
+  onPendingChange: Props["onPendingConditions"];
+}) {
+  const [draft, setDraft] = useState<ServiceConditionsDraft>(() => draftFromServiceEnvironment(record));
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const parsed = serviceEnvironmentFromDraft(draft);
+  const dirty = !sameServiceEnvironment(parsed.env, record);
+  const disabled = !editable || saving;
+  const update = <K extends keyof ServiceConditionsDraft>(key: K, value: ServiceConditionsDraft[K]) => {
+    const next = { ...draft, [key]: value };
+    setDraft(next);
+    setSaveError(null);
+    if (mode === "pending") {
+      // Invalid input is shown and declares nothing, never a partial set.
+      const pending = serviceEnvironmentFromDraft(next);
+      onPendingChange(pending.errors.length > 0 ? null : pending.env);
+    }
+  };
+  const revert = () => {
+    setDraft(draftFromServiceEnvironment(record));
+    setSaveError(null);
+  };
+  const save = async () => {
+    setSaving(true);
+    setSaveError(null);
+    const out = await onSave(parsed.env).catch((caught: unknown) => ({
+      ok: false,
+      error: caught instanceof Error ? caught.message : null,
+    }));
+    // On success the parent re-keys this editor from the saved record.
+    setSaving(false);
+    if (!out.ok) setSaveError(out.error ?? "These conditions could not be saved.");
+  };
+
+  return (
+    <div role="group" aria-label="Service conditions" style={{ marginTop: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10 }}>
+        {CONDITION_FIELDS.map((field) => (
+          <label key={field.key} style={{ display: "block", minWidth: 0 }}>
+            <span style={{ display: "block", fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", color: C.ink45, marginBottom: 5 }}>
+              {field.label}
+            </span>
+            <input
+              style={conditionInputStyle}
+              value={draft[field.key]}
+              placeholder={field.placeholder}
+              inputMode={field.inputMode}
+              disabled={disabled}
+              onChange={(e) => update(field.key, e.target.value)}
+            />
+          </label>
+        ))}
+      </div>
+      <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8 }}>
+        {CONDITION_CHIPS.map((chip) => {
+          const on = "flag" in chip
+            ? draft[chip.flag]
+            : draft[chip.field].trim() !== "" && Number(draft[chip.field]) === Number(chip.value);
+          const toggle = () => {
+            if ("flag" in chip) update(chip.flag, !on);
+            else update(chip.field, on ? "" : chip.value);
+          };
+          return (
+            <button
+              key={chip.label}
+              type="button"
+              aria-pressed={on}
+              disabled={disabled}
+              onClick={toggle}
+              style={{
+                border: on ? `1px solid ${C.ink}` : `1px solid ${C.hair}`,
+                background: on ? C.ink : "#ffffff",
+                color: on ? "#ffffff" : C.ink,
+                borderRadius: 999,
+                padding: "8px 16px",
+                fontSize: 12.5,
+                cursor: disabled ? "default" : "pointer",
+                opacity: disabled ? 0.6 : 1,
+                fontFamily: "inherit",
+                transition: "all 150ms",
+              }}
+            >
+              {chip.label}
+            </button>
+          );
+        })}
+      </div>
+      {[...parsed.errors, ...(saveError ? [saveError] : [])].map((message) => (
+        <p key={message} role="alert" style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.fail }}>
+          {message}
+        </p>
+      ))}
+      {mode === "record" && editable && (dirty || saving) && (
+        <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8 }}>
+          <GhostButton primary onClick={() => void save()} disabled={saving || parsed.errors.length > 0}>
+            {saving ? "Saving…" : "Save conditions"}
+          </GhostButton>
+          <GhostButton onClick={revert} disabled={saving}>
+            Revert
+          </GhostButton>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function ComputingBanner() {
@@ -584,6 +753,7 @@ function Walk({
   setDisclose,
   decision,
   setDecision,
+  onPickFile,
   onReverify,
   onRetryCost,
   nav,
@@ -595,6 +765,7 @@ function Walk({
   setDisclose: (s: string | null) => void;
   decision: CostDisposition | null;
   setDecision: (d: CostDisposition | null) => void;
+  onPickFile: () => void;
   onReverify: () => void;
   onRetryCost: () => void;
   nav: Nav;
@@ -732,7 +903,9 @@ function Walk({
               )}
             </p>
             <div style={{ marginTop: 12 }}>
-              <GhostButton onClick={onReverify}>Repair &amp; re-upload →</GhostButton>
+              {/* No repair runs here: re-verifying the same bytes cannot pass this
+                  gate, so the action asks for a file repaired at the source. */}
+              <GhostButton onClick={onPickFile}>Upload a repaired file →</GhostButton>
             </div>
           </div>
         )}
@@ -1316,13 +1489,15 @@ function VerdictBanner({
   if (routeVerification) {
     const m = verdictBannerModel(routeVerification.verdict);
     const color = toneColor(m.tone);
+    const pair = selection ? cost?.decision?.options?.[String(selection.computedQuantity)] ?? null : null;
+    const ownedSub = ownedAlternativeSub(routeVerification.verdict, verification, pair?.basis, pair ? USD(pair.in_house.unit_cost_usd) : null);
     return (
       <BannerFrame borderColor={color} bg="rgba(23,24,26,0.015)">
         <Kicker color={color}>{m.kicker}</Kicker>
         <p style={{ margin: "10px 0 0", fontSize: 24, fontWeight: 400, letterSpacing: "-0.015em", lineHeight: 1.25 }}>
           {m.title}
         </p>
-        <p style={{ margin: "8px 0 0", fontSize: 14, lineHeight: 1.6, color: C.ink60, maxWidth: 560 }}>{m.sub}</p>
+        <p style={{ margin: "8px 0 0", fontSize: 14, lineHeight: 1.6, color: C.ink60, maxWidth: 560 }}>{ownedSub ?? m.sub}</p>
         {proc && unit != null && (
           <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 11, color: C.ink50, lineHeight: 1.6 }}>
             should-cost {USD(unit)}/unit on {procLabel(proc)}

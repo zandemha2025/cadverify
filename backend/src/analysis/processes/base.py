@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
+import numpy as np
+
 from src.analysis.context import GeometryContext
 from src.analysis.models import Issue, ProcessType
 
@@ -44,8 +46,38 @@ def register(cls: type) -> type:
             f"{cls.__name__} does not satisfy the ProcessAnalyzer protocol "
             "(missing `process`, `standards`, or `analyze`)"
         )
+    raw = instance.analyze
+
+    def analyze(ctx: GeometryContext, _raw=raw) -> list[Issue]:
+        issues = _raw(ctx)
+        count_cad_faces(issues, ctx)
+        return issues
+
+    instance.analyze = analyze
     _REGISTRY[instance.process] = instance
     return cls
+
+
+def count_cad_faces(issues: list[Issue], ctx: GeometryContext) -> list[Issue]:
+    """Give each finding the CAD faces its triangles lie on (STEP/IGES meshed by ScaleCAD).
+
+    A STEP's 11 faces are the faces its CAD tool shows; the 247,114 triangles
+    ScaleCAD meshed them into are not. Left unset for an STL (it has no faces
+    but triangles) or when the mesh no longer lines up with the B-rep.
+    """
+    try:
+        ids = ctx.cad_face_ids
+    except Exception:
+        ids = None
+    if ids is None:
+        return issues
+    for issue in issues:
+        if issue.affected_faces and issue.cad_face_count is None:
+            faces = np.asarray(issue.affected_faces, dtype=np.int64)
+            faces = faces[(faces >= 0) & (faces < len(ids))]
+            if len(faces):
+                issue.cad_face_count = int(len(np.unique(ids[faces])))
+    return issues
 
 
 def get_analyzer(process: ProcessType) -> ProcessAnalyzer | None:

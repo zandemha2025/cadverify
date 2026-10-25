@@ -72,6 +72,14 @@ export interface BatchProgress {
   created_at: string | null;
   started_at: string | null;
   completed_at: string | null;
+  /** The pace the run is going at now, measured from its own parts (null until a few have finished). */
+  pace_per_hour?: number | null;
+  /** Time left at that pace, in seconds. */
+  eta_seconds?: number | null;
+  /** "measuring" until 10 parts or 10 minutes have finished since the run (re)started; "stalled" with none in 30 minutes. */
+  pace_state?: "measuring" | "stalled" | "measured" | null;
+  /** A catalog run's files counted as its page counts them (op-28). */
+  run_counts?: import("@/components/v4/many/batch-model").RunCountsWire | null;
 }
 
 export interface BatchItem {
@@ -105,10 +113,15 @@ export interface BatchItemsResponse {
 export interface BatchSummaryRow {
   batch_ulid: string;
   status: string;
+  job_type?: string;
+  /** A catalog run's name (its ZIP's, else its parts list's). */
+  name?: string | null;
   total_items: number;
   completed_items: number;
   failed_items: number;
   skipped_items: number;
+  /** A catalog run's files counted as its page counts them (op-28). */
+  run_counts?: import("@/components/v4/many/batch-model").RunCountsWire | null;
   created_at: string | null;
 }
 

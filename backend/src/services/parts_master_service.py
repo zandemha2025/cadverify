@@ -351,9 +351,14 @@ async def onboard_library(
             program = identity.get("program")
 
             async with session.begin_nested():
+                from src.services import compute_budget
+
                 mesh_hash = await asyncio.to_thread(compute_mesh_hash, data)
-                mesh = await _parse_mesh(data, filename)  # may raise 400 on bad geometry
-                vector = await asyncio.to_thread(similarity.vector_for_mesh, mesh)
+                # The parse and the shape signature hold room in the compute budget.
+                async with compute_budget.hold_for_data(data, filename, label="parts master"):
+                    mesh = await _parse_mesh(data, filename)  # may raise 400 on bad geometry
+                    vector = await compute_budget.run_within_budget(
+                        similarity.vector_for_mesh, mesh, label="parts master")
                 await sigsvc.upsert_signature(
                     session,
                     org_id,

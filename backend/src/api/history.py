@@ -17,6 +17,7 @@ from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_db_session
 from src.db.models import Analysis, CostDecision
+from src.services import share_links
 
 logger = logging.getLogger("cadverify.history")
 
@@ -71,10 +72,7 @@ def _serialize_analysis_detail(
         "duration_ms": analysis.duration_ms,
         "analysis_time_ms": analysis.duration_ms,
         "created_at": analysis.created_at.isoformat(),
-        "is_public": analysis.is_public,
-        "share_url": (
-            f"/s/{analysis.share_short_id}" if analysis.share_short_id else None
-        ),
+        **share_links.fields(analysis),
         "result": analysis.result_json,
         "result_json": analysis.result_json,
         "decision_links": [_serialize_decision_link(row) for row in decisions],

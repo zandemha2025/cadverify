@@ -27,3 +27,8 @@ def magic_send_key(email_normalized: str) -> str:
 
 def magic_generation_key(email_normalized: str) -> str:
     return f"magic:{{{_email_slot(email_normalized)}}}:generation"
+
+
+def magic_hourly_key(email_normalized: str) -> str:
+    """How many links went to this email in the current hour (the main guard)."""
+    return f"magic:{{{_email_slot(email_normalized)}}}:hour"

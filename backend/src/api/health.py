@@ -155,6 +155,12 @@ async def health_check():
     )
 
 
+def _object_store_facts() -> dict:
+    from src.api.deployment_facts import file_storage
+
+    return file_storage()
+
+
 @router.get("/health/deep")
 async def health_deep(request: Request):
     """Strict dependency-level health with REAL probes and honest degradation.
@@ -312,6 +318,10 @@ async def health_deep(request: Request):
                 "expected": object_expected,
                 "backend": object_backend,
                 "error": object_err,
+                # From configuration (no bucket names or endpoints): the region
+                # and whether every write is encrypted with a KMS key.
+                "region": _object_store_facts()["region"],
+                "encryption": _object_store_facts()["encryption"],
             },
         },
     }

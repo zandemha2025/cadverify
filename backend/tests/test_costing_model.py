@@ -218,17 +218,16 @@ def test_nesting_reduces_machine_fraction():
     assert sls["line_items"]["machine"] < 0.70 * sls["unit_cost_usd"]
 
 
-def test_per_lot_setup_recurs():
-    """#8: setup recurs per lot (ceil(qty/lot_size) setups). For CNC (lot 100),
-    total setup at qty 200 is ~2× total setup at qty 100 — NOT amortized to ÷2."""
+def test_setup_is_once_per_order_on_a_machine():
+    """de-19: a machine is set up once and runs the whole order, so its setup is
+    shared over the actual quantity (it read "shared over 1,000" at the 100-off
+    share, paying a setup every 100 parts)."""
     result, mesh, feats = _analyze(_bulky_block())
-    report = estimate_decision(result, mesh, feats, EstimateOptions(quantities=[100, 200]))
-    e100 = _est(report, "cnc_3axis", 100)
-    e200 = _est(report, "cnc_3axis", 200)
-    setup_total_100 = _driver(e100, "setup_cost")["value"] * 100
-    setup_total_200 = _driver(e200, "setup_cost")["value"] * 200
-    assert abs(setup_total_200 - 2 * setup_total_100) < 0.02, (
-        f"per-lot setup should double over 2 lots: {setup_total_100} -> {setup_total_200}")
+    report = estimate_decision(result, mesh, feats, EstimateOptions(quantities=[100, 200, 1000]))
+    totals = {q: _driver(_est(report, "cnc_3axis", q), "setup_cost")["value"] * q for q in (100, 200, 1000)}
+    # (each value is rounded to 4 decimals a part, so allow that times the quantity)
+    assert abs(totals[200] - totals[100]) < 0.02 and abs(totals[1000] - totals[100]) < 0.1, totals
+    assert "once for the order" in _driver(_est(report, "cnc_3axis", 1000), "setup_cost")["source"]
 
 
 def test_region_split_material_not_labor_scaled():
@@ -428,6 +427,131 @@ def test_tooling_size_tiers_follow_the_part_not_file_axes(length, tier):
             tools_seen.append(tool)
             estimate.assert_sums()
     for tool in tools_seen:
-        assert f"size tier {tier}" in tool.source and "oriented candidate" in tool.source
+        assert f"size tier {tier}" in tool.source and "the smallest box found around the part" in tool.source
         assert f"{float(length)}mm" in tool.source
-        assert "assumption" in tool.source and "not shop-validated" in tool.source
+        assert "typical value, not confirmed by a shop" in tool.source
+
+
+def test_every_estimate_carries_its_material_mass_as_fields():
+    # Round 7 item 7: the part's mass, the mass the price is charged on, the
+    # density and the $/kg as fields, the same figures the derivation names.
+    import re
+
+    report = estimate_decision(*_analyze(_bulky_block()),
+                               EstimateOptions(quantities=[1, 100], material_class="aluminum"))
+    assert report.estimates
+    for e in report.estimates:
+        m = e["material_mass"]
+        assert set(m) == {"part_kg", "used_kg", "density_g_cm3", "usd_per_kg"}
+        assert m["part_kg"] == pytest.approx(30.0 * m["density_g_cm3"] / 1000.0, rel=1e-3)  # 30 cm³
+        src = _driver(e, "material_cost")["source"]
+        said = re.search(r"=\s*(\d+(?:\.\d+)?)\s*kg\s*×\s*\$(\d+(?:\.\d+)?)/kg", src)
+        assert said, src
+        assert m["used_kg"] == pytest.approx(float(said.group(1)), abs=5e-5)
+        assert m["usd_per_kg"] == pytest.approx(float(said.group(2)))
+    mill = _est(report, "cnc_3axis", 1)["material_mass"]
+    assert mill["used_kg"] > mill["part_kg"]  # the billet, not the part
+
+
+def test_a_tiny_part_never_reads_zero_kg():
+    # 2 mm cube: 8 mm³ of plastic is a hundredth of a gram.
+    report = estimate_decision(*_analyze(trimesh.creation.box(extents=[2.0, 2.0, 2.0])),
+                               EstimateOptions(quantities=[1], material_class="polymer"))
+    assert report.estimates
+    for e in report.estimates:
+        m = e["material_mass"]
+        assert m["part_kg"] > 0 and m["used_kg"] > 0, (e["process"], m)
+        assert "0.0000 kg" not in _driver(e, "material_cost")["source"], e["process"]
+    from src.costing.cost_model import kg_text
+    assert (kg_text(0.0136), kg_text(0.0000412), kg_text(0.00085)) == ("0.0136", "0.0000412", "0.000850")
+
+
+def _small_and_big_at_10000(process):
+    small = trimesh.creation.box(extents=[40.0, 30.0, 20.0])
+    big = trimesh.creation.box(extents=[80.0, 60.0, 40.0])
+    est = {}
+    for name, mesh in (("small", small), ("big", big)):
+        report = estimate_decision(*_analyze(mesh), EstimateOptions(quantities=[10000], material_class="aluminum"))
+        est[name] = _est(report, process, 10000)
+        assert est[name] is not None
+    mat = [_driver(est[k], "material_cost")["value"] for k in ("small", "big")]
+    assert mat[1] / mat[0] == pytest.approx(8.0, rel=0.01)
+    assert est["big"]["material_mass"]["used_kg"] / est["small"]["material_mass"]["used_kg"] == pytest.approx(8.0, rel=0.01)
+    return est
+
+
+@pytest.mark.parametrize("process", ["sand_casting", "investment_casting"])
+def test_a_casting_twice_the_size_pays_8x_the_metal_more_of_its_mould_and_more_fettling(process):
+    # Round 7 item 5 found a 2x casting at 10,000 barely dearer: the pour and 0.6 h of
+    # fettling were per piece at any size. Round 14: published cost structure (Boothroyd
+    # Dewhurst, Sand / Investment Casting Cost Estimating) spreads a mould or tree over
+    # the castings it holds and fettles a small casting for $0.50-2.00, a large one for
+    # hours. A mould holds fewer of the bigger casting, and its fettling follows its surface.
+    est = _small_and_big_at_10000(process)
+    machine = [_driver(est[k], "machine_cost")["value"] for k in ("small", "big")]
+    labor = [_driver(est[k], "labor_cost") for k in ("small", "big")]
+    assert machine[1] > 2 * machine[0]
+    assert labor[1]["value"] > labor[0]["value"]
+    assert "it follows the surface, mass to the 2/3 power" in labor[0]["source"]
+    assert "castings a " in _driver(est["small"], "cycle_time")["source"]
+    assert est["big"]["unit_cost_usd"] > 1.05 * est["small"]["unit_cost_usd"]
+
+
+def test_a_forging_twice_the_size_pays_8x_the_metal_and_the_same_per_piece_time():
+    # A forging is a press stroke and a trim a piece (a 20-120 s cycle set by complexity:
+    # Boothroyd Dewhurst, Forging Cost Estimating); its cleanup is per piece too, and the
+    # labor line says so in words.
+    est = _small_and_big_at_10000("forging")
+    labor = [_driver(est[k], "labor_cost") for k in ("small", "big")]
+    assert labor[0]["value"] == labor[1]["value"]
+    assert "per piece, the same time at any size" in labor[0]["source"]
+
+
+def _t_overhang():
+    """A 10 × 10 × 20 mm post with a 40 × 10 × 4 mm bar across its top: the bar's
+    underside overhangs 15 mm each side (supported as drawn, none upside down)."""
+    post = trimesh.creation.box(extents=[10.0, 10.0, 20.0])
+    post.apply_translation([0, 0, 10.0])
+    bar = trimesh.creation.box(extents=[40.0, 10.0, 4.0])
+    bar.apply_translation([0, 0, 22.0])
+    return trimesh.boolean.union([post, bar], engine="manifold")
+
+
+def test_fdm_finishing_follows_the_support_to_remove():
+    """de-21: support removal is most of a small FDM part's finishing; with nothing to
+    support only the handling is left (it was a flat 0.2 h either way)."""
+    rates_mesh = _t_overhang()
+    upright = estimate_decision(*_analyze(rates_mesh), EstimateOptions(quantities=[100]))
+    flipped_mesh = rates_mesh.copy()
+    flipped_mesh.apply_transform(trimesh.transformations.rotation_matrix(3.141592653589793, [1, 0, 0]))
+    flipped = estimate_decision(*_analyze(flipped_mesh), EstimateOptions(quantities=[100]))
+    up = _driver(_est(upright, "fdm", 100), "labor_cost")
+    down = _driver(_est(flipped, "fdm", 100), "labor_cost")
+    assert "support removal 0.004hr/cm²" in up["source"]
+    assert "no support to remove" in down["source"]
+    assert up["value"] > down["value"] * 1.1
+    # Handling alone: 0.1 h a part (plus the plate's share), not 0.2 h.
+    assert down["value"] < 0.11 * 35 * 1.5
+
+
+def test_deposited_metal_is_priced_with_its_finish_machining():
+    """de-20: WAAM and DED parts are near-net: finished on a 3-axis mill, priced as the
+    mill prices it, with its setup and programming once for the order."""
+    report = estimate_decision(*_analyze(_bulky_block()), EstimateOptions(quantities=[1, 100], material_class="aluminum"))
+    for proc in ("waam", "ded"):
+        e = _est(report, proc, 100)
+        if e is None:
+            continue
+        d = _driver(e, "finish_machining")
+        assert d is not None and "3-axis mill" in d["source"] and "once for the order" in d["source"]
+        assert e["fixed_cost_usd"] >= (0.75 + 2.0) * 35 * 0.99
+
+
+def test_dmls_and_slm_say_why_they_price_alike():
+    """de-20: two makers' names for laser powder-bed fusion, one price, said so."""
+    report = estimate_decision(*_analyze(_small_block()), EstimateOptions(quantities=[10], material_class="stainless"))
+    for proc in ("dmls", "slm"):
+        e = _est(report, proc, 10)
+        if e is None:
+            continue
+        assert "two makers' names for laser powder-bed fusion" in _driver(e, "machine_cost")["source"]

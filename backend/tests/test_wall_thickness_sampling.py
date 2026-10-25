@@ -26,12 +26,17 @@ from src.analysis.context import (
     (300.0, 0.79, True),
     (300.0, 0.05, True),
 ])
-def test_plate_wall_is_surface_distance_not_ray_offset(width, thickness, thin, subdivisions):
+def test_plate_wall_is_surface_distance_not_ray_offset(width, thickness, thin, subdivisions, monkeypatch):
     """Real 0.81mm walls must pass 0.8mm; tiny walls must not disappear.
 
     Exercise full and sampled casts after a rigid CAD transform, with an
     analytic dimension independent of the ray implementation.
     """
+    import src.analysis.context as context
+
+    if subdivisions == 5:
+        # Embree casts every face; the sampled path is the pure-Python fallback.
+        monkeypatch.setattr(context, "_fast_rays", lambda mesh: False)
     mesh = trimesh.creation.box(extents=[width, width * 2 / 3, thickness])
     for _ in range(subdivisions):
         mesh = mesh.subdivide()
