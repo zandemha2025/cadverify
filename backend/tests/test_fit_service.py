@@ -92,15 +92,6 @@ def test_collision_keeps_sub_millimeter_precision_in_shared_frame():
     assert separate["clearance"]["closest_sampled_gap_mm"] == pytest.approx(0.1, abs=1e-6)
 
 
-def test_proximity_target_keeps_source_face_locator_mapping():
-    from src.services.fit_service import _proximity_target
-    mesh = trimesh.creation.icosphere(subdivisions=3)
-    proxy, source_faces = _proximity_target(mesh, budget=100)
-    assert len(proxy.faces) == 100
-    assert len(source_faces) == 100
-    assert int(source_faces[-1]) == len(mesh.faces) - 1
-
-
 def test_pair_face_admission_refuses_before_geometry_work(monkeypatch):
     monkeypatch.setenv("FIT_MAX_PAIR_FACES", "1000")
     a = trimesh.creation.icosphere(subdivisions=3)
@@ -141,12 +132,12 @@ def test_closest_memory_error_maps_to_fit_refusal(monkeypatch):
     b = trimesh.creation.box(); b.apply_translation([2,0,0])
     def boom(*_args, **_kwargs):
         raise MemoryError("bounded probe")
-    monkeypatch.setattr(trimesh.proximity, "closest_point", boom)
+    monkeypatch.setattr(trimesh.triangles, "closest_point", boom)
     with pytest.raises(FitGeometryError, match="bounded memory budget"):
         fit_service.analyze_fit(a, b)
 
 
-def test_large_target_discloses_proximity_proxy(monkeypatch):
+def test_clearance_discloses_sampling_and_counts_every_triangle(monkeypatch):
     monkeypatch.setenv("FIT_MAX_PAIR_FACES", "100000")
     large = trimesh.creation.icosphere(subdivisions=6)
     small = trimesh.creation.box(); small.apply_translation([3,0,0])
@@ -154,4 +145,20 @@ def test_large_target_discloses_proximity_proxy(monkeypatch):
     monkeypatch.setattr("src.services.fit_service._collision", lambda *_: (0.0, None))
     monkeypatch.setattr("src.services.fit_service._closest", lambda *_: (np.zeros((1,3)), np.zeros((1,3)), np.array([1.0]), np.array([0]), np.array([0])))
     out = analyze_fit(large, small)
-    assert any("true tightest spot may be smaller" in line and "25,000-face proxy" in line for line in out["limits"])
+    assert any("every triangle counts" in line and "true tightest spot may be a little smaller" in line for line in out["limits"])
+    assert not any("proxy" in line for line in out["limits"])
+
+
+def test_nearest_triangle_is_exact_on_every_face():
+    """de-27: the k-d tree search answers what trimesh's exhaustive search does, on every face."""
+    from src.services.fit_service import _nearest_on
+    target = trimesh.creation.icosphere(subdivisions=4)
+    big = trimesh.creation.box(extents=[40, 2, 2])  # long triangles: centres far from their corners
+    rng = np.random.default_rng(7)
+    for mesh in (target, big):
+        points = rng.uniform(-6, 6, size=(400, 3)) * np.array([4, 1, 1])
+        near, dist, faces = _nearest_on(mesh, points)
+        ref_near, ref_dist, _ = trimesh.proximity.closest_point(mesh, points)
+        np.testing.assert_allclose(dist, ref_dist, atol=1e-9)
+        assert np.all((faces >= 0) & (faces < len(mesh.faces)))
+        np.testing.assert_allclose(np.linalg.norm(near - points, axis=1), dist, atol=1e-9)

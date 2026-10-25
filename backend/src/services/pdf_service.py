@@ -15,6 +15,7 @@ import logging
 import os
 import re
 from pathlib import Path
+from typing import cast
 
 from fastapi import HTTPException
 from jinja2 import Environment, FileSystemLoader, select_autoescape
@@ -22,6 +23,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import __version__ as _app_version
+from src.analysis.process_names import process_label as _process_label
 from src.auth.org_context import caller_org_subquery
 from src.db.models import Analysis
 
@@ -80,10 +82,22 @@ def _merge_key(issue: dict, key: str, value: str) -> dict:
     return merged
 
 
-_jinja_env.filters["format_duration"] = _format_duration
-_jinja_env.filters["format_number"] = _format_number
-_jinja_env.filters["sort_by_severity"] = _sort_by_severity
-_jinja_env.filters["merge_key"] = _merge_key
+def _process_name(value):
+    """An engine process id in the words the v4 screens use ("cnc_3axis" → "3-axis milling")."""
+    return _process_label(value) if value and value != "-" else value
+
+
+def register_pdf_filters(env: Environment) -> Environment:
+    """Every filter the PDF templates use, for any Jinja environment that renders them."""
+    env.filters["format_duration"] = _format_duration
+    env.filters["format_number"] = _format_number
+    env.filters["sort_by_severity"] = _sort_by_severity
+    env.filters["merge_key"] = _merge_key
+    env.filters["process_name"] = _process_name
+    return env
+
+
+register_pdf_filters(_jinja_env)
 
 
 # ── Report context ─────────────────────────────────────────────
@@ -129,10 +143,11 @@ def _render_pdf_sync(context: dict) -> bytes:
 
     template = _jinja_env.get_template("analysis_report.html")
     html_str = template.render(**context)
-    pdf_bytes = HTML(
+    # write_pdf() with no target returns the PDF's bytes (WeasyPrint is untyped).
+    pdf_bytes = cast(bytes, HTML(
         string=html_str,
         base_url=str(_TEMPLATE_DIR),
-    ).write_pdf()
+    ).write_pdf())
     return pdf_bytes
 
 

@@ -26,7 +26,7 @@ persists + filters — it never asserts an identity as fact. Zero network.
 from __future__ import annotations
 
 import logging
-from typing import Optional, Sequence
+from typing import TYPE_CHECKING, Optional, Sequence
 
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -34,6 +34,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import func
 
 from src.db.models import PartSignature
+
+if TYPE_CHECKING:
+    import numpy as np
+    from numpy.typing import NDArray
+
+    # A shape signature as the engine hands it over (``similarity.vector_for_mesh``
+    # returns an ndarray) or as a plain sequence of floats.
+    SignatureVector = Sequence[float] | NDArray[np.floating]
 
 # Source tag on a row whose declared identity a human CONFIRMED (or corrected) —
 # the strongest provenance a corpus row can carry, distinct from the 'upload' the
@@ -43,7 +51,7 @@ SOURCE_USER_CONFIRMED = "user_confirmed"
 logger = logging.getLogger("cadverify.part_signature_service")
 
 
-def _to_float_list(vector: Sequence[float]) -> list[float]:
+def _to_float_list(vector: SignatureVector) -> list[float]:
     """Coerce a signature vector (numpy array or sequence) to a plain float list
     for JSONB storage. Non-finite entries are scrubbed to 0.0 (the same NaN-safe
     discipline ``similarity.feature_vector`` already applies), so a degenerate mesh
@@ -64,7 +72,7 @@ async def upsert_signature(
     session: AsyncSession,
     org_id: str,
     mesh_hash: str,
-    vector: Sequence[float],
+    vector: SignatureVector,
     *,
     declared_part_id: Optional[str] = None,
     declared_name: Optional[str] = None,
@@ -115,7 +123,7 @@ async def upsert_signature_safe(
     session: AsyncSession,
     org_id: Optional[str],
     mesh_hash: Optional[str],
-    vector: Optional[Sequence[float]],
+    vector: Optional[SignatureVector],
     *,
     declared_part_id: Optional[str] = None,
     declared_name: Optional[str] = None,

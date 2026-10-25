@@ -31,7 +31,11 @@ def test_sour_service_sheet_stainless_prefers_nace_sheet_stock():
         env={"sour_service": True, "max_temp_c": 120},
     )
 
-    assert base is not None and base.name == "304 SS (Sheet)"
+    # Unconstrained: the cheapest stainless sheet blank at its SHEET price
+    # (316L's file lists sheet at the same $4/kg as 304; its $5 bar price no
+    # longer stands in for sheet).
+    assert base is not None and base.name in {"304 SS (Sheet)", "SS316L"}
+    assert base.price_form == "sheet" and base.cost_per_kg == 4.0
     assert sour is not None and sour.name == "SS316L"
 
 

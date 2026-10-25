@@ -20,6 +20,7 @@ import json
 import logging
 import os
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Any, Optional
 
 from fastapi import HTTPException
@@ -30,7 +31,9 @@ from ulid import ULID
 
 from src.auth.org_context import caller_org_subquery
 from src.auth.require_api_key import AuthedUser
+from src.costing.footing import footed_items
 from src.db.models import CostDecision, UsageEvent
+from src.services import share_links
 from src.services.share_service import generate_short_id
 
 logger = logging.getLogger("cadverify.cost_decision_service")
@@ -42,7 +45,11 @@ DISPOSITION_LABELS = {
     "outside": "Make outside",
     "acquire": "Acquire capability",
     "redesign": "Redesign",
+    # Bought, as today: from the supplier the org buys it from, at its current price (0064).
+    "supplier": "Keep buying from our supplier",
 }
+# Outcomes that buy the part rather than make it on a machine of yours.
+BUY_OUTCOMES = ("outside", "supplier")
 
 
 def cost_persist_enabled() -> bool:
@@ -70,6 +77,8 @@ def compute_params_hash(
     shop: Optional[str],
     overrides: Optional[dict],
     source_units: str = "mm",
+    orientation: Optional[str] = None,
+    material: Optional[str] = None,
 ) -> str:
     """SHA-256 of the canonical cost parameters.
 
@@ -78,21 +87,24 @@ def compute_params_hash(
     """
     from src import __version__
 
-    canonical = json.dumps(
-        {
-            "engine_version": __version__,
-            "source_units": source_units,
-            "quantities": sorted(quantities),
-            "region": region or "US",
-            "cavities": int(cavities),
-            "complexity": complexity,
-            "material_class": material_class,
-            "shop": shop or "",
-            "overrides": overrides or {},
-        },
-        sort_keys=True,
-        separators=(",", ":"),
-    )
+    params = {
+        "engine_version": __version__,
+        "source_units": source_units,
+        "quantities": sorted(quantities),
+        "region": region or "US",
+        "cavities": int(cavities),
+        "complexity": complexity,
+        "material_class": material_class,
+        "shop": shop or "",
+        "overrides": overrides or {},
+    }
+    if orientation is not None:
+        # Only a turned part adds the key, so the file's own hash is unchanged.
+        params["orientation"] = orientation
+    if material:
+        # Only a named material (a parts list's) adds the key; the class alone is unchanged.
+        params["material"] = material
+    canonical = json.dumps(params, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
@@ -103,6 +115,105 @@ def _denormalize(result_json: dict) -> tuple[Optional[str], Optional[float], lis
     crossover = decision.get("crossover_qty")
     quantities = result_json.get("quantities") or []
     return make_now, crossover, quantities
+
+
+# ---------------------------------------------------------------------------
+# What-ifs: a price with ad-hoc overrides or a sample shop's rates is saved and
+# listed, but never becomes the part's current price by itself
+# ---------------------------------------------------------------------------
+
+_PCT_KEYS = {"overhead", "margin", "utilization"}
+
+
+def _what_word(key: str, value) -> str:
+    """One override in words: 'overhead 15%', 'labor $58/h', '3-axis milling machine $82/h'."""
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return f"{key} {value}"
+    field, _, rest = str(key).partition(".")
+    if key in _PCT_KEYS:
+        return f"{key} {v * 100:g}%"
+    if key == "labor_rate":
+        return f"labor ${v:g}/h"
+    if field == "machine_rate":
+        from src.analysis.process_names import process_label
+
+        return f"{process_label(rest.lower()) or rest} machine ${v:g}/h"
+    if field == "post_hr_part":
+        from src.analysis.process_names import process_label
+
+        return f"{process_label(rest.lower()) or rest} hand work {v:g} h a part"
+    if field == "material_price":
+        return f"{rest.lstrip('@')} ${v:g}/kg"
+    return f"{key.replace('_', ' ')} {v:g}"
+
+
+def what_if_block(overrides: Optional[dict], shop: Optional[str], shop_name: Optional[str] = None) -> Optional[dict]:
+    """The marker a what-if record carries in its result (ce-17, ce-08): the overrides
+    and shop it was priced with and its label ("What if: overhead 15%"). None for a
+    price at the part's own inputs."""
+    ov = {k: v for k, v in (overrides or {}).items()}
+    if not ov and not shop:
+        return None
+    bits = [_what_word(k, v) for k, v in sorted(ov.items())]
+    if shop:
+        bits.append(f"{shop_name or shop} rates")
+    return {"overrides": ov, "shop": shop or None, "label": "What if: " + ", ".join(bits)}
+
+
+def what_if_of(result_json: Any) -> Optional[dict]:
+    """A record's what-if marker, or None when it is a price at the part's own inputs."""
+    w = result_json.get("what_if") if isinstance(result_json, dict) else None
+    return w if isinstance(w, dict) else None
+
+
+def current_price_clause():
+    """SQL: the record isn't a what-if (no ``what_if`` key in its result; PG and SQLite alike)."""
+    return CostDecision.result_json["what_if"].is_(None)
+
+
+def is_current_price(result_json: Any) -> bool:
+    """Can this record be the part's current price? Not a what-if (an adopted one is a new record)."""
+    return what_if_of(result_json) is None
+
+
+async def adopt_what_if(session: AsyncSession, user: AuthedUser, ulid: str) -> CostDecision:
+    """"Use this as the part's price": a what-if becomes the part's current price as a
+    NEW record (saved records stay as they were): the same engine result, without the
+    what-if marker, saying which what-if it adopted and when that was priced. 409 when
+    the record isn't a what-if."""
+    d = await get_owned(session, ulid, user.user_id)
+    w = what_if_of(d.result_json)
+    if w is None:
+        raise HTTPException(status_code=409, detail={
+            "code": "not_a_what_if", "message": "This record is already a price at the part's own inputs."})
+    result = {k: v for k, v in (d.result_json or {}).items() if k not in ("what_if", "saved")}
+    result["adopted_what_if"] = {"from": d.ulid, "label": w.get("label"), "overrides": w.get("overrides") or {},
+                                 "shop": w.get("shop")}
+    # The rate card it was priced at is the what-if's (its stamp, else the card in effect then).
+    result.setdefault("priced_at", _iso(d.created_at))
+    return await persist_cost_decision(
+        session, user,
+        mesh_hash=d.mesh_hash,
+        params_hash=hashlib.sha256(f"adopt:{d.params_hash}".encode()).hexdigest(),
+        engine_version=d.engine_version,
+        filename=d.filename,
+        file_type=d.file_type,
+        result_json=result,
+        label=d.label,
+        org_id=d.org_id,
+    )
+
+
+async def newest_current(session: AsyncSession, org_id: str, mesh_hash: str) -> Optional[CostDecision]:
+    """The part's newest record that isn't a what-if (the part's current price), or None."""
+    return (await session.execute(
+        select(CostDecision)
+        .where(CostDecision.org_id == org_id, CostDecision.mesh_hash == mesh_hash, current_price_clause())
+        .order_by(CostDecision.ulid.desc())
+        .limit(1)
+    )).scalars().first()
 
 
 # ---------------------------------------------------------------------------
@@ -218,24 +329,28 @@ async def persist_cost_decision(
 
     await _refresh_summary_for(session, decision)
 
+    # A part checked inside a batch or catalog run doesn't notify one by one: the
+    # run says once when it has finished (batch_tasks._notify_run_finished).
+    in_a_run = getattr(user, "key_prefix", None) == "batch"
     try:
         from src.services import notification_service
 
-        await notification_service.emit_notification(
-            session,
-            org_id=decision.org_id,
-            actor_user_id=user.user_id,
-            kind="decision.created",
-            severity="pass",
-            title=f"Verification recorded - {filename}",
-            body=(
-                f"make-now {make_now}" if make_now else "cost decision recorded"
-            ),
-            dest="records",
-            source_type="cost_decision",
-            source_id=decision.ulid,
-            metadata={"filename": filename, "crossover_qty": crossover},
-        )
+        if not in_a_run:
+            await notification_service.emit_notification(
+                session,
+                org_id=decision.org_id,
+                actor_user_id=user.user_id,
+                kind="decision.created",
+                severity="pass",
+                title=f"Verification recorded - {filename}",
+                body=(
+                    f"make-now {make_now}" if make_now else "cost decision recorded"
+                ),
+                dest="records",
+                source_type="cost_decision",
+                source_id=decision.ulid,
+                metadata={"filename": filename, "crossover_qty": crossover},
+            )
     except Exception:
         logger.warning(
             "Failed to emit decision.created notification for %s",
@@ -287,8 +402,11 @@ async def record_persist_failure(
     *,
     mesh_hash: Optional[str],
     error: BaseException,
+    org_id: Optional[str] = None,
 ) -> None:
     """Best-effort observability for a failed cost-decision persist.
+
+    ``org_id``: a worker job's own organization; else the caller's active one.
 
     Called from the graceful-degrade ``except`` in routes.py: persistence
     must never break the live decision the buyer sees, so this function is
@@ -318,7 +436,7 @@ async def record_persist_failure(
         session.add(
             UsageEvent(
                 user_id=user.user_id,
-                org_id=await resolve_org(session, user.user_id),
+                org_id=org_id if org_id is not None else await resolve_org(session, user.user_id),
                 api_key_id=user.api_key_id or None,
                 event_type="cost_persist_failed",
                 mesh_hash=mesh_hash,
@@ -341,8 +459,18 @@ async def record_persist_failure(
 # ---------------------------------------------------------------------------
 
 
-def _list_item(d: CostDecision) -> dict:
+_LOADED = object()
+
+
+def _list_item(d: CostDecision, result_json: Any = _LOADED) -> dict:
+    """A record's list fields. ``result_json``: its slim inputs
+    (``catalog_inputs.cost_inputs``) when the list left the column unloaded;
+    by default the loaded column, if any."""
+    rj = d.__dict__.get("result_json") if result_json is _LOADED else result_json
+    w = what_if_of(rj)
     return {
+        # A what-if's label ("What if: overhead 15%"); None for a price at the part's own inputs.
+        "what_if": w.get("label") if w else None,
         "id": d.ulid,
         "mesh_hash": d.mesh_hash,
         "filename": d.filename,
@@ -352,9 +480,111 @@ def _list_item(d: CostDecision) -> dict:
         "crossover_qty": d.crossover_qty,
         "quantities": d.quantities or [],
         "created_at": d.created_at.isoformat(),
-        "is_public": d.is_public,
-        "share_url": f"/s/cost/{d.share_short_id}" if d.share_short_id else None,
+        **share_links.fields(d),
         **governance_fields(d),
+    }
+
+
+# ── latest saved record per part, in one read (Rates / Real costs screens) ────
+LATEST_PARTS_MAX = 500
+LATEST_DETAILS_MAX = 50
+
+
+def headline_qty(quantities: Any) -> Optional[int]:
+    """The quantity the shop screens headline: 10 when the check priced 10, else
+    its first quantity (the same rule as the screens' ``headlineQty``)."""
+    if not isinstance(quantities, list) or not quantities:
+        return None
+    return 10 if 10 in quantities else quantities[0]
+
+
+def slim_result(result_json: Any, quantities: Any) -> dict:
+    """The parts of a saved decision the Rates and Real costs screens read:
+    assumptions, the material class, the decision's pick per quantity, and the
+    estimates at the headline quantity (the screens' headline estimate is one
+    of them). The full record stays at GET /cost-decisions/{id}."""
+    r = result_json if isinstance(result_json, dict) else {}
+    qty = headline_qty(quantities)
+    decision = r.get("decision") if isinstance(r.get("decision"), dict) else None
+    return {
+        "assumptions": r.get("assumptions") or [],
+        "material_class": r.get("material_class"),
+        "decision": (
+            {k: decision.get(k) for k in ("make_now_process", "make_now_material", "recommendation")}
+            if decision is not None else None
+        ),
+        "estimates": [
+            e for e in (r.get("estimates") or [])
+            if isinstance(e, dict) and qty is not None and e.get("quantity") == qty
+        ],
+    }
+
+
+async def latest_per_part(
+    session: AsyncSession,
+    user_id: int,
+    *,
+    limit: int = LATEST_PARTS_MAX,
+    detail_limit: int = 12,
+) -> dict:
+    """The newest saved decision for each part (by mesh hash) in the caller's
+    org, newest first, plus the screens' fields for the newest ``detail_limit``
+    parts. Org-scoped exactly like the list and detail reads.
+
+    No saved result is read per request. The org's records are listed without
+    them; whether each is a what-if, and a shown record's screen fields, come
+    from ``catalog_inputs`` (each computed once per record per process). Ranking
+    with ``current_price_clause`` in SQL made Postgres unpack every stored
+    result in the table twice a call, and the details loaded whole results:
+    0.27 s for any org and 0.46 s for one with 90 priced parts.
+    """
+    from sqlalchemy.orm import defer
+
+    from src.services import catalog_inputs
+
+    limit = max(1, min(int(limit), LATEST_PARTS_MAX))
+    detail_limit = max(0, min(int(detail_limit), LATEST_DETAILS_MAX))
+    listed = (await session.execute(
+        select(CostDecision.id, CostDecision.ulid, CostDecision.mesh_hash)
+        .where(CostDecision.org_id == caller_org_subquery(user_id))
+        .order_by(CostDecision.ulid.desc())
+    )).all()
+    current = await catalog_inputs.current_flags(session, [(i, u) for i, u, _ in listed])
+    # The part's current price: its newest record that isn't a what-if.
+    newest: list[int] = []
+    seen: set[str] = set()
+    for row_id, ulid, mesh in listed:
+        if mesh in seen or not current.get((row_id, ulid)):
+            continue
+        seen.add(mesh)
+        newest.append(row_id)
+    total = len(newest)
+    page = newest[:limit]
+    rows = list((await session.execute(
+        select(CostDecision)
+        .options(defer(CostDecision.result_json))
+        .where(CostDecision.id.in_(page))
+        .order_by(CostDecision.ulid.desc())
+    )).scalars().all()) if page else []
+    shown = rows[:detail_limit]
+    from src.services.rate_card_basis import basis_for
+
+    rates = await basis_for(session, rows[0].org_id, rows) if rows else {}
+    details = await catalog_inputs.latest_details(session, shown) if shown else {}
+    return {
+        "parts": [{**_list_item(d), "rates": rates.get(d.ulid)} for d in rows],
+        "total_parts": int(total or 0),
+        "has_more": int(total or 0) > len(rows),
+        "details": [
+            {
+                **_list_item(d),
+                "rates": rates.get(d.ulid),
+                "headline_qty": headline_qty(d.quantities),
+                "result": (details[(d.id, d.ulid)] if (d.id, d.ulid) in details
+                           else slim_result(None, d.quantities)),
+            }
+            for d in shown
+        ],
     }
 
 
@@ -468,14 +698,31 @@ async def reopen_owned(
     return d
 
 
-def _disposition_estimate(result_json: object, quantity: int | None) -> dict | None:
-    """Resolve an exact engine recommendation; never accept a client-priced route."""
+def _disposition_estimate(
+    result_json: object,
+    quantity: int | None,
+    process: str | None = None,
+    material: str | None = None,
+) -> dict | None:
+    """Resolve an exact engine estimate; never accept a client-priced route.
+
+    Without ``process`` this is the engine's own recommendation at the quantity
+    (the cheapest eligible route). With ``process`` (and optionally ``material``)
+    it is the user's chosen route, which must be one of this decision's own
+    estimates at exactly that quantity. An ambiguous choice (one process costed
+    in several materials, no material named) resolves to nothing.
+    """
     if not isinstance(result_json, dict):
         return None
     estimates = [e for e in result_json.get("estimates", []) if isinstance(e, dict)]
     quantities = [e["quantity"] for e in estimates if type(e.get("quantity")) is int and e["quantity"] > 0]
     if quantity is None:
         quantity = min(quantities, default=None)
+    if process is not None:
+        chosen = [e for e in estimates if e.get("quantity") == quantity
+                  and e.get("process") == process
+                  and (material is None or e.get("material") == material)]
+        return chosen[0] if len(chosen) == 1 else None
     decision = result_json.get("decision") or {}
     recommendations = decision.get("recommendation") or {}
     pick = recommendations.get(str(quantity), recommendations.get(quantity)) if recommendations else {
@@ -496,10 +743,60 @@ def _inhouse_disposition_error(result_json: dict, estimate: dict | None) -> str 
             or estimate.get("dfm_verdict") == "fail" or estimate.get("environment_excluded")
             or estimate.get("dfm_blockers")):
         return "Make in-house is unavailable while the selected route is blocked by DFM. Record Redesign, Make outside, or Acquire capability, or verify revised CAD that passes route DFM."
+    if estimate.get("spec_excluded"):
+        return ("This route can't meet the part's declared specs. "
+                + (estimate.get("spec_exclusion_reason") or "")).strip()
     fit = ((result_json.get("verification") or {}).get("per_route") or {}).get(estimate["process"]) or {}
     if fit.get("verdict") not in ("makeable_in_house", "makeable_with_secondary_op"):
         return "Owned-machine fit is not verified for this route. Declare a fitting machine and re-verify before recording Make in-house."
     return None
+
+
+def _chosen_route_error(disposition: str, estimate: dict) -> str | None:
+    """Rules for a route the user picked instead of the engine's cheapest.
+
+    A route the declared service environment rules out can't carry any outcome,
+    and Make outside means making the part as drawn, so its route must pass DFM.
+    Redesign and Acquire capability may name a DFM-blocked route: that is the
+    route the redesign or the investment is for.
+    """
+    if estimate.get("environment_excluded"):
+        return "The declared service conditions rule out this route. Choose a route that survives them."
+    if estimate.get("spec_excluded") and disposition in ("inhouse", "outside"):
+        return ("This route can't meet the part's declared specs: "
+                + (estimate.get("spec_exclusion_reason") or "see its findings")
+                + " Choose a route that meets them, or record Redesign.")
+    if disposition == "outside" and (
+        estimate.get("dfm_ready") is not True
+        or estimate.get("dfm_verdict") == "fail"
+        or estimate.get("dfm_blockers")
+    ):
+        return "This route can't make the part as drawn. Record Redesign for it, or choose a route that passes DFM."
+    return None
+
+
+async def _supplier_basis(session: AsyncSession, d: CostDecision, quantity: int | None,
+                          prior: Any) -> dict:
+    """What "Keep buying from our supplier" records: the quantity and today's price.
+
+    ``{"supplier": True, "quantity", "usd_each", "price_source"}``. The price is
+    the part's current price (typed on its Decision view, or from a catalog
+    run's parts list), or None when none is known: the outcome stands without
+    one, it just has no figure. The quantity is the one decided at, else the
+    one recorded before, else the part's yearly quantity.
+    """
+    from src.services import part_context_service as pcs
+
+    ctx = await pcs.get_context(session, d.org_id, d.mesh_hash) if d.mesh_hash else None
+    price = getattr(ctx, "buy_price", None) if ctx is not None else None
+    usd = price.get("usd_each") if isinstance(price, dict) else None
+    if quantity is None and isinstance(prior, dict):
+        quantity = prior.get("quantity")
+    if quantity is None and ctx is not None:
+        quantity = getattr(ctx, "annual_volume", None)
+    return {"supplier": True, "quantity": int(quantity) if quantity else None,
+            "usd_each": float(usd) if isinstance(usd, (int, float)) and usd > 0 else None,
+            "price_source": price.get("source") if isinstance(price, dict) and usd else None}
 
 
 async def set_disposition_owned(
@@ -510,6 +807,8 @@ async def set_disposition_owned(
     disposition: Optional[str],
     note: Optional[str] = None,
     quantity: int | None = None,
+    process: str | None = None,
+    material: str | None = None,
 ) -> CostDecision:
     """Persist or withdraw the human outcome on an owned cost decision.
 
@@ -518,11 +817,18 @@ async def set_disposition_owned(
     approval, because a prior signoff must never silently govern a new outcome.
     Repeating an identical PUT is idempotent and does not rewrite timestamps or
     append duplicate audit entries.
+
+    ``process``/``material`` record the route the user chose. Without them the
+    basis is the engine's recommendation at the quantity (the original
+    behaviour). With them the route must be one of this decision's own
+    estimates at that quantity. A note-only edit keeps the recorded route.
     """
     if disposition is not None and disposition not in DISPOSITION_LABELS:
         raise HTTPException(status_code=400, detail="Invalid decision disposition")
     if quantity is not None and (type(quantity) is not int or quantity <= 0):
         raise HTTPException(status_code=400, detail="Quantity must be a positive whole number")
+    if material is not None and process is None:
+        raise HTTPException(status_code=400, detail="Name the process along with its material")
     if note is not None and len(note) > 1000:
         raise HTTPException(
             status_code=400,
@@ -536,15 +842,35 @@ async def set_disposition_owned(
     previous_basis = getattr(d, "disposition_basis", None)
     basis = previous_basis if disposition is not None else None
     estimate = None
-    if disposition is not None:
-        if quantity is not None or previous is None or previous_basis:
-            selected_quantity = quantity if quantity is not None else (previous_basis or {}).get("quantity")
-            estimate = _disposition_estimate(d.result_json, selected_quantity)
+    if disposition == "supplier":
+        if process is not None:
+            raise HTTPException(status_code=400, detail="Keep buying from our supplier names no process of ScaleCAD's")
+        basis = await _supplier_basis(session, d, quantity, previous_basis if previous == "supplier" else None)
+    elif disposition is not None:
+        if quantity is not None or process is not None or previous is None or previous_basis:
+            prior = previous_basis if isinstance(previous_basis, dict) else {}
+            selected_quantity = quantity if quantity is not None else prior.get("quantity")
+            chosen = process is not None
+            if chosen:
+                estimate = _disposition_estimate(d.result_json, selected_quantity, process, material)
+                if not estimate:
+                    raise HTTPException(status_code=409, detail="This decision has no single computed estimate for that route at this quantity. Pick a route and quantity from the record.")
+                error = _chosen_route_error(disposition, estimate)
+                if error:
+                    raise HTTPException(status_code=409, detail=error)
+            elif quantity is None and prior.get("process"):
+                # A note-only edit keeps the route already on the record,
+                # including one the user chose over the cheapest.
+                estimate = _disposition_estimate(
+                    d.result_json, selected_quantity, prior.get("process"), prior.get("material")
+                )
+            else:
+                estimate = _disposition_estimate(d.result_json, selected_quantity)
             if not estimate:
                 raise HTTPException(status_code=409, detail="No exact computed recommendation exists at this quantity. Re-verify before recording an outcome.")
             basis = {key: estimate[key] for key in ("process", "material", "quantity")}
         # Note-only edits preserve historical outcomes, including unscoped legacy records.
-        if disposition == "inhouse" and (quantity is not None or previous != disposition):
+        if disposition == "inhouse" and (quantity is not None or process is not None or previous != disposition):
             error = _inhouse_disposition_error(d.result_json, estimate)
             if error:
                 raise HTTPException(status_code=409, detail=error)
@@ -600,6 +926,12 @@ async def set_disposition_owned(
     return d
 
 
+# stale_reason for a decision that predates a change to the org's declared
+# machines or shop secondary ops: its §0 verdict and its owned-machine costing
+# were computed against the old inventory.
+MACHINE_INVENTORY_STALE_REASON = "machine_inventory_changed"
+
+
 async def mark_org_decisions_stale(
     session: AsyncSession,
     org_id: str,
@@ -611,13 +943,51 @@ async def mark_org_decisions_stale(
 
     This is deliberately additive: the saved glass-box artifact is never edited.
     It gains a stale marker saying the record predates a governed library update
-    and should be re-costed before being used as a current decision.
+    (or a machine-inventory change, ``MACHINE_INVENTORY_STALE_REASON``) and
+    should be re-costed before being used as a current decision.
     """
     when = stale_at or datetime.now(timezone.utc)
     result = await session.execute(
         update(CostDecision)
         .where(
             CostDecision.org_id == org_id,
+            CostDecision.created_at < when,
+            CostDecision.stale_at.is_(None),
+        )
+        .values(stale_at=when, stale_reason=reason)
+    )
+    return int(getattr(result, "rowcount", 0) or 0)
+
+
+# stale_reasons for a decision whose part's declared inputs changed after it was
+# computed (the part context PUT), or whose organization applied or undid a
+# calibration of its estimates (the actuals calibration routes).
+PART_SPECS_STALE_REASON = "part_specs_changed"
+CONDITIONS_STALE_REASON = "conditions_changed"
+CALIBRATION_STALE_REASON = "calibration_changed"
+
+
+async def mark_part_decisions_stale(
+    session: AsyncSession,
+    org_id: str,
+    mesh_hash: str,
+    *,
+    reason: str,
+    stale_at: Optional[datetime] = None,
+) -> int:
+    """Mark the org's saved decisions for ONE part stale (its declared inputs changed).
+
+    Additive like ``mark_org_decisions_stale``: the saved artifact is never
+    edited, and a decision already marked keeps its first reason. A signed-off
+    decision keeps its sign-off; the stale marker says plainly that what it was
+    signed off on has since changed.
+    """
+    when = stale_at or datetime.now(timezone.utc)
+    result = await session.execute(
+        update(CostDecision)
+        .where(
+            CostDecision.org_id == org_id,
+            CostDecision.mesh_hash == mesh_hash,
             CostDecision.created_at < when,
             CostDecision.stale_at.is_(None),
         )
@@ -634,32 +1004,50 @@ async def mark_org_decisions_stale(
 def spreadsheet_safe_cell(value):
     """Neutralize formula-capable text while preserving JSON/source records.
 
-    Spreadsheet programs may execute cells beginning with =, +, -, or @ (also
-    after leading whitespace/control characters). Prefixing an apostrophe is the
-    conventional CSV display escape: users see the original text, while the
-    imported cell is data rather than a formula. Numeric values stay numeric.
+    The one guard every CSV export uses (``src.services.csv_safe.safe_cell``):
+    an apostrophe before =, +, - or @ at the start of the cell and at the start
+    of every line inside it. Numeric values stay numeric.
     """
-    if not isinstance(value, str) or not value:
-        return value
-    candidate = value.lstrip(" \t\r\n")
-    if value[0] in "\t\r\n" or candidate.startswith(("=", "+", "-", "@")):
-        return "'" + value
-    return value
+    from src.services.csv_safe import safe_cell
+
+    return safe_cell(value)
+
+
+_GOVERNANCE_COLUMNS = (
+    "approval_status",
+    "approved_by_user_id",
+    "approved_at",
+    "approval_note",
+    "user_disposition",
+    "user_disposition_label",
+    "disposition_note",
+    "disposition_basis",
+    "disposition_updated_at",
+    "disposition_updated_by_user_id",
+)
+# A supplier's copy (RFQ package) states the review status only; approvers,
+# the recorded outcome and its notes stay inside the organization.
+# A supplier's copy carries no review state (src.services.rfq_package_service).
+_OUTBOUND_GOVERNANCE_COLUMNS: tuple = ()
 
 
 def build_estimates_csv(
     result_json: dict,
     *,
     governance: Optional[dict] = None,
+    outbound: bool = False,
 ) -> str:
     """Flatten per-(process, qty) estimates into an auditable CSV table.
 
     Includes the honest confidence band columns (band label + validated flag)
     and the persisted approval fields, so the exported artifact never presents
-    an unvalidated or unsigned number as governed evidence.
+    an unvalidated or unsigned number as governed evidence. ``outbound`` is the
+    supplier's copy: ``result_json`` is already an ``outbound.cost_record`` and
+    none of the governance travels (no review status).
     """
     buf = io.StringIO()
     writer = csv.writer(buf)
+    gov_columns = _OUTBOUND_GOVERNANCE_COLUMNS if outbound else _GOVERNANCE_COLUMNS
     writer.writerow(
         [
             "process",
@@ -674,24 +1062,24 @@ def build_estimates_csv(
             "confidence_label",
             "confidence_validated",
             "dfm_ready",
-            "approval_status",
-            "approved_by_user_id",
-            "approved_at",
-            "approval_note",
-            "user_disposition",
-            "user_disposition_label",
-            "disposition_note",
-            "disposition_basis",
-            "disposition_updated_at",
-            "disposition_updated_by_user_id",
+            *gov_columns,
             "line_items",
         ]
     )
     governance = governance or {}
+
+    def gov(key: str):
+        if key == "disposition_basis":
+            basis = governance.get(key)
+            return json.dumps(basis, sort_keys=True) if basis else ""
+        return governance.get(key, "")
+
     for e in result_json.get("estimates", []) or []:
         ci = e.get("confidence") or {}
-        line_items = e.get("line_items") or {}
-        li_str = "; ".join(f"{k}={v}" for k, v in line_items.items())
+        # ce-01: to the cent, with the rounding line that makes them add up to
+        # unit_cost_usd (src.costing.footing, the screen's and the PDF's rule).
+        li_str = "; ".join(f"{k}={v:.2f}" for k, v in footed_items(
+            e.get("line_items") or {}, e.get("unit_cost_usd")).items())
         writer.writerow(
             [
                 spreadsheet_safe_cell(value)
@@ -709,20 +1097,139 @@ def build_estimates_csv(
                     # Honesty: this is False for assumption-based bands.
                     ci.get("validated", False),
                     e.get("dfm_ready", ""),
-                    governance.get("approval_status", ""),
-                    governance.get("approved_by_user_id", ""),
-                    governance.get("approved_at", ""),
-                    governance.get("approval_note", ""),
-                    governance.get("user_disposition", ""),
-                    governance.get("user_disposition_label", ""),
-                    governance.get("disposition_note", ""),
-                    json.dumps(governance["disposition_basis"], sort_keys=True) if governance.get("disposition_basis") else "",
-                    governance.get("disposition_updated_at", ""),
-                    governance.get("disposition_updated_by_user_id", ""),
+                    *(gov(key) for key in gov_columns),
                     li_str,
                 ]
             ]
         )
+    return buf.getvalue()
+
+
+# The inputs behind each line, one column per field (ce-14): a cost engineer rebuilds
+# the price in a spreadsheet from these without retyping anything from the PDF.
+_ESTIMATE_COLUMNS = (
+    "process", "material", "quantity", "unit_cost_usd", "fixed_cost_usd", "variable_cost_usd",
+    "est_error_band_pct", "confidence_low_usd", "confidence_high_usd", "confidence_label",
+    "confidence_validated", "dfm_ready",
+)
+_LINE_COLUMNS = (
+    "line", "line_usd", "hours", "hours_for", "rate_usd_per_h",
+    "kg", "usd_per_kg", "scrap", "learning_factor", "source", "rate_card", "formula",
+)
+COST_INPUT_COLUMNS = (
+    "record_id", "part", "checked_at", "exported_at",
+    "rates_priced_at", "rates_in_effect", "out_of_date", "out_of_date_reason",
+    *_ESTIMATE_COLUMNS, *_GOVERNANCE_COLUMNS, *_LINE_COLUMNS,
+)
+
+_SOURCE_WORDS = {"MEASURED": "your file", "CAD": "your file", "USER": "you", "SHOP": "your shop",
+                 "DEFAULT": "typical"}
+
+
+def _line_inputs(key: str, est: dict, labor_rate: Optional[float]) -> dict:
+    """The driver quantities behind one line: hours (a part or the order) and the
+    rate, kg and $/kg, the learning factor; read off the record's own drivers."""
+    import re
+
+    from src.services.accuracy_service import stated_hours
+
+    drivers = {d.get("name"): d for d in est.get("drivers") or [] if isinstance(d, dict)}
+    stated = stated_hours(est)
+    learn = (drivers.get("learning_curve") or {}).get("value")
+    out: dict = {}
+    if key == "material":
+        mm = est.get("material_mass") or {}
+        sc = re.search(r"\(1\+(\d+(?:\.\d+)?) scrap\)", str((drivers.get("material_cost") or {}).get("source") or ""))
+        out.update(kg=mm.get("used_kg"), usd_per_kg=mm.get("usd_per_kg"), scrap=float(sc.group(1)) if sc else None)
+    elif key == "machine":
+        m = re.search(r"\$(\d+(?:\.\d+)?)/hr", str((drivers.get("machine_cost") or {}).get("source") or ""))
+        out.update(hours=(drivers.get("cycle_time") or {}).get("value"), hours_for="a part",
+                   rate_usd_per_h=float(m.group(1)) if m else None)
+    elif key == "labor":
+        out.update(hours=stated.get("labor_part"), hours_for="a part", rate_usd_per_h=labor_rate,
+                   learning_factor=learn)
+    elif key == "amortized_fixed":
+        out.update(hours=stated.get("setup_order"), hours_for="the order", rate_usd_per_h=labor_rate)
+    elif key == "nre":
+        out.update(hours=stated.get("programming_order"), hours_for="the order", rate_usd_per_h=labor_rate)
+    elif key == "inspection":
+        out.update(hours=stated.get("inspection_part"), hours_for="a part", rate_usd_per_h=labor_rate,
+                   learning_factor=learn)
+    return out
+
+
+def build_cost_inputs_csv(
+    decision: Any,
+    *,
+    governance: Optional[dict] = None,
+    rates: Optional[dict] = None,
+    exported_at: Optional[datetime] = None,
+) -> str:
+    """"CSV of cost inputs" (ce-14): one row per cost line of every priced process and
+    quantity, with the line's dollars (to the cent, footed with a Rounding row like the
+    screen and the PDF), the inputs behind it (hours and for what, $/h, kg, $/kg,
+    learning factor), where its rate comes from, and the record: id, part, when it was
+    checked and exported, the rate card it was priced at and whether it's out of date.
+    Line names are the screen's (``footing.LINE_NAMES``)."""
+    from src.costing.footing import footed_items, line_driver, line_name
+
+    rj = getattr(decision, "result_json", None) or {}
+    governance = governance or {}
+    rates = rates or {}
+
+    def gov(key: str):
+        if key == "disposition_basis":
+            basis = governance.get(key)
+            return json.dumps(basis, sort_keys=True) if basis else ""
+        v = governance.get(key, "")
+        return "" if v is None else v
+
+    exported_at = exported_at or datetime.now(timezone.utc)
+    labor_rate = next((a.get("value") for a in rj.get("assumptions") or []
+                       if isinstance(a, dict) and a.get("name") == "labor_rate"), None)
+    stale_reason = []
+    if rates.get("out_of_date"):
+        stale_reason.append(rates.get("text") or "")
+    if governance.get("is_stale") and not (rates.get("out_of_date") and str(governance.get("stale_reason") or "").startswith("rate_library_published")):
+        stale_reason.append(str(governance.get("stale_reason") or "changed since it was checked").replace("_", " "))
+    record = [
+        getattr(decision, "ulid", ""),
+        getattr(decision, "filename", ""),
+        _iso(getattr(decision, "created_at", None)) or "",
+        exported_at.isoformat(),
+        rates.get("priced", ""),
+        rates.get("current", ""),
+        bool(rates.get("out_of_date") or governance.get("is_stale")),
+        "; ".join(x for x in stale_reason if x),
+    ]
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(COST_INPUT_COLUMNS)
+    for e in rj.get("estimates") or []:
+        if not isinstance(e, dict):
+            continue
+        drivers = {d.get("name"): d for d in e.get("drivers") or [] if isinstance(d, dict)}
+        ci = e.get("confidence") or {}
+        head = [e.get("process", ""), e.get("material", ""), e.get("quantity", ""), e.get("unit_cost_usd", ""),
+                e.get("fixed_cost_usd", ""), e.get("variable_cost_usd", ""), e.get("est_error_band_pct", ""),
+                ci.get("low_usd", ""), ci.get("high_usd", ""), ci.get("label", ""),
+                # Honesty: False for every assumption-based band.
+                ci.get("validated", False), e.get("dfm_ready", ""),
+                *(gov(k) for k in _GOVERNANCE_COLUMNS)]
+        for key, usd in footed_items(e.get("line_items") or {}, e.get("unit_cost_usd")).items():
+            d = drivers.get(line_driver(key)) or {}
+            inp = _line_inputs(key, e, labor_rate)
+            writer.writerow([spreadsheet_safe_cell(v) for v in [
+                *record, *head,
+                # A number, not text: a negative Rounding line written as "-0.01" text
+                # would be escaped to "'-0.01" and the column would no longer add up.
+                line_name(key), Decimal(f"{usd:.2f}"),
+                inp.get("hours", ""), inp.get("hours_for", ""), inp.get("rate_usd_per_h", ""),
+                inp.get("kg", ""), inp.get("usd_per_kg", ""), inp.get("scrap", ""), inp.get("learning_factor", ""),
+                _SOURCE_WORDS.get(str(d.get("provenance") or ""), "") if d else "",
+                f"v{d['rate_card']}" if d.get("rate_card") is not None else "",
+                d.get("source", ""),
+            ]])
     return buf.getvalue()
 
 
@@ -731,97 +1238,139 @@ def build_estimates_csv(
 # ---------------------------------------------------------------------------
 
 
-async def create_share(
-    ulid: str, user_id: int, session: AsyncSession
-) -> dict:
-    """Toggle a cost decision public and assign a share short id (idempotent).
+async def _owned_for_share(ulid: str, user_id: int, session: AsyncSession) -> CostDecision:
+    """The caller-org decision, locked for the share update, or the plain 404.
 
-    W1 step 3: org-scoped lookup — only a decision in the caller's org can be
-    shared; another org's decision is invisible (404).
+    W1 step 3: org-scoped lookup — another org's decision is invisible (404).
     """
-    stmt = select(CostDecision).where(
-        CostDecision.ulid == ulid,
-        CostDecision.org_id == caller_org_subquery(user_id),
+    stmt = (
+        select(CostDecision)
+        .where(
+            CostDecision.ulid == ulid,
+            CostDecision.org_id == caller_org_subquery(user_id),
+        )
+        .with_for_update()
     )
     d = (await session.execute(stmt)).scalar_one_or_none()
     if d is None:
         raise HTTPException(status_code=404, detail="Cost decision not found")
+    return d
 
-    if d.share_short_id is not None:
-        return {
-            "share_url": f"/s/cost/{d.share_short_id}",
-            "share_short_id": d.share_short_id,
-        }
 
+def _share_link(d: CostDecision) -> dict:
+    return {
+        "share_url": f"/s/cost/{d.share_short_id}",
+        "share_short_id": d.share_short_id,
+        **share_links.fields(d),
+    }
+
+
+async def create_share(
+    ulid: str,
+    user_id: int,
+    session: AsyncSession,
+    expires_in_days: Optional[int] = share_links.DEFAULT_DAYS,
+    options: Optional["share_links.ShareOptions"] = None,
+) -> dict:
+    """Make a public link to a cost decision: what a supplier sees (``options``,
+    ``src.services.supplier_links``) until it ends.
+
+    Without ``options`` (callers made before the Share dialog) a link that is on
+    is returned unchanged, and a new one lasts ``expires_in_days`` (``None``:
+    no end date) and shows no cost and no CAD. With ``options`` the sharer chose
+    what the link shows and how long it lasts, so a new link is made and one
+    that was on stops working.
+    """
+    from src.services.audit_service import emit_event
+
+    d = await _owned_for_share(ulid, user_id, session)
+    active = share_links.status(d) == "active"
+    if active and options is None:
+        return _share_link(d)
+
+    if active:
+        # A new link switches the one that is on off: the same rule as DELETE
+        # .../share (its maker or an org admin), never a colleague's live link.
+        await share_links.require_can_switch_off(session, d, user_id)
+    opts = options or share_links.ShareOptions(expires_in_days=expires_in_days)
     short_id = generate_short_id()
-    d.share_short_id = short_id
-    d.is_public = True
+    replaced = d.share_short_id if active else None
+    share_links.open_link(d, user_id, opts.expires_in_days, short_id, ends_at=opts.ends_at(), shows=opts.shown())
+    await emit_event(
+        session,
+        actor_id=user_id,
+        action="share.created",
+        resource_type="share",
+        resource_id=short_id,
+        detail={
+            "cost_decision_ulid": ulid,
+            "expires_at": d.share_expires_at.isoformat() if d.share_expires_at else None,
+            "shows": d.share_options,
+            "replaced": replaced,
+        },
+        org_id=d.org_id,
+    )
     await session.commit()
     logger.info("Cost decision %s shared as /s/cost/%s by user %d", ulid, short_id, user_id)
-    return {"share_url": f"/s/cost/{short_id}", "share_short_id": short_id}
+    return _share_link(d)
 
 
 async def revoke_share(
     ulid: str, user_id: int, session: AsyncSession
 ) -> None:
-    """Revoke sharing — the public link 404s immediately.
+    """Switch the link off now. Only its maker or an org admin may.
 
-    W1 step 3: org-scoped lookup (see ``create_share``).
+    The short id stays so the public page says "switched off". Idempotent.
     """
-    stmt = select(CostDecision).where(
-        CostDecision.ulid == ulid,
-        CostDecision.org_id == caller_org_subquery(user_id),
-    )
-    d = (await session.execute(stmt)).scalar_one_or_none()
-    if d is None:
-        raise HTTPException(status_code=404, detail="Cost decision not found")
+    from src.services.audit_service import emit_event
 
-    d.share_short_id = None
-    d.is_public = False
+    d = await _owned_for_share(ulid, user_id, session)
+    if share_links.status(d) != "active":
+        return
+    await share_links.require_can_switch_off(session, d, user_id)
+    share_links.close_link(d)
+    await emit_event(
+        session,
+        actor_id=user_id,
+        action="share.revoked",
+        resource_type="share",
+        resource_id=d.share_short_id,
+        detail={"cost_decision_ulid": ulid},
+        org_id=d.org_id,
+    )
     await session.commit()
     logger.info("Cost decision %s unshared by user %d", ulid, user_id)
 
 
 async def get_shared(short_id: str, session: AsyncSession) -> Optional[dict]:
-    """Fetch a public cost decision by share short id -> sanitized dict / None."""
-    stmt = select(CostDecision).where(
-        CostDecision.share_short_id == short_id,
-        CostDecision.is_public.is_(True),
-    )
+    """Public cost decision by short id -> sanitized dict; None when unknown.
+
+    A link that ended or was switched off raises 410 with no record data.
+    """
+    stmt = select(CostDecision).where(CostDecision.share_short_id == short_id)
     d = (await session.execute(stmt)).scalar_one_or_none()
     if d is None:
         return None
-    return sanitize_for_share(d)
+    share_links.public_or_raise(d, "Shared cost decision not found")
+    # What a supplier sees: the part, specs, note, quantity, the CAD if chosen,
+    # and our cost estimate only when the sharer turned it on.
+    from src.services import supplier_links
+
+    return await supplier_links.record_view(session, d, short_id)
 
 
-def sanitize_for_share(d: CostDecision) -> dict:
-    """Allow-listed public payload — ZERO owner/user PII.
+def sanitize_for_share(d: CostDecision, *, terms=()) -> dict:
+    """The public payload of ``GET /s/cost/{id}`` — ``outbound.cost_share``.
 
-    EXCLUDED: user_id, api_key_id, mesh_hash, params_hash, share_short_id,
-    is_public, id, ulid. The decision content (geometry, estimates with
-    provenance, honest confidence band, crossover, assumptions) is preserved
-    verbatim so the public view stays as honest as the private one.
+    No owner, ids or hashes (user_id, api_key_id, mesh_hash, params_hash,
+    share_short_id, id/ulid), and nothing of the sharer's shop: its machines,
+    rates and terms, routes it prices on its own machines, its in-house choices,
+    calibration and actuals stay inside (see ``src.services.outbound``). The
+    geometry, findings, outside should-cost and stated band are kept.
     """
-    result_json = d.result_json or {}
-    return {
-        "filename": d.filename,
-        "file_type": d.file_type,
-        "label": d.label,
-        "created_at": d.created_at.isoformat(),
-        "make_now_process": d.make_now_process,
-        "crossover_qty": d.crossover_qty,
-        "quantities": d.quantities or [],
-        # Glass-box decision content, preserved (provenance + honest CI intact).
-        "geometry": result_json.get("geometry", {}),
-        "material_class": result_json.get("material_class"),
-        "routing": result_json.get("routing"),
-        "estimates": result_json.get("estimates", []),
-        "decision": result_json.get("decision"),
-        "assumptions": result_json.get("assumptions", []),
-        "engine_feasibility": result_json.get("engine_feasibility", []),
-        "notes": result_json.get("notes", []),
-        "status": result_json.get("status"),
-    }
+    from src.services import outbound
+
+    return outbound.cost_share(d, terms=terms)
 
 
 # ---------------------------------------------------------------------------

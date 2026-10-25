@@ -663,7 +663,7 @@ variable "worker_cpu" {
 variable "worker_memory" {
   type        = number
   description = "Worker task memory in MiB."
-  default     = 4096
+  default     = 8192
 }
 
 variable "frontend_cpu" {

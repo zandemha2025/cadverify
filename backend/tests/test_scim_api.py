@@ -11,6 +11,12 @@ from src.auth.rbac import OrgAuthContext
 from src.db.engine import get_db_session
 
 
+@pytest.fixture(autouse=True)
+def _org_1_owns_the_identity_provider(monkeypatch):
+    """SCIM serves only the org named by SSO_ORG_ID; these tests' org is org_1."""
+    monkeypatch.setenv("SSO_ORG_ID", "org_1")
+
+
 def _ctx(org_id: str | None = "org_1") -> OrgAuthContext:
     return OrgAuthContext(
         user_id=11,
@@ -142,3 +148,34 @@ async def test_scim_delete_user_deprovisions_with_active_false_patch(monkeypatch
     assert seen["payload"]["Operations"][0]["path"] == "active"
     assert seen["payload"]["Operations"][0]["value"] is False
     session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_scim_refuses_a_shared_org_that_does_not_own_the_identity_provider(monkeypatch):
+    """Only the SSO_ORG_ID org provisions: any other admin key gets a plain 403
+    before a user is looked up or created."""
+    created = []
+
+    async def _fake_create(*_a, **_k):
+        created.append(True)
+        return {}
+
+    monkeypatch.setattr(scim.svc, "create_or_update_user", _fake_create)
+    for sso in ("org_other", "none", ""):
+        monkeypatch.setenv("SSO_ORG_ID", sso)
+        session = AsyncMock()
+        session.commit = AsyncMock()
+        app = _build_app(session)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="https://api.example") as client:
+            for method, path in (("GET", "/scim/v2/ServiceProviderConfig"), ("POST", "/scim/v2/Users")):
+                resp = await client.request(
+                    method, path,
+                    json={"schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"],
+                          "userName": "dana@othercorp.example"} if method == "POST" else None,
+                )
+                assert resp.status_code == 403, (sso, path, resp.text)
+                detail = resp.json()["detail"]
+                assert detail["code"] == "sso_org_required"
+                assert "Single sign-on isn't set up for this organization" in detail["message"]
+        session.commit.assert_not_awaited()
+    assert created == []

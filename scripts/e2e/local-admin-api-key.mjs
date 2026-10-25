@@ -127,11 +127,16 @@ export async function resolveAdminApiKey({ apiBase, configuredToken = "", runId,
       "Content-Type": "application/json",
       Cookie: `dash_session=${session}`,
     },
-    body: JSON.stringify({ name: `E2E ${purpose} ${runId}` }),
+    // A new key is read only unless asked (4559c27f); these fixtures check parts
+    // and write records, so they ask for read and write.
+    body: JSON.stringify({ name: `E2E ${purpose} ${runId}`, scope: "read_write" }),
   }));
   const token = revealCookie(created.response, "cv_mint_once");
   if (created.response.status !== 200 || !created.json?.id || !token) {
     throw new Error(`local API key creation HTTP ${created.response.status}: ${JSON.stringify(created.json)}`);
+  }
+  if (created.json.effective_scope !== "read_write") {
+    throw new Error(`local API key is ${created.json.effective_scope || "of unknown scope"}, not read_write`);
   }
 
   return {

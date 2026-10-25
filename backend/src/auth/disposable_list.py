@@ -8,6 +8,7 @@ verdicts (per D-11 override: NOT hard_reject — routes to tighter Turnstile
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Awaitable, cast
 
 import httpx
 import redis.asyncio as aioredis
@@ -32,7 +33,8 @@ async def get_soft_flag_set() -> set[str]:
     """Return set of soft-flag disposable domains. 24-h Redis-cached."""
     r = _r()
     if await r.exists(KEY):
-        return set(await r.smembers(KEY))
+        # redis-py types its commands for the sync and asyncio clients at once.
+        return set(await cast("Awaitable[set[str]]", r.smembers(KEY)))
     try:
         async with httpx.AsyncClient(timeout=10.0) as c:
             resp = await c.get(SOURCE)
@@ -46,6 +48,6 @@ async def get_soft_flag_set() -> set[str]:
         domains = set()
     if domains:
         await r.delete(KEY)
-        await r.sadd(KEY, *domains)
+        await cast("Awaitable[int]", r.sadd(KEY, *domains))
         await r.expire(KEY, TTL_S)
     return domains

@@ -116,7 +116,7 @@ async def get_catalog(
         from src.services import part_summary_service
 
         try:
-            page = await svc.build_catalog_page(
+            keyset_page = await svc.build_catalog_page(
                 session, org_id, cursor=cursor, limit=page_size
             )
         except svc.InvalidCursorError:
@@ -133,17 +133,18 @@ async def get_catalog(
         if (
             org_id
             and cursor is None
-            and not page["rows"]
+            and not keyset_page["rows"]
             and await part_summary_service.org_has_raw_parts(session, org_id)
         ):
             built = await svc.build_catalog(session, org_id)
             return {
-                "rows": built["rows"],
+                "rows": await svc.annotate_rates(session, org_id, built["rows"]),
                 "next_cursor": None,
                 "cold_projection": True,
                 "truncated": built["truncated"],
             }
-        return page
+        keyset_page["rows"] = await svc.annotate_rates(session, org_id, keyset_page["rows"])
+        return keyset_page
 
     built = await svc.build_catalog(session, org_id, part_key=part_key)
     all_rows = built["rows"]
@@ -166,7 +167,7 @@ async def get_catalog(
     total = len(filtered)
     total_pages = max(1, math.ceil(total / page_size)) if total else 0
     start = (page - 1) * page_size
-    page_rows = filtered[start : start + page_size]
+    page_rows = await svc.annotate_rates(session, org_id, filtered[start : start + page_size])
 
     return {
         "rows": page_rows,

@@ -253,16 +253,9 @@ class TestPdfTemplateWithTolerances:
         env = Environment(loader=FileSystemLoader(str(template_dir)), autoescape=False)
 
         # Register the same custom filters as pdf_service
-        from src.services.pdf_service import (
-            _format_duration,
-            _format_number,
-            _sort_by_severity,
-            _merge_key,
-        )
-        env.filters["format_duration"] = _format_duration
-        env.filters["format_number"] = _format_number
-        env.filters["sort_by_severity"] = _sort_by_severity
-        env.filters["merge_key"] = _merge_key
+        from src.services.pdf_service import register_pdf_filters
+
+        register_pdf_filters(env)
 
         report = _make_tolerance_report()
         tol_dict = tolerance_report_to_dict(report)
@@ -311,16 +304,9 @@ class TestPdfTemplateWithTolerances:
         template_dir = Path(__file__).resolve().parent.parent / "src" / "templates" / "pdf"
         env = Environment(loader=FileSystemLoader(str(template_dir)), autoescape=False)
 
-        from src.services.pdf_service import (
-            _format_duration,
-            _format_number,
-            _sort_by_severity,
-            _merge_key,
-        )
-        env.filters["format_duration"] = _format_duration
-        env.filters["format_number"] = _format_number
-        env.filters["sort_by_severity"] = _sort_by_severity
-        env.filters["merge_key"] = _merge_key
+        from src.services.pdf_service import register_pdf_filters
+
+        register_pdf_filters(env)
 
         context = {
             "filename": "cube.stl",

@@ -38,11 +38,17 @@ def _parse_yaml_material(data: dict) -> MaterialProfile:
         else:
             logger.warning("Unknown process type '%s' in material '%s'", p, data.get("name"))
 
-    # Resolve cost_per_kg: use first available value from cost dict
+    # Prices by form ("wrought", "powder", "sheet", ...). ``cost_per_kg`` is the
+    # first-listed one, for callers that don't name a process; costing prices
+    # each process at the form it consumes (src.profiles.pricing).
     cost_data = dfm.get("cost_per_kg_usd", {})
     cost_per_kg: Optional[float] = None
+    price_form: Optional[str] = None
+    by_form: dict[str, float] = {}
     if isinstance(cost_data, dict) and cost_data:
-        cost_per_kg = next(iter(cost_data.values()))
+        by_form = {str(k): float(v) for k, v in cost_data.items() if isinstance(v, (int, float))}
+        if by_form:
+            price_form, cost_per_kg = next(iter(by_form.items()))
     elif isinstance(cost_data, (int, float)):
         cost_per_kg = float(cost_data)
 
@@ -69,6 +75,8 @@ def _parse_yaml_material(data: dict) -> MaterialProfile:
         machinability_index=mech.get("machinability_index"),
         thermal_conductivity=mech.get("thermal_conductivity_w_mk"),
         hardness_hrc=mech.get("hardness_hrc"),
+        cost_per_kg_by_form=by_form,
+        price_form=price_form,
     )
 
 
@@ -139,8 +147,29 @@ def merge_materials(
     return merged
 
 
+def load_yaml_aliases() -> dict[str, list[str]]:
+    """``{material name: [aliases]}`` from the material files (src.profiles.identity)."""
+    try:
+        import yaml  # noqa: F811
+    except ImportError:
+        return {}
+    out: dict[str, list[str]] = {}
+    if not _MATERIALS_DIR.is_dir():
+        return out
+    for filepath in sorted(_MATERIALS_DIR.glob("*.yaml")):
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+        except Exception:
+            continue
+        if isinstance(data, dict) and data.get("name"):
+            out[str(data["name"])] = [str(a) for a in (data.get("aliases") or [])]
+    return out
+
+
 # Eagerly load at import time
 _YAML_MATERIALS: list[MaterialProfile] = load_yaml_materials()
+_YAML_MATERIALS_RAW_ALIASES: dict[str, list[str]] = load_yaml_aliases()
 
 #: Structured materials from YAML only (for new code that wants rich data)
 MATERIALS_STRUCTURED: list[MaterialProfile] = list(_YAML_MATERIALS)

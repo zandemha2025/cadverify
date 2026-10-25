@@ -2,7 +2,9 @@
 
 The management + read surface for the versioned, effective-dated materials
 catalog that overrides the base rate card's ``material_prices`` for an org. Org
-admins draft → edit → PUBLISH a catalog with an effective date; the costing
+admins draft → edit a catalog, propose it for review, and an admin's approval
+PUBLISHES it with an effective date (``governance.py``; the direct
+``/{id}/publish`` here refuses with 403 ``review_required``, C2); the costing
 engine then overlays the version in effect at estimate time onto the base
 table's material prices (gated by ``MATERIAL_LIBRARY_ENABLED`` + a published
 catalog for the caller's org).
@@ -36,7 +38,7 @@ from src.auth.rbac import (
 )
 from src.auth.require_api_key import AuthedUser
 from src.db.engine import get_db_session
-from src.services import cost_decision_service
+from src.services import governance_service
 from src.services import material_library_service as svc
 
 logger = logging.getLogger("cadverify.material_library")
@@ -175,6 +177,9 @@ async def update_material_catalog_draft(
     session: AsyncSession = Depends(get_db_session),
 ):
     org_id = await _write_org(ctx, session)
+    await governance_service.refuse_edit_under_review(
+        session, org_id, governance_service.ASSET_MATERIAL_CATALOG, version_id
+    )
     try:
         row = await svc.update_draft(
             session,
@@ -183,6 +188,7 @@ async def update_material_catalog_draft(
             name=body.name,
             change_note=body.change_note,
             payload=body.payload,
+            edited_by=ctx.user_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -234,23 +240,18 @@ async def publish_material_catalog(
     ctx: OrgAuthContext = Depends(require_org_role(OrgRole.admin)),
     session: AsyncSession = Depends(get_db_session),
 ):
+    """Refused: a version is published only by approving its change request
+    (``POST /api/v1/governance/change-requests`` then ``.../{id}/approve``), as
+    on the screens (C2). 404 when the version isn't in the caller's org, 409
+    when it is no longer a draft, otherwise 403 ``review_required``."""
     org_id = await _write_org(ctx, session)
-    row = await svc.publish_version(
-        session, org_id, version_id, effective_from=body.effective_from
+    row = await svc.get_version(session, org_id, version_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="version not found")
+    if row.status == "published":
+        raise HTTPException(status_code=409, detail="version already published")
+    if row.status != "draft":
+        raise HTTPException(status_code=409, detail="only draft versions can be published")
+    raise await governance_service.review_required_refusal(
+        session, org_id, governance_service.ASSET_MATERIAL_CATALOG, version_id, ctx.user_id
     )
-    await cost_decision_service.mark_org_decisions_stale(
-        session,
-        org_id,
-        reason=f"material_library_published:v{row.version}",
-        stale_at=row.effective_from,
-    )
-    from src.services.audit_service import emit_event
-
-    await emit_event(
-        session, ctx.user_id, "library.version_published", "material_catalog",
-        str(row.id),
-        {"org_id": org_id, "library": "material", "version": row.version},
-        org_id=org_id,
-    )
-    await session.commit()
-    return svc.serialize_version(row, include_payload=True)

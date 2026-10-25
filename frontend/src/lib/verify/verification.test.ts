@@ -16,6 +16,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  ownedAlternativeSub,
   verdictBannerModel,
   fitMark,
   gapText,
@@ -134,6 +135,10 @@ test("gapText: preserve envelope evidence and units, quantify ordinary scalar ga
     "Part diameter is at least 400mm > chamber diagonal 346.41mm.");
   assert.equal(gapText({ gate: "mass", axis: "mass_kg", need: 40, have: 20, human: "mass" }),
     "need 40, have 20");
+  // A sheet thickness or press force miss keeps its units and material (me-02).
+  assert.equal(gapText({ gate: "thickness", axis: "cut_thickness_mm", need: 5, have: 4.76,
+    human: "thickness 5.00mm > machine max 4.7625mm for 304 SS (Sheet)" }),
+    "thickness 5.00mm > machine max 4.7625mm for 304 SS (Sheet)");
   // an unknown gate (have null) is NOT a fabricated number — falls to human/needs
   assert.equal(
     gapText({ gate: "mass", axis: "mass", need: null, have: null, human: "part mass unknown" }),
@@ -229,4 +234,43 @@ test("acquisitionGap passes the concrete gap deltas through, empty when absent",
   assert.equal(g.length, 1);
   assert.equal(g[0].have, 20);
   assert.deepEqual(acquisitionGap({ verdict: "unknown" }), []);
+});
+
+test("a DFM-blocked route reads not makeable with its design blocker, never an acquisition", () => {
+  const dfm = {
+    gate: "dfm", axis: "THIN_WALL", need: 0.8, have: 0.5,
+    human: "24 faces (100.0%) below 0.8mm min wall for cnc_3axis. Thinnest: 0.5mm.",
+  };
+  const envelope = { gate: "envelope", axis: "z", need: 40, have: 20, human: "z too small" };
+  const v: VerificationBlock = {
+    verdict: "not_makeable",
+    gap: [dfm, envelope],
+    per_route: {
+      cnc_3axis: { verdict: "not_makeable", machines_evaluated: 1, best_machine: "Haas VF-2", failures: [dfm] },
+    },
+  };
+  assert.equal(gapText(dfm), dfm.human);
+  // the design blocker is not something to buy; a machine delta behind it still is
+  assert.deepEqual(acquisitionGap(v), [envelope]);
+  const route = verificationForRoute(v, "cnc_3axis");
+  assert.ok(route);
+  assert.equal(route.verdict, "not_makeable");
+  assert.equal(route.best_machine, null);
+  assert.equal(verdictBannerModel(route.verdict).tone, "fail");
+  assert.equal(fitMark("not_makeable").glyph, "✗");
+  const [row] = perRouteRows(v);
+  assert.equal(row.tone, "fail");
+  assert.equal(gapText(row.failures[0]), dfm.human);
+  const record = recordVerdictModel({ verification: v }, {
+    hasCostedRoute: true, process: "cnc_3axis", dfmReady: false, dfmVerdict: "fail",
+  });
+  assert.equal(record.text, "Not makeable as modeled.");
+});
+
+test("outside pick while a machine you own can make it: the banner says so instead of 'you own nothing'", () => {
+  const v = { verdict: "makeable_in_house", best_machine: "Bambu Lab X1C", per_route: {} } as never;
+  const sub = ownedAlternativeSub("makeable_outsource_only", v, "outside_sooner", "$15.58");
+  assert.match(sub ?? "", /^Your Bambu Lab X1C can make it at \$15\.58\/unit; the outside route is cheaper and arrives sooner/);
+  assert.equal(ownedAlternativeSub("makeable_in_house", v, null, null), null);
+  assert.equal(ownedAlternativeSub("makeable_outsource_only", { verdict: "makeable_outsource_only", per_route: {} } as never, null, null), null);
 });

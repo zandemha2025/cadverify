@@ -35,7 +35,7 @@ function loadProjectModule(file: URL): Record<string, unknown> {
   return module.exports;
 }
 
-type Usage = { plan: string; unlimited: boolean; used: number | null; cap: number | null; remaining: number | null };
+type Usage = { plan: string; unlimited: boolean; used: number | null; cap: number | null; remaining: number | null; resets_at?: string | null };
 const QuotaDisplay = loadProjectModule(new URL("./QuotaDisplay.tsx", import.meta.url)).default as ComponentType<{ usage: Usage }>;
 
 test("approved unlimited access never asks the account to request paid access", () => {
@@ -43,15 +43,26 @@ test("approved unlimited access never asks the account to request paid access", 
     usage: { plan: "pilot", unlimited: true, used: null, cap: null, remaining: null },
   }));
   assert.match(html, /Approved access.*unlimited checks/);
-  assert.doesNotMatch(html, /Request paid access|to continue checking parts|mailto:/);
+  assert.doesNotMatch(html, /Request paid access|Upgrade to Pro|Manage billing|mailto:/);
 });
 
-test("exhausted trial access keeps the quota and the request-access route", () => {
+test("exhausted free access keeps the quota and offers Pro in one click", () => {
   const html = renderToStaticMarkup(createElement(QuotaDisplay, {
-    usage: { plan: "trial", unlimited: false, used: 10, cap: 10, remaining: 0 },
+    usage: { plan: "trial", unlimited: false, used: 3, cap: 3, remaining: 0 },
   }));
-  assert.match(html, /10 of 10 used/);
-  assert.match(html, /Request paid access/);
-  assert.match(html, /mailto:/);
-  assert.doesNotMatch(html, /Approved access/);
+  assert.match(html, /3 of 3 used/);
+  assert.match(html, /Free checks/);
+  assert.match(html, /<button[^>]*>Upgrade to Pro<\/button>/);
+  assert.doesNotMatch(html, /lifetime|Request paid access|Approved access/);
+});
+
+test("Pro shows this month's checks, the reset date and billing management", () => {
+  const html = renderToStaticMarkup(createElement(QuotaDisplay, {
+    usage: { plan: "pro", unlimited: false, used: 50, cap: 50, remaining: 0, resets_at: "2026-11-17T00:00:00+00:00" } as Usage,
+  }));
+  assert.match(html, /Pro checks this month/);
+  assert.match(html, /Resets on November 17/);
+  assert.match(html, /You&#x27;ve used this month&#x27;s 50 Pro checks/);
+  assert.match(html, /Manage billing/);
+  assert.doesNotMatch(html, /Upgrade to Pro/);
 });
