@@ -13,6 +13,7 @@ def test_frontend_uses_runtime_server_origin_and_same_origin_browser_routes():
     batch_client = read("frontend/src/lib/api/batch.ts")
     api_base = read("frontend/src/lib/api-base.ts")
     signup_page = read("frontend/src/app/(auth)/signup/page.tsx")
+    signup_email_form = read("frontend/src/components/site/signup-email-form.tsx")
     login_page = read("frontend/src/app/(auth)/login/page.tsx")
     login_form = read("frontend/src/app/(auth)/login/login-form.tsx")
     safe_return_path = read("frontend/src/lib/safe-return-path.ts")
@@ -27,14 +28,19 @@ def test_frontend_uses_runtime_server_origin_and_same_origin_browser_routes():
     assert "process.env.NEXT_PUBLIC_API_URL" not in batch_client
     assert "http://localhost:8000/api/v1" not in api_client
     assert "http://localhost:8000/api/v1" not in batch_client
-    for auth_page in (signup_page, login_form):
+    for auth_page in (signup_page, signup_email_form, login_form):
         assert "Continue with Google" not in auth_page
         assert "cf-turnstile" not in auth_page
         assert "startMagic" not in auth_page
         assert "/auth/google/start" not in auth_page
     # Released public signup is email-verified; regulated auth renders a real
     # SSO initiation link instead of a nonfunctional/fabricated provider button.
-    assert "Production accounts begin with a single-use email link." in signup_page
+    assert "if (magicEnabled && !publicPasswordSignup)" in signup_page
+    assert "<SignupEmailForm />" in signup_page
+    assert 'fetch("/api/auth/magic/start"' in signup_email_form
+    assert "TurnstileWidget" in signup_email_form
+    assert "turnstileToken: token" in signup_email_form
+    assert "safeLocalPath(next)" in signup_email_form
     assert "Continue with enterprise SSO" in login_form
     assert "process.env.SSO_LOGIN_PATH" in login_page
     assert 'process.env.MAGIC_LINK_UI_ENABLED === "1"' in login_page
