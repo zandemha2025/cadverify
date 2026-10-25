@@ -17,8 +17,7 @@ _HAS_XDE = False
 STEPCAFControl_Reader: Any = None
 TDocStd_Document: Any = None
 XCAFApp_Application: Any = None
-XCAFDoc_DimTolTool: Any = None
-XCAFDoc_ShapeTool: Any = None
+XCAFDoc_DocumentTool: Any = None
 TCollection_ExtendedString: Any = None
 IFSelect_RetDone: Any = None
 TDF_LabelSequence: Any = None
@@ -33,8 +32,7 @@ try:
         importlib.import_module("OCP.XCAFApp"), "XCAFApp_Application"
     )
     _xcaf_doc = importlib.import_module("OCP.XCAFDoc")
-    XCAFDoc_DimTolTool = getattr(_xcaf_doc, "XCAFDoc_DimTolTool")
-    XCAFDoc_ShapeTool = getattr(_xcaf_doc, "XCAFDoc_ShapeTool")
+    XCAFDoc_DocumentTool = getattr(_xcaf_doc, "XCAFDoc_DocumentTool")
     TCollection_ExtendedString = getattr(
         importlib.import_module("OCP.TCollection"), "TCollection_ExtendedString"
     )
@@ -107,7 +105,7 @@ def parse_ap242(file_path: str | Path) -> AP242Document:
         raise ValueError(f"Expected .step/.stp file, got: {path.suffix}")
 
     # Create XDE application and document
-    app = XCAFApp_Application.GetApplication()
+    app = XCAFApp_Application.GetApplication_s()
     doc = TDocStd_Document(TCollection_ExtendedString("XDE"))
     app.InitDocument(doc)
 
@@ -121,9 +119,9 @@ def parse_ap242(file_path: str | Path) -> AP242Document:
 
     reader.Transfer(doc)
 
-    # Extract tools from document main label
-    shape_tool = XCAFDoc_ShapeTool.Set(doc.Main())
-    dim_tol_tool = XCAFDoc_DimTolTool.Set(doc.Main())
+    # Retrieve the tools populated by Transfer on the XDE shapes/GDT labels.
+    shape_tool = XCAFDoc_DocumentTool.ShapeTool_s(doc.Main())
+    dim_tol_tool = XCAFDoc_DocumentTool.DimTolTool_s(doc.Main())
 
     # Detect PMI presence via GDT labels
     gdt_labels = TDF_LabelSequence()

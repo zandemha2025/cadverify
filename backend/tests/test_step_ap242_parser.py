@@ -5,6 +5,8 @@ OCP-dependent tests are skipped when XDE modules are not available.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from src.parsers.step_ap242_parser import (
@@ -92,26 +94,14 @@ def test_parse_ap242_from_bytes_temp_mode(monkeypatch):
 @pytest.mark.skipif(
     not is_ap242_supported(), reason="OCP XDE not available"
 )
-def test_ap242_document_has_pmi_flag(tmp_path):
-    """Parse a minimal STEP file and verify has_pmi is a bool."""
-    # Create a minimal valid STEP file (AP214-like, no PMI)
-    step_content = (
-        "ISO-10303-21;\n"
-        "HEADER;\n"
-        "FILE_DESCRIPTION((''), '2;1');\n"
-        "FILE_NAME('test.step', '2024-01-01', (''), (''), '', '', '');\n"
-        "FILE_SCHEMA(('AUTOMOTIVE_DESIGN'));\n"
-        "ENDSEC;\n"
-        "DATA;\n"
-        "ENDSEC;\n"
-        "END-ISO-10303-21;\n"
-    )
-    step_file = tmp_path / "test.step"
-    step_file.write_text(step_content)
-
-    result = parse_ap242(step_file)
+def test_ap242_document_has_pmi_flag():
+    """The native reader transfers a real solid and exposes its XDE tools."""
+    result = parse_ap242(Path(__file__).parent / "assets" / "cube.step")
     assert isinstance(result, AP242Document)
     assert isinstance(result.has_pmi, bool)
+    assert len(result.shape_labels) == 1
+    assert not result.shape_tool.GetShape_s(result.shape_labels[0]).IsNull()
+    assert result.dim_tol_tool is not None
 
 
 @pytest.mark.skipif(

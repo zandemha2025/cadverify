@@ -1,4 +1,7 @@
 # Test/development-only dependencies. Never copied into the production image.
+# XDE/draft integration coverage uses the supported OCP 7.x bindings.
+cadquery-ocp==7.9.3.1.1
+cadquery-ocp-stubs==7.9.3.1.1
 aiosqlite==0.20.0
 fakeredis==2.26.0
 httpx2==2.5.0

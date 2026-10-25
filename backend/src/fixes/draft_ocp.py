@@ -18,7 +18,7 @@ any other surface type are left as they are and reported.
 from __future__ import annotations
 
 # The OCP imports below are all lazy and gated by available(): the bindings are
-# an optional dependency, absent from the production and CI environments.
+# an optional dependency, absent from production but installed for native integration tests.
 # pyright: reportMissingImports=false
 
 import importlib.util
