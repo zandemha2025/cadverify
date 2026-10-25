@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
-import { createServer } from 'node:http';
-import { spawn } from 'node:child_process';
+import { createServer, request } from 'node:http';
+import { createServer as createHttpsServer } from 'node:https';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { spawn, execFileSync } from 'node:child_process';
 import { once } from 'node:events';
 import { chromium } from 'playwright-core';
 
@@ -27,7 +31,19 @@ const backend = createServer(async (req, res) => {
 });
 backend.listen(0,'127.0.0.1'); await once(backend,'listening');
 const port=Number(process.env.E2E_SITE_STATES_PORT || 3219);
-const base=`http://localhost:${port}`;
+const httpBase=`http://localhost:${port}`;
+// Production CSP upgrades insecure requests. Exercise it over HTTPS, as deployed.
+const tlsDir=mkdtempSync(join(tmpdir(),'scalecad-site-tls-'));
+execFileSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',join(tlsDir,'key.pem'),'-out',join(tlsDir,'cert.pem'),'-days','1','-subj','/CN=localhost','-addext','subjectAltName=DNS:localhost,IP:127.0.0.1'],{stdio:'ignore'});
+const https=createHttpsServer({key:readFileSync(join(tlsDir,'key.pem')),cert:readFileSync(join(tlsDir,'cert.pem'))},(req,res)=>{
+  const upstream=request({hostname:'127.0.0.1',port,path:req.url,method:req.method,headers:{...req.headers,'x-forwarded-proto':'https','x-forwarded-host':req.headers.host}},response=>{
+    res.writeHead(response.statusCode,response.headers); response.pipe(res);
+  });
+  upstream.on('error',()=>{res.writeHead(502);res.end();});
+  req.pipe(upstream);
+});
+https.listen(0,'127.0.0.1'); await once(https,'listening');
+const base=`https://localhost:${https.address().port}`;
 const app=spawn(process.execPath,['node_modules/next/dist/bin/next','start','--port',String(port)],{
   cwd:new URL('..',import.meta.url),
   env:{...process.env,API_BASE:`http://127.0.0.1:${backend.address().port}`,MAGIC_LINK_UI_ENABLED:'1',TURNSTILE_SITE_KEY:'1x00000000000000000000AA',PUBLIC_PASSWORD_SIGNUP_ENABLED:'0',AUTH_PROXY_SECRET:Buffer.from('site-ui-test-secret-not-a-real-secret-0000').toString('base64')},
@@ -39,13 +55,16 @@ let page;
 try {
   for(let i=0;i<100;i++) {
     if(app.exitCode!==null) throw new Error(logs);
-    if(logs.includes("Ready in") && await fetch(base).then(r=>r.ok).catch(()=>false)) break;
+    if(logs.includes("Ready in") && await fetch(httpBase).then(r=>r.ok).catch(()=>false)) break;
     await new Promise(r=>setTimeout(r,200));
     if(i===99) throw new Error(`Site fixture did not start: ${logs}`);
   }
   browser=await chromium.launch({channel:'chrome',headless:true,args:process.env.CI?['--no-sandbox','--disable-dev-shm-usage']:[]});
-  const context=await browser.newContext();
+  const context=await browser.newContext({ignoreHTTPSErrors:true});
   page=await context.newPage();
+  page.on("requestfailed", request=>{if(request.failure()?.errorText!=="net::ERR_ABORTED") console.error("Request failed:", request.method(), request.url(), request.failure()?.errorText); });
+  page.on("pageerror", error=>console.error("Page error:", error.message));
+  page.on("console", message=>{ if(message.type()==="error") console.error("Browser error:",message.text()); });
   await page.route('https://challenges.cloudflare.com/**',r=>r.fulfill({contentType:'application/javascript',body:`window.turnstile={render(el,opts){window.__token=opts;queueMicrotask(()=>opts.callback('ui-test-token'));return 'test'},reset(){queueMicrotask(()=>window.__token.callback('ui-test-token'))},remove(){}};`}));
   await page.goto(base+'/signup?next=%2Fapp%2Fmany%3Fnew%3D1');
   const email=page.getByRole('textbox',{name:'Work email',exact:true});
@@ -79,7 +98,7 @@ try {
   await page.getByRole('button',{name:'Use a different file'}).click();
   await page.getByRole('heading',{name:'Your part is ready.'}).waitFor({state:'hidden'});
   // With scripts disabled, the first response must already contain the signed-in navigation.
-  const signed=await browser.newContext({javaScriptEnabled:false,viewport:{width:1440,height:1000}});
+  const signed=await browser.newContext({ignoreHTTPSErrors:true,javaScriptEnabled:false,viewport:{width:1440,height:1000}});
   await signed.addCookies([{name:'dash_session',value:'site-test',url:base}]);
   const authed=await signed.newPage();
   await authed.goto(base);
@@ -112,5 +131,5 @@ try {
   if (page && !page.isClosed()) console.error(await page.locator("header").innerText().catch(()=>"Header unavailable"));
   throw error;
 } finally {
-  try { await browser?.close(); } finally { app.kill("SIGTERM"); backend.close(); }
+  try { await browser?.close(); } finally { app.kill("SIGTERM"); backend.close(); https.close(); rmSync(tlsDir,{recursive:true,force:true}); }
 }
