@@ -11,20 +11,6 @@
  */
 import { API_BASE } from "@/lib/api-base";
 
-/** Where a saved value came from when it isn't the shop's own: the maker's
- *  published spec (`maker_spec`), or materials read conservatively from what
- *  the maker says the machine is for (`maker_described`). The server sets it
- *  for a catalog machine's values while they're unedited; a field without a
- *  label is the shop's own declaration. */
-export interface FieldProvenance {
-  source: "maker_spec" | "maker_described";
-  catalog: string;
-  maker: string;
-  url: string;
-  note: string;
-  checked: string;
-}
-
 /** One owned machine as the backend serializes it (machine_to_public). */
 export interface OwnedMachine {
   id: string;
@@ -36,17 +22,9 @@ export interface OwnedMachine {
   capital_frac: number | null;
   capabilities: Record<string, unknown>;
   materials: string[] | null;
-  /** Declared materials kept as typed that ScaleCAD doesn't price yet (brass, bronze, copper: op-03). */
-  materials_not_priced?: string[];
   material_thickness_map: Record<string, unknown> | null;
   notes: string | null;
-  /** Hours available a year (shifts × hours a shift × days); null: the default, said as assumed. */
-  schedule?: { shifts: number; hours_per_shift: number; days_per_year: number } | null;
-  /** The hours it (× count) is available a year, and whether they are set or assumed. */
-  available?: { hours: number; count: number; shifts: number; hours_per_shift: number; days_per_year: number; set: boolean; text: string } | null;
   provenance: "user";
-  /** Values still exactly as the maker publishes them, labelled. */
-  field_provenance?: Partial<Record<"max_workpiece_kg" | "materials", FieldProvenance>>;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -73,7 +51,6 @@ export interface MachineInput {
   materials?: string[] | null;
   material_thickness_map?: Record<string, unknown> | null;
   notes?: string | null;
-  schedule?: { shifts: number; hours_per_shift: number; days_per_year: number } | null;
 }
 
 export interface MachineImportSummary {
@@ -183,11 +160,10 @@ export function envelopeSummary(m: OwnedMachine): string | null {
     const v = cap[k];
     return typeof v === "number" && Number.isFinite(v) ? v : null;
   };
-  // One lathe representation across engine, API and form: swing_dia + between_centers.
-  const swing = n("swing_dia");
+  const swing = n("swing_dia") ?? n("swing_dia_mm");
   const between = n("between_centers");
-  if (swing != null || between != null) {
-    return `Ø${swing ?? "?"} × ${between ?? "?"} mm swing`;
+  if (swing != null) {
+    return `Ø${swing} × ${between ?? "?"} mm swing`;
   }
   const x = n("x") ?? n("bed_x") ?? n("platen_x");
   const y = n("y") ?? n("bed_y") ?? n("platen_y");

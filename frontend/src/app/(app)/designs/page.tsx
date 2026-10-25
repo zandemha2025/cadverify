@@ -537,7 +537,7 @@ export default function DesignsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="ScaleCAD Design Studio"
+        title="ScaleCad Design Studio"
         badge={<Badge variant="outline">Safe parametric CAD</Badge>}
         subtitle={
           canMutate
@@ -809,7 +809,7 @@ export default function DesignsPage() {
                     {viewedRevision?.number !== selected.current_revision
                       ? ` · current is ${selected.current_revision}`
                       : " · current"}
-                    {` · ${viewedRevision?.generation_engine.replace(/proofshape|cadverify/gi, "ScaleCAD") ?? "waiting for engine"}`}
+                    {` · ${viewedRevision?.generation_engine.replace(/proofshape|cadverify/gi, "ScaleCad") ?? "waiting for engine"}`}
                   </CardDescription>
                 </div>
                 {canMutate && (

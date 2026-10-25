@@ -19,13 +19,13 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, StrictInt
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.org_context import resolve_org
 from src.auth.rate_limit import limiter
-from src.auth.rbac import Role, require_org_writer, require_role
+from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser
 from src.db.engine import get_db_session
 from src.db.models import PartContext
@@ -45,8 +45,7 @@ class DeclareContextBody(BaseModel):
     annual_volume: Optional[StrictInt] = None
     # The declared service environment (machine-inventory §6) rides this existing
     # PUT: {max_temp_c, min_temp_c, pressure_bar, corrosive, sour_service, medium,
-    # standard}. USER-declared, never inferred; validated in the service. `{}`
-    # leaves a stored environment unchanged; explicit null clears it.
+    # standard}. USER-declared, never inferred; validated in the service.
     service_environment: Optional[dict] = None
     # BOM-rollup linkage (Slice 3): name a persisted bom_edges tree + this part's
     # child_ref + vehicles/year, so the annual volume rolls up from the real
@@ -54,17 +53,6 @@ class DeclareContextBody(BaseModel):
     bom_assembly_key: Optional[str] = None
     bom_child_ref: Optional[str] = None
     bom_roots_per_year: Optional[StrictInt] = None
-    # Declared part specs (src.costing.part_specs): {finishes, ra_um, ra_unit,
-    # heat_treatments, inspection, certifications, nadcap_processes}. USER-declared;
-    # validated in the service (unknown fields/values are a 400). Explicit null or
-    # {} clears them.
-    part_specs: Optional[dict] = None
-    # What the org pays today to buy the part: {"usd_each": 12.4} or
-    # {"price_usd": 1250, "per": 100}. Stored with source "you" (it wins over a
-    # parts list's price). Not an engine input: it moves the part between make
-    # and buy and sets the saving, never marks a record out of date. null or {}
-    # clears it.
-    buy_price: Optional[dict] = None
 
 
 async def _require_org(session: AsyncSession, user_id: int) -> str:
@@ -82,25 +70,6 @@ async def _context_payload(session: AsyncSession, org_id: str, row: PartContext)
     payload["resolved_annual_volume"] = demand["annual_volume"]
     payload["annual_volume_basis"] = demand["annual_volume_basis"]
     return payload
-
-
-@router.get("")
-@limiter.limit("120/hour;1000/day")
-async def search_parts(
-    request: Request,
-    response: Response,
-    limit: int = Query(300, ge=1, le=500, description="Newest parts to list (parts with declared specs are always listed)."),
-    user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
-):
-    """The organization's parts with what search finds them by: file name, program and
-    declared specs in words (``{"parts": [{mesh_hash, filename, program, specs}], "truncated"}``).
-    Searching "anodize", "AS9100" or a tolerance found nothing (buyer-06)."""
-    org_id = await resolve_org(session, user.user_id)
-    if not org_id:
-        return {"parts": [], "truncated": False}
-    response.headers["Cache-Control"] = "no-store"
-    return await svc.search_index(session, org_id, limit)
 
 
 @router.get("/{mesh_hash}")
@@ -127,7 +96,7 @@ async def declare_part_context(
     response: Response,
     mesh_hash: str,
     body: DeclareContextBody,
-    user: AuthedUser = Depends(require_org_writer),
+    user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Declare (upsert) a part's context. Idempotent on ``(org, mesh_hash)``.
@@ -145,37 +114,18 @@ async def declare_part_context(
     byte-identical to a full refetch (never a drifted, client-invented rollup).
     """
     org_id = await _require_org(session, user.user_id)
-    import copy
-
-    before = copy.deepcopy(svc.engine_inputs(await svc.get_context(session, org_id, mesh_hash)))
     try:
-        fields = body.model_dump(exclude_unset=True)
-        if "buy_price" in fields:
-            # A price typed here is the person's own: it wins over a parts list's.
-            fields["buy_price"] = svc.normalize_buy_price(fields["buy_price"], source="you")
         row = await svc.upsert_context(
             session,
             org_id,
             mesh_hash,
-            fields,
+            body.model_dump(exclude_unset=True),
             created_by=user.user_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    # A change to what the engine reads (specs, service conditions) makes this
-    # part's saved decisions, and any sign-off on them, out of date. Said plainly
-    # on the record; the saved numbers are never edited.
-    reasons = svc.changed_input_reasons(before, svc.engine_inputs(row))
-    marked = 0
-    if reasons:
-        from src.services import cost_decision_service
-
-        marked = await cost_decision_service.mark_part_decisions_stale(
-            session, org_id, mesh_hash, reason=reasons[0])
     await session.commit()
     payload = await _context_payload(session, org_id, row)
-    if reasons:
-        payload["decisions_marked_stale"] = marked
     # Recompute AFTER commit so the delta reflects the persisted write (same code
     # path as the read endpoint — the client patches its state from this verbatim).
     payload["portfolio_delta"] = await catalog_svc.portfolio_delta(

@@ -202,31 +202,3 @@ async def test_close_arq_pool_closes_and_clears_singleton():
     await backend.close_arq_pool()
     pool.aclose.assert_awaited_once()
     assert backend._pool is None
-
-
-@pytest.mark.asyncio
-async def test_cancel_marks_a_queued_row_failed_without_calling_redis():
-    """The cancel is the row marked failed; ArqRedis has no abort_job to call."""
-    pool = AsyncMock()
-    queue = ArqJobQueue(pool)
-    job = _job("KEY1", "sam3d")
-    factory = _factory_for(job)
-    with patch("src.jobs.arq_backend.get_session_factory", return_value=factory):
-        assert await queue.cancel("KEY1") is True
-    assert job.status == "failed"
-    assert job.result_json == {"error": "cancelled"}
-    session = factory.return_value.__aenter__.return_value
-    session.commit.assert_awaited_once()
-    assert pool.mock_calls == []
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("status", ["running", "done", "partial"])
-async def test_cancel_leaves_a_started_or_finished_row(status: str):
-    pool = AsyncMock()
-    queue = ArqJobQueue(pool)
-    job = _job("KEY1", "sam3d", status)
-    with patch("src.jobs.arq_backend.get_session_factory", return_value=_factory_for(job)):
-        assert await queue.cancel("KEY1") is False
-    assert job.status == status
-    assert pool.mock_calls == []

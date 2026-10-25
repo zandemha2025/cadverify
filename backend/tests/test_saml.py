@@ -14,7 +14,7 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from src.auth.provisioning import FederatedIdentity, ProvisionedLogin
+from src.auth.provisioning import ProvisionedLogin
 from src.services.org_saml_service import (
     SamlGroupAssignment,
     SamlGroupMappingAmbiguousError,
@@ -59,9 +59,6 @@ def _make_app(auth_mode: str = "hybrid"):
         return main.app
 
 
-IDP_ENTITY_ID = "https://idp.example.com/saml"
-
-
 def _mock_saml_auth():
     """Return a MagicMock that mimics OneLogin_Saml2_Auth."""
     mock_auth = MagicMock()
@@ -83,7 +80,6 @@ def _mock_saml_auth():
         "</EntityDescriptor>"
     )
     mock_settings.validate_metadata.return_value = []
-    mock_settings.get_idp_data.return_value = {"entityId": IDP_ENTITY_ID}
     mock_auth.get_settings.return_value = mock_settings
 
     return mock_auth
@@ -150,9 +146,7 @@ def test_saml_acs_provisions_user(mock_build_auth, mock_provision):
 
     resp = client.post("/auth/saml/acs", data={"SAMLResponse": "base64data"})
     assert resp.status_code == 303
-    mock_provision.assert_called_once_with(
-        "user@enterprise.com", None, issuer=IDP_ENTITY_ID
-    )
+    mock_provision.assert_called_once_with("user@enterprise.com", None)
     # Session cookie should be set
     assert "dash_session" in resp.headers.get("set-cookie", "")
 
@@ -229,7 +223,6 @@ def test_saml_acs_applies_group_assignment(
     mock_provision.assert_awaited_once_with(
         "user@enterprise.com",
         {"memberOf": ["cn=cad-engineers"], "department": ["AM"]},
-        issuer=IDP_ENTITY_ID,
     )
     assert "dash_session" in resp.headers.get("set-cookie", "")
 
@@ -278,7 +271,7 @@ async def test_saml_provision_rejects_non_email_nameid(mock_provision):
     from src.auth.saml import _saml_provision_login
 
     with pytest.raises(HTTPException) as exc:
-        await _saml_provision_login("not-an-email", issuer=IDP_ENTITY_ID)
+        await _saml_provision_login("not-an-email")
     assert getattr(exc.value, "status_code", None) == 400
     assert exc.value.detail["code"] == "saml_email_invalid"
     mock_provision.assert_not_awaited()
@@ -539,7 +532,7 @@ async def test_saml_provision_delegates_one_atomic_login(mock_provision):
     expected = _login_result(5)
     mock_provision.return_value = expected
 
-    result = await _saml_provision_login("User@Example.com", issuer=IDP_ENTITY_ID)
+    result = await _saml_provision_login("User@Example.com")
 
     assert result is expected
     mock_provision.assert_awaited_once_with(
@@ -547,15 +540,8 @@ async def test_saml_provision_delegates_one_atomic_login(mock_provision):
         provider="saml",
         key_name="SAML Default",
         default_role="viewer",
-        identity=FederatedIdentity(
-            provider="saml",
-            issuer=IDP_ENTITY_ID,
-            subject="user@example.com",
-            email_verified=True,
-        ),
         group_attributes=None,
         group_detail_key="saml_group_assignment",
-        login_detail={"issuer": IDP_ENTITY_ID},
     )
 
 
@@ -566,4 +552,4 @@ async def test_saml_transaction_failure_propagates_before_session(mock_provision
 
     mock_provision.side_effect = RuntimeError("audit unavailable")
     with pytest.raises(RuntimeError, match="audit unavailable"):
-        await _saml_provision_login("User@Example.com", issuer=IDP_ENTITY_ID)
+        await _saml_provision_login("User@Example.com")

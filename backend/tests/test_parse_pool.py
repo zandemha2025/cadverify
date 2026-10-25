@@ -310,8 +310,8 @@ async def test_assembly_broken_pool_retries_in_isolated_subprocess(monkeypatch):
     recycled = {"kill": False}
     calls = []
 
-    async def _isolated_retry(data, suffix, idx, cap, *, worker=None, extra=()):
-        calls.append((data, suffix, idx, worker, extra))
+    async def _isolated_retry(data, suffix):
+        calls.append((data, suffix))
         return expected
 
     monkeypatch.setattr(parse_pool, "_get_pool", lambda: _FakeBrokenPool())
@@ -320,7 +320,7 @@ async def test_assembly_broken_pool_retries_in_isolated_subprocess(monkeypatch):
         "recycle_pool",
         lambda *, kill=False: recycled.update(kill=kill),
     )
-    monkeypatch.setattr(parse_pool, "_run_rung_killable", _isolated_retry)
+    monkeypatch.setattr(parse_pool, "_run_assembly_killable", _isolated_retry)
     monkeypatch.setattr(
         parse_pool,
         "_extract_assembly_worker",
@@ -333,8 +333,7 @@ async def test_assembly_broken_pool_retries_in_isolated_subprocess(monkeypatch):
 
     assert model is expected
     assert recycled["kill"] is True
-    # The crashed rung 0 runs again in its own subprocess, as an assembly rung.
-    assert calls == [(b"untrusted-step", ".step", 0, parse_pool._assembly_rung_worker, (True,))]
+    assert calls == [(b"untrusted-step", ".step")]
 
 
 # ──────────────────────────────────────────────────────────────
@@ -358,22 +357,12 @@ async def test_triangle_cap_enforced_on_pooled_path(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_timeout_returns_504_without_killing_other_requests_parses(monkeypatch):
-    """The route answers 504; it never SIGKILLs the shared pool, whose other
-    workers are parsing other requests' parts. The runaway is reclaimed by the
-    ladder itself (``_rung0_via_pool`` retires its pool, the recovery rungs kill
-    their own single-use processes): see test_parse_pool_retire.py."""
+async def test_timeout_returns_504_and_recycles(monkeypatch):
     monkeypatch.setattr(routes, "is_step_supported", lambda: True)
     monkeypatch.setenv("ANALYSIS_TIMEOUT_SEC", "0.3")
 
-    cancelled = {"n": 0}
-
     async def _slow_submit(data, suffix):
-        try:
-            await asyncio.sleep(5)  # far beyond the timeout
-        except asyncio.CancelledError:
-            cancelled["n"] += 1  # the ladder sees its cancellation (and retires its pool)
-            raise
+        await asyncio.sleep(5)  # far beyond the timeout
         return trimesh.creation.box()
 
     recycled = {"n": 0}
@@ -387,12 +376,12 @@ async def test_timeout_returns_504_without_killing_other_requests_parses(monkeyp
     with pytest.raises(HTTPException) as ei:
         await _parse_mesh_async(_fake_step_bytes(), "part.step")
     assert ei.value.status_code == 504
-    assert cancelled["n"] == 1
-    assert recycled["n"] == 0, "a timeout must not kill every other request's parse"
+    assert recycled["n"] >= 1, "timeout must recycle the pool to reclaim a runaway"
+    assert recycled["kill"] is True, "timed-out untrusted CAD workers must be killed"
 
 
 @pytest.mark.asyncio
-async def test_cancelled_parse_leaves_the_shared_pool_to_the_ladder(monkeypatch):
+async def test_cancelled_parse_hard_kills_pool(monkeypatch):
     monkeypatch.setattr(routes, "is_step_supported", lambda: True)
 
     started = asyncio.Event()
@@ -415,9 +404,7 @@ async def test_cancelled_parse_leaves_the_shared_pool_to_the_ladder(monkeypatch)
     with pytest.raises(asyncio.CancelledError):
         await task
 
-    # The ladder itself is cancelled (and retires its pool); the route doesn't
-    # kill the shared pool, which holds other requests' parses.
-    assert recycled["kill"] is False
+    assert recycled["kill"] is True
 
 
 # ──────────────────────────────────────────────────────────────
@@ -474,38 +461,22 @@ async def test_pool_parallelizes_concurrent_distinct_parts(monkeypatch):
 
     parts = generate_distinct_parts(3)
     parse_pool.submit_sync(parts[0], ".step")  # warm: pay spawn once up front
-    # A budget the box's load can't use up: the rung caps are CPU time, and the
-    # ladder's wall-clock deadline must not end a parse as busy on a loaded box.
-    monkeypatch.setenv("ANALYSIS_TIMEOUT_SEC", "600")
-    monkeypatch.delenv("PARSE_PROCESS_POOL_DISABLED", raising=False)
 
-    # The proof is the overlap, measured inside one run: on a loaded box every
-    # parse slows alike, but on the pool they still run at the same time, where
-    # the thread path (GIL + the process-global gmsh lock) runs them one by one.
-    spans: list[tuple[float, float]] = []
-    orig = parse_pool.submit_async
+    async def wall(disabled: bool) -> float:
+        if disabled:
+            monkeypatch.setenv("PARSE_PROCESS_POOL_DISABLED", "1")
+        else:
+            monkeypatch.delenv("PARSE_PROCESS_POOL_DISABLED", raising=False)
+        mesh_cache.get_cache().clear()
+        t = time.perf_counter()
+        await asyncio.gather(
+            *[_parse_mesh_async(d, f"p{i}.step") for i, d in enumerate(parts)]
+        )
+        return time.perf_counter() - t
 
-    async def _timed(data, suffix):
-        t0 = time.perf_counter()
-        try:
-            return await orig(data, suffix)
-        finally:
-            spans.append((t0, time.perf_counter()))
-
-    monkeypatch.setattr(parse_pool, "submit_async", _timed)
-    mesh_cache.get_cache().clear()
-    t = time.perf_counter()
-    meshes = await asyncio.gather(
-        *[_parse_mesh_async(d, f"p{i}.step") for i, d in enumerate(parts)]
-    )
-    pool_wall = time.perf_counter() - t
-    assert all(len(m.faces) > 0 for m, _ in meshes)
-    serial = sum(end - start for start, end in spans)
-    latest_start = max(start for start, _ in spans)
-    earliest_end = min(end for _, end in spans)
-    assert len(spans) == 3
-    assert latest_start < earliest_end, f"the three parses never ran at once: {spans}"
-    assert pool_wall < serial * 0.75, (
-        f"process pool ({pool_wall:.2f}s) should overlap 3 concurrent distinct parts "
-        f"(their serial sum {serial:.2f}s)"
+    thread_wall = await wall(True)
+    pool_wall = await wall(False)
+    assert pool_wall < thread_wall * 0.75, (
+        f"process pool ({pool_wall:.2f}s) should beat threads "
+        f"({thread_wall:.2f}s) for 3 concurrent distinct parts"
     )

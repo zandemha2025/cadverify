@@ -40,9 +40,6 @@ const files = {
   frontendPackage: path.join(repoRoot, "frontend/package.json"),
   routeAuth: path.join(repoRoot, "scripts/ci/check_route_auth.py"),
   rfqService: path.join(repoRoot, "backend/src/services/rfq_package_service.py"),
-  rfqListPage: path.join(repoRoot, "frontend/src/app/(app)/rfq-packages/rfq-packages-client.tsx"),
-  rfqDetailPage: path.join(repoRoot, "frontend/src/app/(app)/rfq-packages/[id]/page.tsx"),
-  rfqPackagesScreen: path.join(repoRoot, "frontend/src/components/v4/records/packages-screen.tsx"),
   integrationService: path.join(repoRoot, "backend/src/services/integration_service.py"),
   samlService: path.join(repoRoot, "backend/src/services/org_saml_service.py"),
   helmValues: path.join(repoRoot, "charts/cadverify/values.yaml"),
@@ -118,9 +115,6 @@ async function main() {
     frontendPackage,
     routeAuth,
     rfqService,
-    rfqListPage,
-    rfqDetailPage,
-    rfqPackagesScreen,
     integrationService,
     samlService,
     helmValues,
@@ -153,9 +147,6 @@ async function main() {
     readText(files.frontendPackage),
     readText(files.routeAuth),
     readText(files.rfqService),
-    readText(files.rfqListPage),
-    readText(files.rfqDetailPage),
-    readText(files.rfqPackagesScreen),
     readText(files.integrationService),
     readText(files.samlService),
     readText(files.helmValues),
@@ -323,14 +314,7 @@ async function main() {
     }),
 
     await check("RFQ-PROCUREMENT-001", "RFQ and procurement honesty", async () => {
-      // dbd669b0 made the supplier's copy a plain request for quote, so its brief no
-      // longer prints "Live supplier send" / "Raw CAD included" lines. The service still
-      // never sends a package, keeps CAD out unless asked and keeps the buyer's warnings.
-      contains(rfqService, "ScaleCAD doesn't send it", "live_supplier_send=False", "include_raw_cad: bool = False", '"raw_cad_unavailable"', '"confidence_unvalidated"');
-      // The buyer is told, on every RFQ page, that ScaleCAD doesn't send it and whether CAD is in it.
-      contains(rfqListPage, "ScaleCAD doesn't send packages or track replies", "Include raw CAD");
-      contains(rfqDetailPage, "Not sent by ScaleCAD", "pkg.live_supplier_send", "Raw CAD", "pkg.raw_cad_included");
-      contains(rfqPackagesScreen, "ScaleCAD doesn't send packages or track replies", "Not sent by ScaleCAD", "Not included");
+      contains(rfqService, "not live procurement", "Live supplier send", "Raw CAD included", "confidence_unvalidated");
       assert(gauntlet.scenarios.some((item) => item.id === "SUPPLIER-RFQ-001" && item.status === "PASS"), "RFQ gauntlet missing");
       assert(gauntlet.scenarios.some((item) => item.id === "PROCURE-APPROVAL-001" && item.status === "PASS"), "procurement approval gauntlet missing");
       return {

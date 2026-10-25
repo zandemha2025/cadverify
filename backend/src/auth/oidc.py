@@ -325,7 +325,7 @@ async def _validate_provider_endpoint(
             host = urlsplit(endpoint).hostname or ""
             await asyncio.to_thread(validate_public_host, host)
     except (RuntimeError, UnsafeURLError) as exc:
-        logger.warning("Rejected unsafe OIDC %s: %s", field, getattr(exc, "detail", exc))
+        logger.warning("Rejected unsafe OIDC %s: %s", field, exc)
         raise _bad_callback(
             "oidc_discovery_unsafe",
             f"OIDC discovery returned an unsafe {field}.",

@@ -10,19 +10,12 @@ Design invariants (spec §2 — asserted in tests):
     comparisons, deterministic and exhaustively unit-testable.
   * NEVER fabricate a `makeable`. A missing capability field makes that gate
     ``unknown`` (a FitFailure whose ``have is None``), never a silent PASS. A
-    clean PASS requires every gate satisfied by real DECLARED data. One stated
-    exception: a printer bounded by its build volume (``BUILD_VOLUME_BOUND``)
-    with no plate load declared has no weight gate; the envelope governs, and
-    the pass carries a note saying so (``WEIGHT_BY_BUILD_VOLUME``).
+    clean PASS requires every gate satisfied by real DECLARED data.
   * Capabilities are USER-declared. An envelope "fits" is a MEASURED-geometry ×
     USER-capability comparison; tolerance / secondary-op capability is DECLARED,
     never a measurement of the machine.
   * Environment exclusions CITE the property/standard (NACE MR0175, max service
     temp); gaps are concrete + quantified (measured-vs-declared delta).
-  * A route whose own DFM verdict is ``fail`` is ``not_makeable`` as modeled: a
-    machine fit never overrides the process's design rules, so a design-blocked
-    route is never reported in-house or outsource-only. Its blockers ride
-    ``failures`` / ``gap`` as ``dfm`` FitFailures.
   * No inventory / no env → ``unknown`` / no-op (byte-identical-when-unused).
 
 Nothing here reaches into the rate card for a price: "cost" here is only a
@@ -32,8 +25,7 @@ caller — the fit engine never invents a dollar.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
-from typing import TypeGuard
+from dataclasses import dataclass, field
 
 from src.analysis.models import ProcessType
 from src.analysis.context import fitting_box_dimensions, sheet_envelope_dimensions, envelope_nonfit_bound
@@ -102,31 +94,6 @@ class PartReq:
     sheet_outline_xy: tuple = ()
     minimum_width_bound_mm: float = 0.0
     enclosing_cylinder_mm: tuple | None = None
-    # The route's own DFM blockers (FitFailure, gate "dfm") when the engine's
-    # verdict for this process is "fail". Empty => DFM-ready (or not supplied).
-    dfm_failures: tuple = ()
-    # Thinnest wall MEASURED by the route's own DFM wall-thickness check (inward
-    # ray cast, see ``thinnest_measured_wall``). None => that check found no wall
-    # below its process limit, or the route was not checked — never a guess.
-    # (``min_feature_mm`` above is 2·V/A, a nominal-wall average, not a minimum.)
-    min_wall_mm: "float | None" = None
-    # Declared part specs (``costing.part_specs``): the finishing / heat-treat /
-    # inspection ops an in-house route needs from the shop, the certifications
-    # whoever makes the part must hold (shop-capability keys), and the specs this
-    # route can't deliver at all (``spec`` FitFailures). Empty => no specs.
-    spec_ops: tuple = ()
-    certifications: tuple = ()
-    spec_failures: tuple = ()
-    # Linear oversize the route prints the part at (a binder-jet green part is
-    # printed larger so it shrinks to size when sintered); ``bbox_mm`` already
-    # includes it. 0 => printed at size. Named in a size miss so it reads why.
-    print_oversize: float = 0.0
-    # A bent sheet (sheet-metal route): its press-brake bends, the length of its
-    # bend lines (MEASURED), and the press force to air-bend them (computed from
-    # the registry's tensile strength, ``bend_force_t``; None when unknown).
-    bend_count: int = 0
-    bend_length_mm: "float | None" = None
-    bend_force_t: "float | None" = None
 
 
 @dataclass(frozen=True)
@@ -139,7 +106,7 @@ class FitFailure:
     whose only failures are unknown to the ``unknown`` verdict, never a gap.
     """
 
-    gate: str            # dfm|spec|envelope|mass|material|tolerance|axes|force|thickness|min_feature|secondary_op|certification|environment
+    gate: str            # envelope|mass|material|tolerance|axes|force|thickness|min_feature|secondary_op|environment
     axis: str
     need: object = None
     have: object = None
@@ -190,11 +157,10 @@ BASE_PROCESS_IT: dict = {
 
 # Gate ordering for gap_analysis: the constraints that most DEFINE the required
 # machine class come first (envelope/axes), then qualification/precision, then
-# the rest. "Binding-constraint first" — see gap_analysis docstring. A route's
-# own DFM blocker ("dfm") leads: no machine acquisition closes a design rule.
+# the rest. "Binding-constraint first" — see gap_analysis docstring.
 GATE_PRIORITY: list = [
-    "dfm", "spec", "envelope", "axes", "material", "tolerance", "mass",
-    "force", "thickness", "min_feature", "secondary_op", "certification", "environment",
+    "envelope", "axes", "material", "tolerance", "mass",
+    "force", "thickness", "min_feature", "secondary_op", "environment",
 ]
 
 # Corrosion-resistant-alloy classes (for corrosive/sour environment gating).
@@ -220,7 +186,7 @@ def _pt_value(process) -> str:
     return pt.value if pt is not None else str(process)
 
 
-def _is_number(v) -> TypeGuard[int | float]:
+def _is_number(v) -> bool:
     return isinstance(v, (int, float)) and not isinstance(v, bool)
 
 
@@ -240,31 +206,6 @@ def _env_pressure_critical(env) -> bool:
     )
 
 
-# The post-processing the machine itself needs on every part it makes, by process
-# family: a metal powder-bed or deposition print is stress-relieved before it comes
-# off the plate, a binder-jet green part is sintered. A shop that owns the machine
-# does these as part of running it, so they are ASSUMED done in-house until Your
-# shop says they're sent out (``fit_machine`` (h)). Ops the part's buyer asks for
-# (HIP for a pressure-critical duty, declared finishes, inspection) are not
-# assumed: not declared stays "can't confirm".
-MACHINE_OWN_OPS: dict = {
-    "metal_powder_bed": ("stress_relief",),
-    "ded": ("stress_relief",),
-    "binder_jet": ("sinter",),
-}
-
-
-def machine_own_ops(process) -> tuple:
-    """The ops ``process``'s machine needs on every part (``MACHINE_OWN_OPS``)."""
-    pt = _resolve_pt(process)
-    return MACHINE_OWN_OPS.get(process_family(pt), ()) if pt is not None else ()
-
-
-def assumed_op_note(op: str) -> str:
-    """The line a fit carries for a machine's own op it assumed the shop does."""
-    return f"Assumes your shop does its own {_OP_WORDS.get(op, op.replace('_', ' '))}; change this in Your shop"
-
-
 def _required_secondary_ops(pt, material_class, tolerance_it, env) -> tuple:
     """Derive the secondary ops a part REQUIRES from material+process+env.
 
@@ -279,7 +220,10 @@ def _required_secondary_ops(pt, material_class, tolerance_it, env) -> tuple:
     """
     ops: list = []
     fam = process_family(pt) if pt is not None else None
-    ops.extend(MACHINE_OWN_OPS.get(fam, ()))
+    if fam in ("metal_powder_bed", "ded"):
+        ops.append("stress_relief")
+    if fam == "binder_jet":
+        ops.append("sinter")
     if _env_pressure_critical(env) and fam in (
         "casting", "metal_powder_bed", "binder_jet", "ded"
     ):
@@ -297,122 +241,14 @@ def _required_secondary_ops(pt, material_class, tolerance_it, env) -> tuple:
     return tuple(out)
 
 
-_SIZE_CODES = frozenset({"EXCEEDS_BUILD_VOLUME", "BUILD_ENVELOPE_UNVERIFIED"})
-_OP_WORDS = {"stress_relief": "stress relief", "sinter": "sintering", "hip": "HIP (hot isostatic pressing)",
-             "grinding": "grinding"}
-# Ops and certifications named by declared part specs (``costing.part_specs``).
-_SPEC_OP_WORDS = {
-    "bead_blast": "bead blasting", "anodize_ii": "Type II anodizing", "anodize_iii": "hard anodizing (Type III)",
-    "passivate": "passivation", "electropolish": "electropolishing", "powder_coat": "powder coating",
-    "plating": "plating", "stress_relief": "stress relief", "solution_age": "solution treating and ageing",
-    "quench_temper": "quench and temper", "case_harden": "case hardening", "hip": "HIP (hot isostatic pressing)",
-    "fai_as9102": "an AS9102 first article inspection", "cmm_report": "a CMM report",
-    "full_100": "100% inspection", "grinding": "grinding or polishing to the Ra",
-}
-_CERT_WORDS = {"as9100": "AS9100", "iso9001": "ISO 9001", "itar": "ITAR registration",
-               "nadcap_chemical_processing": "NADCAP for chemical processing",
-               "nadcap_heat_treating": "NADCAP for heat treating",
-               "nadcap_nondestructive_testing": "NADCAP for nondestructive testing",
-               "nadcap_coatings": "NADCAP for coatings", "nadcap_welding": "NADCAP for welding",
-               "nadcap_measurement_inspection": "NADCAP for measurement and inspection"}
-# What a sheet-metal machine is (``capabilities["sheet_kind"]``, me-02). A press
-# brake bends: its fit is bend length, press force and the thickest sheet it bends
-# per material. A cutter makes the flat blank: its fit is its bed and the thickest
-# sheet it cuts per material. A sheet machine with no kind declared keeps the
-# plain work-area check (older declarations).
-PRESS_BRAKE = "press_brake"
-SHEET_CUTTERS = ("laser", "punch", "plasma", "waterjet")
-SHEET_KINDS = (PRESS_BRAKE, *SHEET_CUTTERS)
-_CUTTER_WORDS = "a laser, punch, plasma or waterjet"
-
-# Air-bending force (the rule press-brake tonnage charts are built on):
-# F [kN] = 1.42 × Rm [N/mm²] × s² [mm²] × L [m] ÷ V [mm], with the die opening V
-# taken as 8 × the sheet thickness, the usual choice up to 12 mm sheet. Rm is the
-# material's tensile strength from the registry. Metric tonnes = kN ÷ 9.80665.
-BEND_FORCE_FACTOR = 1.42
-BEND_DIE_RATIO = 8.0
-KN_PER_TONNE = 9.80665
-
-
-def bend_force_t(tensile_mpa, gauge_mm, bend_length_mm):
-    """Press force (metric t) to air-bend ``bend_length_mm`` of ``gauge_mm`` sheet, or None when unknown."""
-    if not (_is_number(tensile_mpa) and _is_number(gauge_mm) and _is_number(bend_length_mm)):
-        return None
-    if tensile_mpa <= 0 or gauge_mm <= 0 or bend_length_mm <= 0:
-        return None
-    v = BEND_DIE_RATIO * gauge_mm
-    kn = BEND_FORCE_FACTOR * tensile_mpa * gauge_mm ** 2 * (bend_length_mm / 1000.0) / v
-    return kn / KN_PER_TONNE
-
-
-def sheet_kind(cap) -> "str | None":
-    k = (cap or {}).get("sheet_kind")
-    return k if k in SHEET_KINDS else None
-
-
-_ENVELOPE_AXIS = {"swing_dia": "swing diameter", "between_centers": "length between centers",
-                  "max_bend_length_mm": "bend length",
-                  "minimum_width_mm": "its narrowest width against the work area's smallest side",
-                  "diameter_mm": "its widest extent against the work area's diagonal"}
-
-
-def dfm_failures_from_score(process_score) -> tuple:
-    """The route's DFM blockers as ``dfm`` FitFailures (duck-typed ProcessScore).
-
-    Empty unless the engine's verdict for the process is ``fail`` — the same
-    test the cost estimate uses for ``dfm_ready``. Each ERROR issue becomes one
-    hard failure carrying its MEASURED vs required value when both are numeric
-    (else the categorical ``pass``/``fail``) and the engine's own message.
-    """
-    if process_score is None or getattr(process_score, "verdict", None) != "fail":
-        return ()
-    route = _pt_value(getattr(process_score, "process", ""))
-    out: list = []
-    errors = [i for i in getattr(process_score, "issues", None) or ()
-              if getattr(getattr(i, "severity", None), "value", getattr(i, "severity", None)) == "error"]
-    for issue in errors:
-        need = getattr(issue, "required_value", None)
-        have = getattr(issue, "measured_value", None)
-        if not (_is_number(need) and _is_number(have)):
-            need, have = "pass", "fail"
-        out.append(FitFailure(
-            "dfm", str(getattr(issue, "code", "") or route), need, have,
-            getattr(issue, "message", "") or f"{route} fails DFM as modeled"))
-    if not out:
-        out.append(FitFailure("dfm", route, "pass", "fail",
-                              f"{route} fails DFM as modeled"))
-    return tuple(out)
-
-
-def thinnest_measured_wall(process_score) -> "float | None":
-    """The thinnest wall the route's DFM check MEASURED (duck-typed ProcessScore).
-
-    The wall-thickness check reports ``THIN_WALL`` with ``measured_value`` = the
-    thinnest ray-cast wall among the faces below its limit (FDM: 0.8 mm, an error below 0.6 mm). Absent
-    such an issue the walls are at least that limit, so this returns ``None``
-    (no measured thin wall), never a fabricated thickness.
-    """
-    out = None
-    for issue in getattr(process_score, "issues", None) or ():
-        if getattr(issue, "code", None) != "THIN_WALL":
-            continue
-        v = getattr(issue, "measured_value", None)
-        if _is_number(v) and v > 0 and (out is None or v < out):
-            out = float(v)
-    return out
-
-
 def part_req_from_drivers(process, drivers, material, tolerance_class,
-                          material_props=None, env=None,
-                          process_score=None) -> PartReq:
+                          material_props=None, env=None) -> PartReq:
     """Extract the MEASURED + DECLARED requirements into a PartReq.
 
     ``drivers`` is a GeoDrivers (duck-typed). ``material`` may be a
     MaterialProfile-like object (``.name``/``.density``) or a bare name string.
     ``material_props`` carries the property flags the env + special gates read
     (nace_mr0175, sour_service, max_temperature_c, conductive, ...).
-    ``process_score`` is the engine's DFM ProcessScore for this route; a ``fail``
-    verdict is carried as ``dfm_failures`` (see ``dfm_failures_from_score``).
     """
     pt = _resolve_pt(process)
     material_props = dict(material_props or {})
@@ -460,13 +296,6 @@ def part_req_from_drivers(process, drivers, material, tolerance_class,
 
     req_ops = _required_secondary_ops(pt, material_class, tolerance_it, env)
 
-    bends = int(getattr(drivers, "bend_count", 0) or 0) if pt == ProcessType.SHEET_METAL else 0
-    bend_len = float(getattr(drivers, "bend_length_mm", 0.0) or 0.0) if bends else None
-    tensile = material_props.get("tensile_strength")
-    if tensile is None and not isinstance(material, str):
-        tensile = getattr(material, "tensile_strength", None)
-    force_t = bend_force_t(tensile, thickness_mm, bend_len) if bends else None
-
     return PartReq(
         process=_pt_value(pt if pt is not None else process),
         bbox_mm=bbox,
@@ -490,11 +319,6 @@ def part_req_from_drivers(process, drivers, material, tolerance_class,
                           if pt == ProcessType.SHEET_METAL else ()),
         minimum_width_bound_mm=float(getattr(drivers, "minimum_width_bound_mm", 0.0)),
         enclosing_cylinder_mm=getattr(drivers, "enclosing_cylinder_mm", None),
-        dfm_failures=dfm_failures_from_score(process_score),
-        min_wall_mm=thinnest_measured_wall(process_score),
-        bend_count=bends,
-        bend_length_mm=bend_len,
-        bend_force_t=force_t,
     )
 
 
@@ -507,20 +331,16 @@ def _sorted_env(cap: dict, keys) -> "list | None":
     vals = [cap.get(k) for k in keys]
     if any(not _is_number(v) for v in vals):
         return None
-    return sorted(float(v) for v in vals if _is_number(v))
+    return sorted(float(v) for v in vals)
 
 
 def _machine_envelope(cap: dict):
     """Return (kind, sorted_extents | special) for the machine's envelope.
 
     kind ∈ {"turning", "sheet", "rect"}; None extents => not declared (unknown).
-    A lathe envelope is ``swing_dia`` + ``between_centers`` — the same keys the
-    inventory API accepts and the turning form writes.
     """
-    if any(k in cap for k in ("swing_dia", "between_centers")):
+    if any(k in cap for k in ("swing_dia", "swing_dia_mm", "between_centers")):
         return "turning", cap
-    if sheet_kind(cap) == PRESS_BRAKE:
-        return "brake", cap
     if "bed_x" in cap or "bed_y" in cap:
         return "sheet", _sorted_env(cap, ("bed_x", "bed_y"))
     for keyset in (("x", "y", "z"), ("flask_x", "flask_y", "flask_z"),
@@ -534,7 +354,7 @@ def _envelope_failures(part: PartReq, cap: dict) -> list:
     kind, env = _machine_envelope(cap)
     fails: list = []
     if kind == "turning":
-        swing = cap.get("swing_dia")
+        swing = cap.get("swing_dia", cap.get("swing_dia_mm"))
         length = cap.get("between_centers")
         if part.rotational:
             need_dia, need_len = part.rot_cross_dia_mm, part.rot_axis_len_mm
@@ -561,27 +381,6 @@ def _envelope_failures(part: PartReq, cap: dict) -> list:
                 f"length {need_len:.0f}mm > machine {float(length):.0f}mm "
                 f"(need >={need_len:.0f}mm)"))
         return fails
-
-    if kind == "brake":
-        # A press brake bends: what has to fit is the bend lines, not a box.
-        if part.bend_count <= 0:
-            if part.sheet_like:
-                return [FitFailure("envelope", "bend_count", "bends", 0,
-                                   f"a flat blank with nothing to bend: it is cut, not bent ({_CUTTER_WORDS} makes it)")]
-            return [FitFailure("envelope", "bend_count", "bends", None,
-                               "its bend lines weren't measured on this shape; confirm it on the brake")]
-        limit = cap.get("max_bend_length_mm")
-        need = part.bend_length_mm
-        if not _is_number(limit):
-            return [FitFailure("envelope", "max_bend_length_mm", round(need, 2) if _is_number(need) else None,
-                               None, "bend length not declared")]
-        if not _is_number(need):
-            return [FitFailure("envelope", "max_bend_length_mm", None, round(float(limit), 2),
-                               "the part's bend length wasn't measured; confirm it on the brake")]
-        if need > float(limit) + part.geometry_tolerance_mm + part.geometry_precision_mm:
-            return [FitFailure("envelope", "max_bend_length_mm", round(need, 2), round(float(limit), 2),
-                               f"bend {need:.0f}mm > machine {float(limit):.0f}mm")]
-        return []
 
     # Rectangular box placements / sheet outline placements.
     if env is None:
@@ -655,49 +454,10 @@ def _envelope_failures(part: PartReq, cap: dict) -> list:
     return fails
 
 
-def material_declared(material_name: str, material_class: str, materials) -> bool:
-    """Whether a machine declared for ``materials`` runs this material: under any
-    of its names, or by its class.
-
-    The registry keeps some materials as several rows (Ti6Al4V powder and
-    Ti-6Al-4V Grade 5 bar; PP (MJF) and PP (Polypropylene)); a machine declared
-    for one is qualified for the material (``src.profiles.identity``)."""
-    from src.profiles.identity import material_identity
-
-    tokens = {str(m).strip().lower().lstrip("@") for m in materials or ()}
-    name = (material_name or "").strip().lower()
-    cls = (material_class or "").strip().lower()
-    if (name and name in tokens) or (cls and cls in tokens):
-        return True
-    want = material_identity(name) if name else ""
-    return bool(want) and any(material_identity(t) == want for t in tokens)
-
-
-# Declared machine materials that are not part materials: what such a machine
-# prints is named instead of "not qualified".
-NOT_PART_MATERIALS: dict = {"sand": "sand molds and cores"}
-
-
 def _material_qualified(part: PartReq, materials: tuple) -> bool:
-    return material_declared(part.material_name, part.material_class, materials)
-
-
-# Printers whose part is bounded by the build volume, not a rated plate load.
-# Makers publish no build-plate load for these (filament, resin, polymer and
-# metal powder bed, binder jet), so with no load declared the weight check does
-# not apply and the envelope gate governs. A load the maker or the shop DOES
-# declare is still checked, and bead-deposition machines (DED, wire arc) keep
-# the weight check: their part grows on a positioner with a real load limit.
-BUILD_VOLUME_BOUND = frozenset({
-    "fdm", "sla", "dlp", "sls", "mjf", "dmls", "slm", "ebm", "binder_jetting",
-})
-WEIGHT_BY_BUILD_VOLUME = "weight: no plate load published or declared; build volume governs"
-
-
-def _maker_label(cap: dict) -> bool:
-    label = cap.get("maker_spec")
-    return (isinstance(label, dict) and isinstance(label.get("catalog"), str)
-            and isinstance(label.get("fields"), (list, tuple)) and bool(label["fields"]))
+    tokens = {str(m).strip().lower().lstrip("@") for m in materials}
+    return (part.material_name.strip().lower() in tokens
+            or part.material_class.strip().lower() in tokens)
 
 
 def fit_machine(part_req: PartReq, machine_cap: MachineCap,
@@ -716,25 +476,12 @@ def fit_machine(part_req: PartReq, machine_cap: MachineCap,
     ops = (shop_caps.ops if shop_caps else {}) or {}
     failures: list = []
     needed_secondary: list = []
-    notes: list = []
 
     # (a) ENVELOPE ----------------------------------------------------------
-    #   A concrete miss names the machine and the numbers ("too big for your
-    #   BigRep ONE: needs 1306 mm, has 1005 mm"), the same delta the gap carries.
-    oversize = (f"; printed {part_req.print_oversize * 100:.0f}% oversize so it shrinks to size when sintered"
-                if part_req.print_oversize > 0 else "")
-    for f in _envelope_failures(part_req, cap):
-        if f.have is not None and _is_number(f.need) and _is_number(f.have):
-            what = _ENVELOPE_AXIS.get(f.axis) or (f.human.split(" ", 1)[0] if f.axis == "envelope" else f.axis.replace("_", " "))
-            f = FitFailure(f.gate, f.axis, f.need, f.have,
-                           f"too big for your {machine_cap.name or 'machine'}: needs "
-                           f"{float(f.need):.0f} mm, has {float(f.have):.0f} mm ({what}{oversize})")
-        failures.append(f)
+    failures.extend(_envelope_failures(part_req, cap))
 
     # (b) MASS --------------------------------------------------------------
-    if machine_cap.max_workpiece_kg is None and _pt_value(machine_cap.process) in BUILD_VOLUME_BOUND:
-        notes.append(WEIGHT_BY_BUILD_VOLUME)  # not a pass on weight: the envelope gate decides
-    elif machine_cap.max_workpiece_kg is None:
+    if machine_cap.max_workpiece_kg is None:
         failures.append(FitFailure("mass", "mass_kg",
                                    None if part_req.mass_kg is None
                                    else round(part_req.mass_kg, 3),
@@ -755,15 +502,10 @@ def fit_machine(part_req: PartReq, machine_cap: MachineCap,
         failures.append(FitFailure("material", "material", part_req.material_name,
                                    None, "no qualified materials declared"))
     elif not _material_qualified(part_req, machine_cap.materials):
-        what = part_req.material_name or part_req.material_class
-        tokens = {str(m).strip().lower() for m in machine_cap.materials}
-        human = f"not qualified for {what}"
-        if tokens <= NOT_PART_MATERIALS.keys():
-            prints = " and ".join(sorted(NOT_PART_MATERIALS[t] for t in tokens))
-            human = f"prints {prints}, not {what} parts"
         failures.append(FitFailure(
             "material", "material", part_req.material_name,
-            tuple(machine_cap.materials), human))
+            tuple(machine_cap.materials),
+            f"not qualified for {part_req.material_name or part_req.material_class}"))
 
     # (d) TOLERANCE / PRECISION --------------------------------------------
     #   standard (>=IT11) is the neutral no-op — gate does not engage.
@@ -775,7 +517,7 @@ def fit_machine(part_req: PartReq, machine_cap: MachineCap,
                                        "machine achievable IT grade not declared"))
         elif ach <= part_req.tolerance_it:
             pass  # machine holds the grade natively
-        elif ops.get("grinding") not in (None, False):  # declared false = absent
+        elif "grinding" in ops:
             needed_secondary.append("grinding")  # soft: shop grind reaches it
         else:
             failures.append(FitFailure(
@@ -824,8 +566,8 @@ def fit_machine(part_req: PartReq, machine_cap: MachineCap,
             failures.append(FitFailure(
                 "thickness", "cut_thickness_mm", round(part_req.thickness_mm, 2),
                 round(float(max_t), 2),
-                f"thickness {part_req.thickness_mm:.2f}mm > machine max "
-                f"{float(max_t):g}mm for "
+                f"thickness {part_req.thickness_mm:.1f}mm > machine max "
+                f"{float(max_t):.1f}mm for "
                 f"{part_req.material_name or part_req.material_class}"))
         elif (max_t is not None and _is_number(max_t) and part_req.geometry_precision_mm
               and part_req.thickness_mm + part_req.geometry_precision_mm >= max_t - part_req.geometry_tolerance_mm):
@@ -847,33 +589,6 @@ def fit_machine(part_req: PartReq, machine_cap: MachineCap,
             failures.append(FitFailure(
                 "force", "taper_deg", need_taper, max_taper,
                 f"taper {need_taper:.1f}deg > machine max {max_taper:.1f}deg"))
-
-    kind = sheet_kind(cap) if pt == ProcessType.SHEET_METAL else None
-    if kind == PRESS_BRAKE and part_req.bend_count > 0:
-        # Press force: the force to air-bend this part's bend lines (bend_force_t)
-        # against the brake's declared tonnage.
-        have_t = next((cap.get(k) for k in ("tonnage_t", "press_tonnage_t") if _is_number(cap.get(k))), None)
-        need_t = part_req.bend_force_t
-        if have_t is None:
-            failures.append(FitFailure("force", "tonnage_t",
-                                       round(need_t, 2) if need_t is not None else None, None,
-                                       "press force (tonnage) not declared"))
-        elif need_t is None:
-            failures.append(FitFailure(
-                "force", "tonnage_t", None, float(have_t),
-                f"bend force unknown: no tensile strength on file for {part_req.material_name or part_req.material_class}"))
-        elif need_t > float(have_t):
-            failures.append(FitFailure(
-                "force", "tonnage_t", round(need_t, 2), float(have_t),
-                f"needs {need_t:.2f} t to air-bend {part_req.bend_length_mm:.0f}mm of "
-                f"{part_req.thickness_mm:.2f}mm {part_req.material_name or part_req.material_class}; "
-                f"machine {float(have_t):g} t"))
-    elif kind in SHEET_CUTTERS and part_req.bend_count > 0:
-        # A cutter makes the blank; the bends need a press brake.
-        failures.append(FitFailure(
-            "secondary_op", "bending", "press brake", False,
-            f"cuts the blank; its {part_req.bend_count} bend{'s' if part_req.bend_count != 1 else ''} "
-            f"need a press brake"))
 
     need_tonnage = part_req.material_props.get("required_tonnage_t")
     if _is_number(need_tonnage):
@@ -901,61 +616,17 @@ def fit_machine(part_req: PartReq, machine_cap: MachineCap,
             f"feature {part_req.min_feature_mm:.2f}mm < machine min "
             f"{float(m_minfeat):.2f}mm"))
 
-    # (g2) NOZZLE vs THINNEST MEASURED WALL (filament printers) ------------
-    #   One extruded line is about a nozzle wide, so a filament printer cannot
-    #   lay a wall thinner than its nozzle. Engaged only when the printer
-    #   DECLARES a nozzle and the route's DFM check MEASURED a thin wall; within
-    #   the source-coordinate uncertainty the gate is unknown, never a guess.
-    nozzle = cap.get("nozzle_dia_mm")
-    wall = part_req.min_wall_mm
-    if pt == ProcessType.FDM and _is_number(nozzle) and _is_number(wall) and nozzle > wall:
-        precision = part_req.geometry_precision_mm or 0.0
-        if nozzle > wall + precision:
-            failures.append(FitFailure(
-                "min_feature", "nozzle_dia_mm", round(float(wall), 3),
-                round(float(nozzle), 3),
-                f"nozzle {float(nozzle):.2f}mm is wider than the thinnest wall "
-                f"{float(wall):.2f}mm (measured by the DFM wall-thickness check); "
-                f"a filament printer can't lay a wall thinner than its nozzle"))
-        else:
-            failures.append(FitFailure(
-                "min_feature", "nozzle_dia_mm", round(float(wall), 3), None,
-                f"STL coordinate uncertainty ±{precision:.3g}mm overlaps the "
-                f"{float(nozzle):g}mm nozzle against the {float(wall):.2f}mm "
-                f"thinnest wall; confirm using source CAD"))
-
     # (h) SECONDARY OPS (physics-mandated; grinding is owned by the tol gate) --
-    #   The machine's own post-processing (stress relief after a metal print,
-    #   sintering a binder-jet green part) is assumed done in-house by the shop
-    #   that owns the machine, and said so; declared sent out, the part is still
-    #   made on this machine with that step bought outside. Any other required op
-    #   (HIP for a pressure-critical duty) never asked is unknown, not a pass.
-    own_ops = machine_own_ops(part_req.process)
-    assumed: list = []
-    sent_out: list = []
     for op in part_req.required_secondary_ops:
         if op == "grinding":
             continue
         avail = ops.get(op)
-        words = _OP_WORDS.get(op, op.replace('_', ' '))
-        if op in own_ops and avail is None:
-            needed_secondary.append(op)
-            assumed.append(op)
-            notes.append(assumed_op_note(op))
-        elif op in own_ops and avail is False:
-            sent_out.append(op)
-        elif avail is None:
-            # Never asked: whether the shop does this op is UNKNOWN (have=None),
-            # not a gap.
-            failures.append(FitFailure(
-                "secondary_op", op, op, None,
-                f"needs {words} afterwards; not declared whether you do it in-house"))
-        elif avail is False:
-            # Declared unavailable: a concrete gap (have=False, a hard failure).
-            # ``False`` must never read as present.
+        if avail is None:
+            # a MISSING required op is a concrete gap (you lack this capability),
+            # NOT an "undeclared datum" unknown → have=False (a hard failure).
             failures.append(FitFailure(
                 "secondary_op", op, op, False,
-                f"needs {words}; not done in-house"))
+                f"requires {op}; not available in-house"))
         elif isinstance(avail, dict):
             # size-limited op (e.g. HIP vessel) — part must fit its envelope
             b = part_req.bbox_mm
@@ -974,42 +645,6 @@ def fit_machine(part_req: PartReq, machine_cap: MachineCap,
         else:  # True / available, unbounded
             needed_secondary.append(op)
 
-    # (i) DECLARED-SPEC OPS (finish / heat treatment / inspection) ----------
-    #   Same rule as (h) for "never asked": undeclared is UNKNOWN, not "no". A
-    #   shop that declared it does NOT do the op in-house sends it out: the part
-    #   is still made on this machine, with that op bought outside (its price is
-    #   already the outside service price), so it is not a gap.
-    for op in part_req.spec_ops:
-        if op in part_req.required_secondary_ops:
-            continue  # already decided by (h)
-        avail = ops.get(op)
-        words = _SPEC_OP_WORDS.get(op, op.replace("_", " "))
-        if avail is None:
-            failures.append(FitFailure(
-                "secondary_op", op, op, None,
-                f"needs {words}; not declared whether you do it in-house or send it out"))
-        elif avail is False:
-            sent_out.append(op)
-        else:
-            needed_secondary.append(op)
-
-    # (j) CERTIFICATIONS whoever makes the part must hold ---------------------
-    #   Undeclared → UNKNOWN; declared not held → a concrete gap. AS9100 covers
-    #   ISO 9001 (it is ISO 9001 plus aerospace requirements).
-    for cert in part_req.certifications:
-        have = ops.get(cert)
-        if cert == "iso9001" and have is None and ops.get("as9100") not in (None, False):
-            have = True
-        words = _CERT_WORDS.get(cert, cert.replace("_", " "))
-        if have is None:
-            failures.append(FitFailure(
-                "certification", cert, words, None,
-                f"needs {words}; not declared whether your shop holds it"))
-        elif have is False:
-            failures.append(FitFailure(
-                "certification", cert, words, False,
-                f"needs {words}; your shop doesn't hold it"))
-
     passes = len(failures) == 0
     resource_hint = None
     if passes:
@@ -1019,23 +654,10 @@ def fit_machine(part_req: PartReq, machine_cap: MachineCap,
             "rate_basis": "machine_hr",
             "hourly_rate_usd": machine_cap.hourly_rate_usd,
             "capital_frac": machine_cap.capital_frac,
-            "secondary_ops": tuple(dict.fromkeys(needed_secondary + sent_out)),
-            # Ops the shop sends out (declared not done in-house).
-            **({"sent_out": tuple(dict.fromkeys(sent_out))} if sent_out else {}),
-            # The machine's own post-processing assumed done in-house (never
-            # declared either way in Your shop); the note says so.
-            **({"assumed_in_house": tuple(assumed)} if assumed else {}),
+            "secondary_ops": tuple(dict.fromkeys(needed_secondary)),
             **({"build_env_mm": tuple(cap[k] for k in ("x", "y", "z"))}
                if part_req.process in {"fdm", "sla", "dlp", "sls", "mjf", "dmls", "slm", "ebm", "binder_jetting"}
                and all(_is_number(cap.get(k)) for k in ("x", "y", "z")) else {}),
-            # Values this pass rests on that are the maker's published spec
-            # (a catalog machine kept unedited), labelled as such. Absent when
-            # every value is the shop's own.
-            **({"maker_spec": {"catalog": cap["maker_spec"]["catalog"],
-                               "fields": tuple(cap["maker_spec"]["fields"])}}
-               if _maker_label(cap) else {}),
-            # What this pass did NOT check, said plainly (e.g. a printer's weight).
-            **({"notes": tuple(notes)} if notes else {}),
         }
     return FitResult(machine=machine_cap.name, passes=passes,
                      failures=tuple(failures), resource_hint=resource_hint)
@@ -1224,44 +846,6 @@ def _unknown(failures) -> list:
     return [f for f in failures if f.have is None]
 
 
-def _pass_hint(fit: FitResult) -> dict:
-    """A passing fit's ``resource_hint``: ``fit_machine`` sets one on every pass."""
-    hint = fit.resource_hint
-    if hint is None:
-        raise RuntimeError(f"passing fit on {fit.machine} carries no resource hint")
-    return hint
-
-
-def _pass_rate(fit: FitResult) -> float:
-    """A passing fit's declared hourly rate; undeclared sorts last (infinity)."""
-    rate = _pass_hint(fit).get("hourly_rate_usd")
-    return rate if _is_number(rate) else float("inf")
-
-
-def _blank_hint(hint: dict, preq: PartReq, owned, shop_caps) -> dict:
-    """A press brake bends a blank someone has to cut (me-02). On a cutter of yours
-    that fits the flat blank, the hint names it; with none, the blank is bought
-    outside: ``blank_outside`` (the caller prices the cut outside) and a note
-    saying why, never a silent in-house cut."""
-    blank = replace(preq, bend_count=0, bend_length_mm=None, bend_force_t=None)
-    cutters = [m for m in owned if sheet_kind(m.capabilities) in SHEET_CUTTERS]
-    fits = [fit_machine(blank, m, shop_caps) for m in cutters]
-    ok = [f for f in fits if f.passes]
-    notes = list(hint.get("notes", ()))
-    if ok:
-        best = min(ok, key=_pass_rate)
-        notes.append(f"blank cut on your {best.machine}")
-        return {**hint, "blank_on": best.machine, "notes": tuple(notes)}
-    if not cutters:
-        why = "no laser, punch, plasma or waterjet in Your shop"
-    else:
-        closest = min(fits, key=_machine_score)
-        reason = "; ".join(f.human for f in closest.failures[:2]) or "it doesn't fit"
-        why = f"your {closest.machine} can't cut it ({reason})"
-    notes.append(f"blank cut outside: {why}")
-    return {**hint, "blank_outside": True, "blank_note": why, "notes": tuple(notes)}
-
-
 def _machine_score(fr: FitResult):
     """Lower = closer to passing (fewest hard fails, then smallest rel delta)."""
     hard = _hard(fr.failures)
@@ -1275,8 +859,7 @@ def verify_part(part_req_by_route, inventory, shop_caps=None, env=None,
     part_req_by_route: {route(process) : PartReq}. inventory: [MachineCap].
     Honesty: empty/absent inventory → ``unknown`` (byte-identical-when-unused);
     a makeable verdict is returned ONLY when a machine passes every gate on real
-    declared data AND the route's own DFM verdict is not ``fail``. A DFM-failed
-    route is ``not_makeable`` (as modeled) with its ``dfm`` blockers first.
+    declared data.
     """
     material_props = material_props or {}
 
@@ -1296,9 +879,7 @@ def verify_part(part_req_by_route, inventory, shop_caps=None, env=None,
         route_material[rv] = getattr(preq, "material_name", "")
 
     routes = list(route_req.keys())
-    # Sorted, as the decision note names them: env_exclusions follow this order and
-    # the first is the headline reason, so it must not change with the hash seed.
-    materials = sorted({route_material[r] for r in routes if route_material[r]})
+    materials = list({route_material[r] for r in routes if route_material[r]})
 
     gate, exclusions = environment_gate(routes, materials, env, material_props)
     excluded_materials = gate["excluded_materials"]
@@ -1318,39 +899,11 @@ def verify_part(part_req_by_route, inventory, shop_caps=None, env=None,
     not_on_owned: list = []           # (score, route, fits)
     unknown_routes: list = []         # route
     outsource_routes: list = []       # route
-    design_blocked: list = []         # (closeness, route, fits)
     per_route: dict = {}
 
     for r in valid_routes:
         preq = route_req[r]
         owned = [m for m in inventory if _pt_value(m.process) == r]
-        dfm: tuple[FitFailure, ...] = tuple(getattr(preq, "dfm_failures", ()) or ())
-        if dfm and owned and all(f.axis in _SIZE_CODES for f in dfm):
-            # Only too big for every machine ScaleCAD knows: against the shop's
-            # own work areas the envelope gate gives the real answer ("too big
-            # for your X: needs N, has M", or a fit on a bigger machine of yours).
-            dfm = ()
-        # A declared spec the route can't deliver (Ra as made, anodize on steel…)
-        # blocks it like a design rule: no machine closes it.
-        dfm = dfm + tuple(getattr(preq, "spec_failures", ()) or ())
-        if dfm:
-            # The process's own design rules fail on this geometry as drawn. No
-            # machine (owned or outside) closes that, so the route is never
-            # in-house or outsource. Owned machines are still fitted so the
-            # closest one and any capability delta stay visible behind it.
-            fits = [fit_machine(preq, m, shop_caps) for m in owned]
-            closest = min(fits, key=_machine_score) if fits else None
-            design_blocked.append((
-                (0, _machine_score(closest), len(dfm)) if closest
-                else (1, (0, 0.0), len(dfm)), r, fits))
-            per_route[r] = {
-                "verdict": "not_makeable",
-                "machines_evaluated": len(fits),
-                "best_machine": closest.machine if closest else None,
-                "failures": dfm + (tuple(_hard(closest.failures))
-                                   if closest else ()),
-            }
-            continue
         if not owned:
             outsource_routes.append(r)
             per_route[r] = {"verdict": "makeable_outsource_only",
@@ -1364,17 +917,13 @@ def verify_part(part_req_by_route, inventory, shop_caps=None, env=None,
             best = min(
                 route_passes,
                 key=lambda f: (
-                    len(_pass_hint(f).get("secondary_ops", ())),
-                    _pass_hint(f).get("hourly_rate_usd")
-                    if _is_number(_pass_hint(f).get("hourly_rate_usd"))
+                    len(f.resource_hint.get("secondary_ops", ())),
+                    f.resource_hint.get("hourly_rate_usd")
+                    if _is_number(f.resource_hint.get("hourly_rate_usd"))
                     else float("inf")))
-            best_cap = owned[fits.index(best)]
-            if (r == ProcessType.SHEET_METAL.value and preq.bend_count > 0
-                    and sheet_kind(best_cap.capabilities) == PRESS_BRAKE):
-                best = replace(best, resource_hint=_blank_hint(_pass_hint(best), preq, owned, shop_caps))
-            sec = len(_pass_hint(best).get("secondary_ops", ()))
-            cost = (_pass_hint(best).get("hourly_rate_usd")
-                    if _is_number(_pass_hint(best).get("hourly_rate_usd"))
+            sec = len(best.resource_hint.get("secondary_ops", ()))
+            cost = (best.resource_hint.get("hourly_rate_usd")
+                    if _is_number(best.resource_hint.get("hourly_rate_usd"))
                     else float("inf"))
             passes.append((sec, cost, best, r))
             per_route[r] = {
@@ -1406,12 +955,8 @@ def verify_part(part_req_by_route, inventory, shop_caps=None, env=None,
 
     exclusions_t = tuple(exclusions)
 
-    # verdict precedence (see module docstring / spec §0), over DFM-ready routes:
-    #   in_house > with_secondary > not_on_owned > unknown > outsource_only
-    #   > not_makeable (every remaining route is DFM-blocked as modeled).
-    # An owned machine that fits but can't be confirmed (a material or op the
-    # shop hasn't declared) outranks "outside only": the honest headline is
-    # "can't confirm on yours: declare X", not "you own nothing for it".
+    # verdict precedence (see module docstring / spec §0):
+    #   in_house > with_secondary > not_on_owned > outsource_only > unknown
     if passes:
         best = min(passes, key=lambda t: (t[0], t[1]))
         sec, _cost, fr, _route = best
@@ -1430,27 +975,14 @@ def verify_part(part_req_by_route, inventory, shop_caps=None, env=None,
             gap=gap_analysis(fits), env_exclusions=exclusions_t,
             per_route=per_route)
 
-    if unknown_routes:
-        return MakeabilityVerdict(verdict="unknown", env_exclusions=exclusions_t,
-                                  per_route=per_route)
-
     if outsource_routes:
         return MakeabilityVerdict(
             verdict="makeable_outsource_only", env_exclusions=exclusions_t,
             per_route=per_route)
 
-    if design_blocked:
-        # Name the blocker on the route closest to being made in-house (an owned
-        # machine that fits, then fewest machine gaps), DFM first, then that
-        # route's machine gap when no owned machine fits it either.
-        design_blocked.sort(key=lambda t: (t[0], t[1]))
-        _key, route, fits = design_blocked[0]
-        machine_gap = () if any(f.passes for f in fits) else gap_analysis(fits)
-        return MakeabilityVerdict(
-            verdict="not_makeable",
-            gap=(tuple(route_req[route].dfm_failures)
-                 + tuple(getattr(route_req[route], "spec_failures", ()) or ()) + machine_gap),
-            env_exclusions=exclusions_t, per_route=per_route)
+    if unknown_routes:
+        return MakeabilityVerdict(verdict="unknown", env_exclusions=exclusions_t,
+                                  per_route=per_route)
 
     return MakeabilityVerdict(verdict="not_makeable", env_exclusions=exclusions_t,
                               per_route=per_route)

@@ -21,8 +21,6 @@ export type PlatePlan = {
   depth_mm: number;
   thickness_mm: number;
   holes: Hole[];
-  /** Degrees, 0 to 10. Left out of a stored plan when 0 (straight edges and holes). */
-  draft_angle_deg?: number;
 };
 
 export type BracketPlan = {
@@ -39,8 +37,6 @@ export type EnclosurePlan = {
   depth_mm: number;
   height_mm: number;
   wall_thickness_mm: number;
-  /** Degrees, 0 to 10. Left out of a stored plan when 0 (straight walls). */
-  draft_angle_deg?: number;
 };
 
 export type DesignPlan = PlatePlan | BracketPlan | EnclosurePlan;
@@ -103,8 +99,6 @@ export type DesignInterpretation =
       name: string;
       plan: DesignPlan;
       assumptions: string[];
-      /** Features the description asked for that the template has no setting for ("fillets or rounded edges"). */
-      not_applied?: string[];
       message: string;
     }
   | {
@@ -118,7 +112,6 @@ export type DesignInterpretation =
         height_mm: number;
         thickness_mm: number;
         wall_thickness_mm: number;
-        draft_angle_deg: number;
       }>;
     };
 

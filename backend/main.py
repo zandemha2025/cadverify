@@ -22,15 +22,8 @@ from starlette.middleware.sessions import SessionMiddleware
 
 import structlog
 
-from sqlalchemy.exc import TimeoutError as DBPoolTimeout
-
-from src.api.errors import (
-    db_pool_busy_handler,
-    structured_http_error_handler,
-    structured_validation_error_handler,
-)
+from src.api.errors import structured_http_error_handler, structured_validation_error_handler
 from src.api.health import router as health_router
-from src.api.deployment_facts import router as deployment_facts_router
 from src.api.history import router as history_router
 from src.api.middleware import RequestIDMiddleware
 from src.api.metrics import MetricsMiddleware, router as metrics_router
@@ -38,14 +31,12 @@ from src.api.security_headers import SecurityHeadersMiddleware
 from src.api.pdf import router as pdf_router
 from src.api.batch_router import router as batch_router
 from src.api.uploads import router as uploads_router
-from src.api.link_import import router as link_import_router
-from src.api.checks import router as checks_router
 from src.api.jobs_router import router as jobs_router
 from src.api.reconstruct_router import router as reconstruct_router
 from src.api.admin_routes import router as admin_router
 from src.api.routes import router
 from src.api.cost_decisions import public_cost_share_router, router as cost_decisions_router
-from src.api.rfq_packages import public_package_router, router as rfq_packages_router
+from src.api.rfq_packages import router as rfq_packages_router
 from src.api.catalog import router as catalog_router
 from src.api.rate_library import router as rate_library_router
 from src.api.shop_library import router as shop_library_router
@@ -55,22 +46,13 @@ from src.api.notifications import router as notifications_router
 from src.api.integrations import router as integrations_router
 from src.api.scim import mount_scim
 from src.api.part_context import router as part_context_router
-from src.api.part_preview import router as part_preview_router
-from src.api.part_fixes import router as part_fixes_router
-from src.api.part_revisions import router as part_revisions_router
-from src.api.part_recheck import router as part_recheck_router
-from src.api.part_orientation import router as part_orientation_router
-from src.api.data_control import parts_router as data_control_parts_router
-from src.api.data_control import router as data_control_router
 from src.api.identity import router as identity_router
 from src.api.groundtruth import router as groundtruth_router
-from src.api.actuals import router as actuals_router
 from src.api.manifest import router as manifest_router
 from src.api.bom import router as bom_router
 from src.api.machine_inventory import router as machine_inventory_router
 from src.api.org_routes import router as org_router
 from src.api.designs import router as designs_router
-from src.api.billing import router as billing_router, webhook_router as billing_webhook_router
 from src.api.share import public_share_router, share_router
 from src.auth.keys_api import router as keys_router
 from src.auth.magic_link import router as magic_router
@@ -78,7 +60,6 @@ from src.auth.oauth import router as oauth_router
 from src.auth.oidc import oidc_provider_enabled, router as oidc_router
 from src.auth.password import router as password_router
 from src.auth.password_reset import router as password_reset_router
-from src.auth.phone_verify import router as phone_router
 from src.auth.saml import router as saml_router
 from src.auth.rate_limit import limiter, rate_limit_handler
 from src.auth.scrubbing import scrub_processor, sentry_before_send
@@ -95,21 +76,7 @@ def _parse_origins(raw: str) -> list[str]:
 # allows localhost/127.0.0.1 origins so the /label viewer can stream STLs from
 # the local backend (CAD stays on localhost). An explicit CORS_ORIGIN_REGEX env
 # always wins.
-def _labeling_enabled() -> bool:
-    """LABELING_ENABLED=1, honoured only outside a released build.
-
-    The labeling tool's corpus routes have no authentication (they are meant
-    for one operator on localhost), so a released process never mounts them or
-    widens CORS for them, whatever the environment says.
-    """
-    if os.getenv("LABELING_ENABLED") != "1":
-        return False
-    from src.config.production import is_production
-
-    return not is_production()
-
-
-LABELING_ENABLED = _labeling_enabled()
+LABELING_ENABLED = os.getenv("LABELING_ENABLED") == "1"
 
 
 def _default_cors_regex() -> str:
@@ -286,12 +253,9 @@ def _assert_production_identity_config() -> None:
     """Validate provider-specific production configuration before serving."""
     from src.auth.oidc import assert_production_oidc_settings
     from src.auth.saml import assert_production_saml_settings
-    from src.auth.sso_org import assert_sso_org_configured
 
     assert_production_saml_settings()
     assert_production_oidc_settings()
-    # SSO group mappings and SAML account linking need the IdP's owning org.
-    assert_sso_org_configured()
 
 
 _assert_production_secrets()
@@ -418,15 +382,11 @@ async def lifespan(app: FastAPI):
             logger.exception("failed to flush tracing")
 
 
-from src.config.api_docs import fastapi_docs_kwargs, log_docs_state, mount_scalar
-
 app = FastAPI(
-    title="ScaleCAD API",
+    title="ScaleCad API",
     description="Manufacturing validation for STEP and STL files",
     version="0.2.0",
     lifespan=lifespan,
-    # /docs, /redoc and /openapi.json: off in a release unless API_DOCS_ENABLED=1.
-    **fastapi_docs_kwargs(),
 )
 
 # OpenTelemetry tracing — OPT-IN and OFF by default. setup_tracing() returns
@@ -458,9 +418,6 @@ app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
 app.add_exception_handler(HTTPException, structured_http_error_handler)
 app.add_exception_handler(StarletteHTTPException, structured_http_error_handler)
 app.add_exception_handler(RequestValidationError, structured_validation_error_handler)
-# Every DB connection taken for the pool's whole wait: 503 server_busy with
-# Retry-After, never a 500 (capacity report C7).
-app.add_exception_handler(DBPoolTimeout, db_pool_busy_handler)
 app.add_middleware(SlowAPIMiddleware)
 
 # CORS: exact deployment-owned origin by default; no wildcard preview domains.
@@ -494,11 +451,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 
 app.include_router(router, prefix="/api/v1")
 app.include_router(batch_router)
-# Before the uploads router, whose GET /{direct_upload_id} would take "from-link".
-app.include_router(link_import_router)
 app.include_router(uploads_router)
-# Big files: a part uploaded straight to storage, checked on the worker.
-app.include_router(checks_router)
 app.include_router(reconstruct_router)
 app.include_router(jobs_router, prefix="/api/v1")
 app.include_router(history_router, prefix="/api/v1/analyses", tags=["history"])
@@ -508,7 +461,6 @@ app.include_router(public_share_router, prefix="/s")
 # Cost-decision persistence surface (Phase 2 gap #3): list/detail/export/share/compare
 app.include_router(cost_decisions_router, prefix="/api/v1/cost-decisions")
 app.include_router(public_cost_share_router, prefix="/s")
-app.include_router(public_package_router, prefix="/s")
 # RFQ/supplier evidence packages: downloadable, local packages built from saved
 # decisions; no live supplier send or supplier-network claim.
 app.include_router(rfq_packages_router, prefix="/api/v1/rfq-packages")
@@ -549,21 +501,6 @@ app.include_router(
 app.include_router(
     part_context_router, prefix="/api/v1/part-context", tags=["part-context"]
 )
-# Stored-source 3D view: the org's own kept CAD, tessellated for the browser in
-# the analysis face space. Org-scoped, never the raw bytes, never a check.
-app.include_router(part_preview_router, prefix="/api/v1/parts", tags=["parts"])
-# Fixes ScaleCAD makes itself on a copy of the stored source (pilot, like
-# mesh repair): per-finding can-fix flags, apply + re-check, fixed-file download.
-app.include_router(part_fixes_router, prefix="/api/v1/parts", tags=["parts"])
-app.include_router(part_revisions_router, prefix="/api/v1/parts", tags=["parts"])
-# Re-check a saved part from its kept source: no upload, no check.
-app.include_router(part_recheck_router, prefix="/api/v1/parts", tags=["parts"])
-# Ways to lay a stored part down, compared by the check's own rules. Never a check.
-app.include_router(part_orientation_router, prefix="/api/v1/parts", tags=["parts"])
-# Data control: delete a part (with its stored file and results) or the whole
-# organization, with a receipt; the caller's share links and their status.
-app.include_router(data_control_parts_router, prefix="/api/v1/parts", tags=["parts"])
-app.include_router(data_control_router, prefix="/api/v1", tags=["data-control"])
 # Confirmed part identity (identity Slice 1): the human-in-the-loop seam that turns
 # a retrieved SUGGESTION into a USER-asserted identity on the org's corpus row.
 app.include_router(
@@ -572,9 +509,6 @@ app.include_router(
 app.include_router(
     groundtruth_router, prefix="/api/v1/ground-truth", tags=["ground-truth"]
 )
-# Your actuals (validation moment): mapped import, accuracy against your actuals,
-# calibration apply/undo, and the pilot report.
-app.include_router(actuals_router, prefix="/api/v1/actuals", tags=["actuals"])
 # Parts-manifest bulk onboarding (Aramco GAP 3): declared inventory registry +
 # honest geometry-coverage headline — a THIRD part identity (declared part_id),
 # separate from geometry-derived catalog parts and cost records.
@@ -609,15 +543,6 @@ app.include_router(org_router, prefix="/api/v1/orgs", tags=["orgs"])
 # revisions. Generation runs on the existing worker plane; no generated source
 # code is ever executed.
 app.include_router(designs_router, prefix="/api/v1/designs", tags=["designs"])
-# Self-serve Pro billing (Stripe Checkout + portal) and its signed webhook.
-# Off unless the STRIPE_* settings are present.
-app.include_router(billing_router, prefix="/api/v1/billing", tags=["billing"])
-app.include_router(billing_webhook_router, prefix="/billing")
-# SMS phone verification for free accounts (Twilio Verify); gating is opt-in
-# via SMS_VERIFICATION_REQUIRED.
-app.include_router(phone_router, prefix="/api/v1/account/phone", tags=["account"])
-from src.api.preferences import router as preferences_router  # noqa: E402
-app.include_router(preferences_router, prefix="/api/v1/account/preferences", tags=["account"])
 # SCIM 2.0 enterprise provisioning. Mounted at the IdP-standard path rather
 # than under /api/v1 so Okta/Entra can target it directly, and only where single
 # sign-on is in use (AUTH_MODE saml/oidc/hybrid) or SCIM_ENABLED=1; a password
@@ -656,8 +581,6 @@ if oidc_provider_enabled(AUTH_MODE):
 app.include_router(admin_router)
 app.include_router(keys_router)
 app.include_router(health_router)
-# Where data lives, from this deployment's own configuration (public pages read it).
-app.include_router(deployment_facts_router, prefix="/api/v1")
 # Prometheus scrape target. Unauthenticated by design (scrapers carry no API
 # key) and gated by METRICS_ENABLED; scrape it over a private network / ingress
 # allowlist in production. Listed in scripts/ci/check_route_auth.py's public
@@ -665,30 +588,27 @@ app.include_router(deployment_facts_router, prefix="/api/v1")
 app.include_router(metrics_router)
 
 # Cycle 4 local labeling tool (dev-gated, prod-safe). Mounted ONLY under
-# LABELING_ENABLED=1 outside a released build (RELEASE names a deployment), so
-# the corpus/label surface never ships to production and no CAD egresses.
-# Routes are localhost-only (no API key/role — see corpus_router).
-def _mount_labeling_tool(target: FastAPI) -> bool:
-    """Mount the corpus routes when the local labeling tool is on; never in a release."""
-    if os.getenv("LABELING_ENABLED") == "1" and not _labeling_enabled():
-        logger.warning(
-            "LABELING_ENABLED=1 ignored in a production build (RELEASE=%r): "
-            "the unauthenticated corpus routes are not mounted.",
-            os.getenv("RELEASE"),
-        )
-        return False
-    if not _labeling_enabled():
-        return False
+# LABELING_ENABLED=1 so the corpus/label surface never ships to production and
+# no CAD egresses. Routes are localhost-only (no API key/role — see corpus_router).
+if LABELING_ENABLED:
     from src.api.corpus_router import router as corpus_router
 
-    target.include_router(corpus_router)
+    app.include_router(corpus_router)
     logger.info("Labeling tool ENABLED — corpus routes mounted at /api/v1/corpus")
-    return True
 
 
-_mount_labeling_tool(app)
+# Scalar API docs — serves interactive documentation alongside /docs and /redoc
+try:
+    from scalar_fastapi import get_scalar_api_reference
+    from fastapi.responses import HTMLResponse
 
-
-# Scalar API docs alongside /docs and /redoc, under the same release rule.
-mount_scalar(app)
-log_docs_state()
+    @app.get("/scalar", include_in_schema=False)
+    async def scalar_docs():
+        return HTMLResponse(
+            get_scalar_api_reference(
+                openapi_url=app.openapi_url,
+                title=app.title,
+            )
+        )
+except ImportError:
+    pass  # scalar-fastapi not installed; /scalar endpoint not available

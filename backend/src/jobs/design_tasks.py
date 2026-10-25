@@ -143,10 +143,7 @@ async def _run_design_generation_job(job_ulid: str) -> dict:
     try:
         if release_test_fault == "cad_kernel":
             raise DesignGenerationError("record-scoped release fault: CAD kernel")
-        from src.services import compute_budget
-
-        # CAD generation holds room in the worker's compute budget until it ends.
-        artifacts = await compute_budget.run_within_budget(generate_design_artifacts, plan, label="design generation")
+        artifacts = await asyncio.to_thread(generate_design_artifacts, plan)
 
         store = _design_store()
         prefix = artifact_prefix(org_id, project_ulid, revision_no)

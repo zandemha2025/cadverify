@@ -4,7 +4,6 @@ from __future__ import annotations
 import logging
 import time
 from datetime import datetime, timezone
-from typing import cast
 
 from sqlalchemy import select
 
@@ -72,37 +71,27 @@ async def run_sam3d_job(ctx: dict, job_ulid: str) -> dict:
                 default_root=os.getenv("MESH_BLOB_DIR", MESH_BLOB_DIR),
             )
             mesh_bytes = await asyncio.to_thread(store.get, f"{mesh_hash}.bin")
-            mesh = cast(trimesh.Trimesh, trimesh.load(io.BytesIO(mesh_bytes), file_type="stl"))  # trimesh types load() as any Geometry; segmentation takes the STL as a mesh
+            mesh = trimesh.load(io.BytesIO(mesh_bytes), file_type="stl")
         except Exception:
             logger.exception("Failed to load mesh for job %s", job_ulid)
             job.status = "partial"
-            failed = {"error": "mesh_load_failed", "fallback": "none"}
-            job.result_json = failed
+            job.result_json = {"error": "mesh_load_failed", "fallback": "none"}
             job.completed_at = datetime.now(timezone.utc)
             await session.commit()
-            return failed
+            return job.result_json
 
         # 3. Try SAM-3D
         config = SAM3DConfig.from_env()
         start = time.time()
-
-        def _segment():
-            try:
-                found = segment_sam3d(mesh, config)
-                if not found:
-                    raise RuntimeError("SAM-3D returned empty segments")
-                return found, "done"
-            except Exception:
-                logger.warning("SAM-3D failed for job %s, falling back to heuristic", job_ulid)
-                return segment_heuristic(mesh), "partial"
-
-        from src.services import compute_budget
-
-        # Off the event loop, holding room in the worker's compute budget.
-        segments, status = await compute_budget.run_within_budget(
-            _segment, label="segmentation",
-            need_bytes=compute_budget.need_for_data(mesh_bytes, f"{mesh_hash}.stl"),
-        )
+        status = "done"
+        try:
+            segments = segment_sam3d(mesh, config)
+            if not segments:
+                raise RuntimeError("SAM-3D returned empty segments")
+        except Exception:
+            logger.warning("SAM-3D failed for job %s, falling back to heuristic", job_ulid)
+            segments = segment_heuristic(mesh)
+            status = "partial"
 
         duration_ms = (time.time() - start) * 1000
 

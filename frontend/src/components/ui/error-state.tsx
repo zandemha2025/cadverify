@@ -2,7 +2,6 @@ import { AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { distinctErrorDetail } from "@/lib/error-copy";
 import { isQuotaErrorMessage, isLifetimeQuotaErrorMessage } from "@/lib/api-recovery";
-import { UpgradeButton } from "@/components/billing/upgrade-button";
 import { Button } from "@/components/ui/button";
 
 /** Inline fail-tinted card + retry. Replaces the ad-hoc red banners. */
@@ -37,9 +36,7 @@ export function ErrorState({
           {detail && (
             <p className="mt-1 text-sm text-muted-foreground">{detail}</p>
           )}
-          {lifetimeQuota ? (
-            <UpgradeButton className="mt-3 inline-flex min-h-9 items-center rounded-[var(--radius)] border px-3 text-sm font-medium" />
-          ) : quota && (
+          {quota && (
             <Button variant="secondary" size="sm" className="mt-3" asChild>
               <a href="/history">Review usage and contact options</a>
             </Button>

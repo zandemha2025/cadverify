@@ -1,24 +1,18 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AuthFrame } from "@/components/auth/auth-frame";
-import { UI_V4 } from "@/lib/ui-v4-flag";
-import { V4MagicSent } from "@/components/v4/moments/magic";
 
 export const metadata: Metadata = {
-  title: "Magic link sent - ScaleCAD",
+  title: "Magic link sent - ScaleCad",
   robots: { index: false, follow: false },
 };
 
-export default async function MagicSentPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  const heldPart = (await searchParams).part === "1";
-  if (UI_V4) return <V4MagicSent heldPart={heldPart} />;
+export default function MagicSentPage() {
   return (
     <AuthFrame
       eyebrow="Magic link"
       title="Check your email."
-      body={heldPart
-        ? "A single-use link is on its way. Open it on this device and your part checks itself."
-        : "If that address is allowed to sign in, a single-use link is on its way."}
+      body="If that address is allowed to sign in, a single-use link is on its way."
     >
       <div style={{ display: "flex", justifyContent: "center", gap: 12, flexWrap: "wrap" }}>
         <Link href="/login" style={{ borderRadius: 999, padding: "11px 18px", background: "#f5f5f7", color: "#050506", textDecoration: "none", fontSize: 13, fontWeight: 500 }}>

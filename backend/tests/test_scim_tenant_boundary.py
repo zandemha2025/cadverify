@@ -30,8 +30,6 @@ from src.api import scim
 from src.auth.org_context import (
     ensure_personal_org,
     is_personal_org,
-    matches_legacy_personal_naming,
-    org_is_personal,
     personal_org_name,
     personal_org_slug,
 )
@@ -58,8 +56,7 @@ USER = svc.CORE_USER_SCHEMA
     ["pat@corp.example", "Pat.Smith+x@corp.example", "o'neil@corp.example", "@odd", "x@y"],
 )
 def test_personal_org_names_are_recognised(email):
-    # The pre-0060 naming rule (migration 0060's backfill keeps its own copy).
-    assert matches_legacy_personal_naming(personal_org_name(email), personal_org_slug(email)) is True
+    assert is_personal_org(personal_org_name(email), personal_org_slug(email)) is True
 
 
 @pytest.mark.parametrize(
@@ -69,18 +66,12 @@ def test_personal_org_names_are_recognised(email):
 def test_named_orgs_are_not_personal(name):
     # The exact slug create_org derives for a named org.
     slug = personal_org_slug(name.strip().replace(" ", "-"))
-    assert matches_legacy_personal_naming(name, slug) is False
+    assert is_personal_org(name, slug) is False
 
 
 def test_personal_org_check_ignores_non_text():
-    assert matches_legacy_personal_naming(None, None) is False
-    assert matches_legacy_personal_naming("pat's Organization", None) is False
-
-
-def test_personal_is_the_column_never_the_name():
-    assert is_personal_org(True) is True
-    for value in (False, None, "true", 1):
-        assert is_personal_org(value) is False
+    assert is_personal_org(None, None) is False
+    assert is_personal_org("pat's Organization", None) is False
 
 
 @pytest.mark.parametrize(
@@ -132,9 +123,9 @@ def test_mount_scim_logs_and_includes_routes_only_when_enabled(monkeypatch, capl
 
 @pytest.mark.asyncio
 async def test_personal_org_key_is_refused_before_any_scim_work():
+    email = "pat@corp.example"
     org_row = MagicMock()
-    # The org's is_personal column (its name no longer matters).
-    org_row.first.return_value = (True,)
+    org_row.first.return_value = (personal_org_name(email), personal_org_slug(email))
     session = AsyncMock()
     session.execute = AsyncMock(return_value=org_row)
 
@@ -321,12 +312,8 @@ def _ctx(org_id: str, user_id: int) -> OrgAuthContext:
 
 
 @asynccontextmanager
-async def _scim_client(eng, org_id: str, admin_id: int, *, sso_org: str | None = None):
-    """The real SCIM router over a real session, authenticated as ``org_id``'s admin.
-
-    SCIM serves only the org that owns the identity provider (``SSO_ORG_ID``),
-    which is the caller's org unless ``sso_org`` names another one.
-    """
+async def _scim_client(eng, org_id: str, admin_id: int):
+    """The real SCIM router over a real session, authenticated as ``org_id``'s admin."""
     app = FastAPI()
     app.include_router(scim.router)
 
@@ -339,18 +326,10 @@ async def _scim_client(eng, org_id: str, admin_id: int, *, sso_org: str | None =
 
     app.dependency_overrides[scim.require_scim_admin] = _fake_ctx
     app.dependency_overrides[get_db_session] = _real_session
-    before = os.environ.get("SSO_ORG_ID")
-    os.environ["SSO_ORG_ID"] = sso_org or org_id
-    try:
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="https://api.example"
-        ) as client:
-            yield client
-    finally:
-        if before is None:
-            os.environ.pop("SSO_ORG_ID", None)
-        else:
-            os.environ["SSO_ORG_ID"] = before
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="https://api.example"
+    ) as client:
+        yield client
 
 
 async def _world_with_outsider(eng):
@@ -738,44 +717,6 @@ async def test_group_add_of_this_orgs_own_member_still_works():
 
 @_requires_pg
 @pytest.mark.asyncio
-async def test_a_renamed_personal_org_is_still_refused_by_scim_and_sso_mappings(monkeypatch):
-    """Renaming a personal org (to a company's name) never makes it read as shared."""
-    import src.db.engine as eng
-    from fastapi import HTTPException
-
-    from src.services import org_service
-    from src.services.org_saml_service import create_saml_group_mapping
-
-    world = await _world_with_outsider(eng)
-    try:
-        async with eng.get_session_factory()() as s:
-            org, previous = await org_service.rename_org(s, world.victim_personal, f"Acme Corp {world.tag}")
-            await s.commit()
-        assert org.name == f"Acme Corp {world.tag}" and previous != org.name
-        async with eng.get_session_factory()() as s:
-            assert await org_is_personal(s, world.victim_personal) is True
-            assert await org_is_personal(s, world.org_a) is False
-        async with _scim_client(eng, world.victim_personal, world.victim) as client:
-            resp = await client.get("/scim/v2/Users")
-        assert resp.status_code == 403
-        assert resp.json()["detail"]["code"] == "scim_org_required"
-        # Even named as the SSO owner, a renamed personal org takes no group mappings.
-        monkeypatch.setenv("SSO_ORG_ID", world.victim_personal)
-        async with eng.get_session_factory()() as s:
-            with pytest.raises(HTTPException) as exc:
-                await create_saml_group_mapping(
-                    s, world.victim_personal, attribute_name="memberOf",
-                    group_value=f"cn=engineers-{world.tag}", org_role="member", created_by=None,
-                )
-        assert exc.value.status_code == 403
-        assert exc.value.detail["code"] == "sso_org_required"
-    finally:
-        await _teardown(eng, world)
-        await eng.dispose_engine()
-
-
-@_requires_pg
-@pytest.mark.asyncio
 async def test_personal_org_admin_key_is_refused_with_scim_org_required():
     import src.db.engine as eng
 
@@ -802,49 +743,6 @@ async def test_personal_org_admin_key_is_refused_with_scim_org_required():
         async with _scim_client(eng, world.org_a, world.admin_a) as client:
             ok = await client.get("/scim/v2/ServiceProviderConfig")
             assert ok.status_code == 200
-    finally:
-        await _teardown(eng, world)
-        await eng.dispose_engine()
-
-
-@_requires_pg
-@pytest.mark.asyncio
-async def test_a_shared_org_that_does_not_own_the_identity_provider_provisions_no_one():
-    """Org B is shared and the key is its admin's, but org A owns the identity
-    provider (SSO_ORG_ID): every SCIM route answers 403 sso_org_required, and an
-    address nobody has registered gets no account, so B can't claim it."""
-    import src.db.engine as eng
-
-    world = await _world_with_outsider(eng)
-    unregistered = world.email("dana-unregistered")
-    try:
-        async with _scim_client(eng, world.org_b, world.victim, sso_org=world.org_a) as client:
-            for method, path in (
-                ("GET", "/scim/v2/ServiceProviderConfig"),
-                ("GET", "/scim/v2/Users"),
-                ("POST", "/scim/v2/Users"),
-                ("PATCH", "/scim/v2/Groups/role:admin"),
-            ):
-                resp = await client.request(
-                    method,
-                    path,
-                    json={"schemas": [USER], "userName": unregistered, "active": True}
-                    if method != "GET"
-                    else None,
-                )
-                assert resp.status_code == 403, (path, resp.text)
-                assert resp.json()["detail"]["code"] == "sso_org_required"
-        async with eng.get_session_factory()() as s:
-            assert await _row(
-                s, "SELECT id FROM users WHERE email_lower = :e", e=svc.normalize_email(unregistered)
-            ) is None
-        # The org that owns the identity provider still provisions.
-        async with _scim_client(eng, world.org_a, world.admin_a) as client:
-            resp = await client.post(
-                "/scim/v2/Users", json={"schemas": [USER], "userName": unregistered, "active": True}
-            )
-            assert resp.status_code == 201, resp.text
-            world.user_ids.append(int(resp.json()["id"]))
     finally:
         await _teardown(eng, world)
         await eng.dispose_engine()

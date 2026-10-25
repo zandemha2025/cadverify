@@ -36,7 +36,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from fastapi import HTTPException
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
@@ -155,31 +155,6 @@ async def create_org(
     )
     await session.flush()
     return org
-
-
-async def rename_org(session: AsyncSession, org_id: str, name: str) -> tuple[Organization, str]:
-    """Rename an org; return ``(org, previous name)``. Whitespace is collapsed.
-
-    Only the name changes: the slug, members and the personal marker
-    (``is_personal``) stay, so a renamed personal org is still refused by SAML
-    group mappings and SCIM.
-    """
-    from src.auth.org_context import ORG_NAME_MAX
-
-    clean = " ".join((name or "").split())
-    if not clean:
-        raise _400("Organization name is required.")
-    if len(clean) > ORG_NAME_MAX:
-        raise _400(f"Organization name is too long (max {ORG_NAME_MAX} characters).")
-    if any(ord(c) < 32 or ord(c) == 127 for c in clean):
-        raise _400("Organization name can't contain control characters.")
-    org = await session.get(Organization, org_id)
-    if org is None:
-        raise HTTPException(status_code=404, detail="Organization not found.")
-    previous = org.name
-    org.name = clean
-    await session.flush()
-    return org, previous
 
 
 # ---------------------------------------------------------------------------
@@ -363,15 +338,19 @@ async def revoke_invite(
     return inv
 
 
-async def _redeemable_invite(
+async def accept_invite(
     session: AsyncSession, user_id: int, raw_token: str
-) -> OrgInvite:
-    """The invite ``raw_token`` names, if ``user_id`` may redeem it right now.
+) -> tuple[Membership, OrgInvite, bool]:
+    """Redeem a raw token → a membership for ``user_id``. Returns
+    ``(membership, invite, created)`` where ``created`` is False when the user
+    was already a member (in which case the role is NOT escalated).
 
-    Shared by accept and preview so both refuse exactly the same cases: a
-    missing token (400), an unknown token (404), a revoked / used / expired
-    invite (409), and any account other than the invited one (403). Nothing is
-    written here.
+    Enforces single-use (``accepted_at``/``revoked_at`` NULL), expiry, the hash
+    compare (the raw token is never stored), AND recipient binding: only the
+    account whose email matches the invite's may redeem it. A leaked/forwarded
+    token cannot be claimed by another logged-in user, and an invite can never
+    escalate a *different* account into the org (including at admin). Consumes
+    the invite atomically with the membership write.
     """
     if not raw_token or not raw_token.strip():
         raise _400("An invite token is required.")
@@ -440,218 +419,6 @@ async def _redeemable_invite(
             )
         ):
             raise _403("This invite was issued to a different email address.")
-    return inv
-
-
-async def invite_summary(session: AsyncSession, raw_token: str) -> dict:
-    """What an invite link is for, shown to its holder before they sign in.
-
-    The organization, the role, the inviter's name, the invited address and
-    when it expires: what the landing page names so the person can tell the
-    invite is genuine, and what sign-up prefills (and binds the account to).
-    No member's address, the inviter's included: anyone the link was forwarded
-    to reads this without signing in. Only a pending invite answers; an
-    unknown one is 404 and a used, revoked or expired one 409, with no details.
-    Read-only. Who may redeem it is still decided at accept (the invited
-    account only).
-    """
-    if not raw_token or not raw_token.strip():
-        raise _400("An invite token is required.")
-    inv = (
-        await session.execute(
-            select(OrgInvite).where(OrgInvite.token_hash == hash_invite_token(raw_token.strip()))
-        )
-    ).scalars().first()
-    if inv is None:
-        raise _404("Invite not found or already used.")
-    if inv.revoked_at is not None:
-        raise _409("This invite has been revoked.")
-    if inv.accepted_at is not None:
-        raise _409("This invite has already been used.")
-    if _as_aware(inv.expires_at) < _now():
-        raise _409("This invite has expired.")
-    org_name = (
-        await session.execute(select(Organization.name).where(Organization.id == inv.org_id))
-    ).scalar_one_or_none()
-    inviter_name = None
-    if inv.created_by is not None:
-        inviter_name = (
-            await session.execute(select(User.full_name).where(User.id == inv.created_by))
-        ).scalar_one_or_none()
-    return {
-        "org_name": org_name,
-        "role": inv.role,
-        "email": inv.email,
-        "invited_by_name": (inviter_name or "").strip() or None,
-        "expires_at": inv.expires_at.isoformat() if inv.expires_at else None,
-    }
-
-
-def workspace_name(email: str, full_name: str | None) -> str:
-    """A person's own workspace: "<First name>'s workspace", never a company name."""
-    from src.auth.org_context import ORG_NAME_MAX
-
-    first = (full_name or "").split()
-    who = first[0] if first else (email.split("@", 1)[0] or "Your")
-    return f"{who}'s workspace"[:ORG_NAME_MAX]
-
-
-async def _settle_personal_workspace(session: AsyncSession, user: User, joined_org_id: str) -> None:
-    """Joining someone's organization: the person's own workspace reads as theirs.
-
-    Sign-up gives every account a personal org, named after a work email's
-    company. Someone who joins their company's organization by invite would
-    then also "own" a second, company-named org. Their personal org (only
-    them in it, still under the name sign-up gave it) is renamed
-    "<First name>'s workspace"; one they renamed or share is left alone.
-    """
-    from src.auth.org_context import personal_org_display_name, same_org_name
-
-    email = user.email or ""
-    auto_name = personal_org_display_name(email, user.full_name)
-    rows = (
-        await session.execute(
-            select(Organization)
-            .join(Membership, Membership.org_id == Organization.id)
-            .where(
-                Membership.user_id == user.id,
-                Organization.is_personal.is_(True),
-                Organization.id != joined_org_id,
-            )
-        )
-    ).scalars().all()
-    for org in rows:
-        members = (
-            await session.execute(
-                select(func.count()).select_from(Membership).where(Membership.org_id == org.id)
-            )
-        ).scalar_one()
-        if members == 1 and same_org_name(org.name, auto_name):
-            org.name = workspace_name(email, user.full_name)
-
-
-async def share_org_if_team(session: AsyncSession, org_id: str, actor_id: Optional[int]) -> bool:
-    """A personal org with a second member is a team's org: it becomes shared.
-
-    Sign-up gives every account a personal org. A company that starts in one
-    person's account and invites the team never makes another org, so a flag
-    that stayed true would keep that team from SSO group mappings and SCIM,
-    which refuse a personal org. Once the org has two or more members,
-    ``is_personal`` turns false and an ``org.became_shared`` audit row says so,
-    in the caller's transaction. A solo org is left alone; shared is one-way.
-    Returns whether it changed.
-    """
-    org = await session.get(Organization, org_id)
-    if org is None or org.is_personal is not True:
-        return False
-    members = int((
-        await session.execute(
-            select(func.count()).select_from(Membership).where(Membership.org_id == org_id)
-        )
-    ).scalar_one() or 0)
-    if members < 2:
-        return False
-    org.is_personal = False
-    from src.services.audit_service import emit_event
-
-    await emit_event(
-        session, actor_id, "org.became_shared", "org", org_id,
-        {"org_id": org_id, "members": members, "via": "invite"},
-        org_id=org_id,
-    )
-    await session.flush()
-    return True
-
-
-async def preview_invite(
-    session: AsyncSession, user_id: int, raw_token: str
-) -> dict:
-    """What accepting ``raw_token`` would do, without accepting it.
-
-    Read-only: the invite stays pending and single-use. Applies the same
-    refusals as ``accept_invite`` (so a forwarded token shows nothing about the
-    org to another account) and returns the facts the invitee confirms:
-    the org, the role, who invited them, when the invite expires, and whether
-    they are already a member (whose role accepting would not change).
-    """
-    inv = await _redeemable_invite(session, user_id, raw_token)
-    org_name = (
-        await session.execute(
-            select(Organization.name).where(Organization.id == inv.org_id)
-        )
-    ).scalar_one_or_none()
-    invited_by = None
-    if inv.created_by is not None:
-        invited_by = (
-            await session.execute(select(User.email).where(User.id == inv.created_by))
-        ).scalar_one_or_none()
-    existing = await _get_membership(session, inv.org_id, user_id)
-    return {
-        "org_id": inv.org_id,
-        "org_name": org_name,
-        "role": inv.role,
-        "email": inv.email,
-        "invited_by": invited_by,
-        "expires_at": inv.expires_at.isoformat() if inv.expires_at else None,
-        "already_member": existing is not None,
-        "current_role": existing.org_role if existing is not None else None,
-    }
-
-
-async def end_codeless_session_on_join(session: AsyncSession, user_id: int, org_id: str) -> bool:
-    """Joining an org that requires two-step ends a session that never saw a code.
-
-    The session the person accepts in was made before the org's rule applied to
-    them. When the account has no two-step yet (it now owes "setup"), every one
-    of its sessions ends, as turning the rule on does for existing members
-    (``set_org_policy``): the next sign-in asks them to set it up before the
-    org's data. An account with two-step on signed in with a code and keeps its
-    session; so does one that signs in through single sign-on
-    (``two_step.signs_in_with_single_sign_on``), whose identity provider owns
-    that step. Returns whether the sessions ended. Caller commits.
-    """
-    from src.auth import two_step as ts
-
-    required = (
-        await session.execute(
-            text("SELECT require_two_step FROM organizations WHERE id = :o"), {"o": org_id}
-        )
-    ).scalar_one_or_none()
-    if not required:
-        return False
-    if await ts.sign_in_requirement(session, user_id) != "setup":
-        return False
-    if await ts.signs_in_with_single_sign_on(session, user_id):
-        return False
-    await session.execute(
-        text("UPDATE users SET session_version = session_version + 1 WHERE id = :u"),
-        {"u": int(user_id)},
-    )
-    return True
-
-
-async def accept_invite(
-    session: AsyncSession, user_id: int, raw_token: str
-) -> tuple[Membership, OrgInvite, bool, bool]:
-    """Redeem a raw token → a membership for ``user_id``. Returns
-    ``(membership, invite, created, signed_out)`` where ``created`` is False
-    when the user was already a member (in which case the role is NOT
-    escalated) and ``signed_out`` is True when joining ended the caller's
-    sessions because the org requires two-step and the account has none
-    (:func:`end_codeless_session_on_join`).
-
-    Accepting never switches the active organization: a link opened by
-    accident must not move the person's next upload into the inviting org.
-    The caller switches only when the person chose to (``switch_org``).
-
-    Enforces single-use (``accepted_at``/``revoked_at`` NULL), expiry, the hash
-    compare (the raw token is never stored), AND recipient binding: only the
-    account whose email matches the invite's may redeem it. A leaked/forwarded
-    token cannot be claimed by another logged-in user, and an invite can never
-    escalate a *different* account into the org (including at admin). Consumes
-    the invite atomically with the membership write.
-    """
-    inv = await _redeemable_invite(session, user_id, raw_token)
 
     existing = await _get_membership(session, inv.org_id, user_id)
     if existing is not None:
@@ -667,19 +434,11 @@ async def accept_invite(
         )
         session.add(membership)
         created = True
-        accepting = await session.get(User, user_id)
-        if accepting is not None:
-            await _settle_personal_workspace(session, accepting, inv.org_id)
 
     inv.accepted_by = user_id
     inv.accepted_at = _now()
     await session.flush()
-    if created:
-        # The second member makes a personal org the team's (shared, audited).
-        await share_org_if_team(session, inv.org_id, user_id)
-    signed_out = await end_codeless_session_on_join(session, user_id, inv.org_id)
-    await session.flush()
-    return membership, inv, created, signed_out
+    return membership, inv, created
 
 
 # ---------------------------------------------------------------------------
@@ -857,14 +616,13 @@ async def set_user_active(
     user.is_active = active
     user.deactivated_at = None if active else _now()
     await session.flush()
-    deactivated_at = user.deactivated_at
     return {
         "user_id": user.id,
         "email": user.email,
         "is_active": user.is_active,
         "session_version": user.session_version,
         "deactivated_at": (
-            deactivated_at.isoformat() if deactivated_at else None
+            user.deactivated_at.isoformat() if user.deactivated_at else None
         ),
     }
 

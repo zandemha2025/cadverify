@@ -3,13 +3,10 @@ import { NextResponse } from "next/server";
 import { backendUrl } from "@/lib/api-base";
 import { getSessionToken, setSession } from "@/lib/session";
 import { signedAuthProxyHeaders } from "@/lib/auth-proxy";
-import { crossSiteRefusal } from "@/lib/same-origin-request";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  const crossSite = crossSiteRefusal(req);
-  if (crossSite) return crossSite;
   const session = await getSessionToken();
   if (!session) {
     return NextResponse.json(

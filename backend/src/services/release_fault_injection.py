@@ -1,8 +1,7 @@
 """Fail-closed fault selection for real release-evidence browser runs.
 
-The hooks in this module are inert in a release (RELEASE set to a non-dev
-value), and otherwise unless ``E2E_FAULT_INJECTION_TOKEN`` is set on the API
-process and the caller supplies the same secret.  A selected mode is
+The hooks in this module are inert unless ``E2E_FAULT_INJECTION_TOKEN`` is set
+on the API process and the caller supplies the same secret.  A selected mode is
 then persisted on one accepted design job or batch; workers never consult a
 global switch.  This keeps release testing deterministic without making shared
 infrastructure unavailable or allowing one run to affect unrelated work.
@@ -14,8 +13,6 @@ import os
 from typing import AbstractSet
 
 from fastapi import HTTPException, Request
-
-from src.config.production import is_production
 
 FAULT_TOKEN_HEADER = "x-proofshape-e2e-token"
 FAULT_MODE_HEADER = "x-proofshape-e2e-fault"
@@ -35,10 +32,6 @@ def requested_release_fault(
     a 400 for a misspelled or out-of-scope mode.
     """
 
-    # A release (RELEASE names a deployment) never honours these headers, even
-    # with the token configured: they exist for local release-evidence runs.
-    if is_production():
-        return None
     configured = os.getenv("E2E_FAULT_INJECTION_TOKEN", "").strip()
     supplied = request.headers.get(FAULT_TOKEN_HEADER, "")
     if not configured or not supplied or not hmac.compare_digest(configured, supplied):

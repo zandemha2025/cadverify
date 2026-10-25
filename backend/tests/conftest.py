@@ -27,11 +27,6 @@ import trimesh
 # RuntimeWarning subclass), which is correctly fatal under the release policy.
 import alembic  # noqa: F401
 
-# Every async test runs on its own event loop, and a pooled asyncpg connection
-# belongs to the loop that opened it; without this a test that leaves the app's
-# shared pool open breaks a later Postgres test ("attached to a different loop").
-os.environ.setdefault("DB_POOL", "null")
-
 from src.auth.require_api_key import AuthedUser
 from src.auth.redis_util import (
     close_registered_redis_clients as _close_registered_redis_clients_impl,
@@ -45,37 +40,6 @@ async def _close_auth_redis_clients():
     """Do not carry loop-bound Redis pools between function-scoped test loops."""
     yield
     await _close_registered_redis_clients_impl()
-
-
-@pytest.fixture(autouse=True)
-def _fresh_compute_budget():
-    """The compute budget is process-wide: every test starts with an empty one."""
-    from src.services import compute_budget
-
-    compute_budget.reset_for_tests()
-    yield
-    compute_budget.reset_for_tests()
-
-
-@pytest.fixture(autouse=True)
-def _sigpipe_stays_ignored():
-    """Some tests start gmsh themselves, and its first initialize resets SIGPIPE
-    to terminate the process (src/parsers/sigpipe.py): a background write to a
-    closed pipe then killed the whole suite (exit 141). Restore it after each test."""
-    yield
-    from src.parsers.sigpipe import ignore_sigpipe
-
-    ignore_sigpipe()
-
-
-@pytest.fixture(autouse=True)
-def _fresh_catalog_inputs():
-    """The catalog's per-record input cache is process-wide; tests reuse made-up ids."""
-    from src.services import catalog_inputs
-
-    catalog_inputs.reset_for_tests()
-    yield
-    catalog_inputs.reset_for_tests()
 
 
 # ──────────────────────────────────────────────────────────────
@@ -204,7 +168,6 @@ def _apply_auth_bypass(app) -> None:
     """
     from unittest.mock import AsyncMock, MagicMock
 
-    from src.auth.rbac import require_org_checker, require_org_writer
     from src.auth.require_api_key import AuthedUser, require_api_key
     from src.db.engine import get_db_session
 
@@ -230,75 +193,14 @@ def _apply_auth_bypass(app) -> None:
         session.flush = _fake_flush
         yield session
 
-    from src.auth import free_tool_limits
     from src.auth.validation_caps import enforce_validation_caps, require_paid_access
 
     # Engine unit tests use mocked persistence. Real quota tests use an isolated
     # app/PostgreSQL and never install this override.
     app.dependency_overrides[enforce_validation_caps] = lambda: None
     app.dependency_overrides[require_paid_access] = lambda: None
-    for dependency in free_tool_limits.ALL:
-        app.dependency_overrides[dependency] = lambda: None
     app.dependency_overrides[require_api_key] = _fake_user
-    # The tenant-write gates read org membership from the database; the bypass
-    # treats whoever authenticated as an org member, as before the gates
-    # existed. Authentication itself still runs (a test that drops the
-    # require_api_key override gets the real 401).
-    from fastapi import Depends
-
-    async def _authenticated_member(user: AuthedUser = Depends(require_api_key)) -> AuthedUser:
-        return user
-
-    app.dependency_overrides[require_org_writer] = _authenticated_member
-    app.dependency_overrides[require_org_checker] = _authenticated_member
     app.dependency_overrides[get_db_session] = _fake_db_session
-
-
-@pytest.fixture(autouse=True)
-def _fake_test_users_are_org_members(monkeypatch):
-    """A made-up test user (no ``users`` row) counts as a member of a test org.
-
-    Org-data writes require org role member or above (``require_org_writer`` /
-    ``require_org_checker``). Many route tests authenticate as a fake user id
-    with no database rows; before the gate those callers were implicitly
-    members of their own org. A real user row keeps the real answer (a
-    viewer, a removed member, nobody), and a test that patches
-    ``src.auth.rbac.lookup_org_membership`` itself replaces this fallback.
-    The lookup uses its own short-lived connection so no pooled connection is
-    carried across the per-test event loops.
-    """
-    from src.auth import rbac
-
-    url = os.environ.get("DATABASE_URL", "")
-
-    async def _lookup(user_id: int):
-        if not url.startswith("postgresql"):
-            return ("test-org", "member")
-        import asyncpg
-
-        try:
-            conn = await asyncpg.connect(url.replace("postgresql+asyncpg://", "postgresql://"))
-        except Exception:
-            return ("test-org", "member")
-        try:
-            row = await conn.fetchrow(
-                "SELECT m.org_id, m.org_role FROM memberships m WHERE m.user_id = $1 "
-                "ORDER BY (m.org_id IS NOT DISTINCT FROM "
-                "(SELECT current_org_id FROM users WHERE id = $1)) DESC, "
-                "m.created_at ASC, m.id ASC LIMIT 1",
-                user_id,
-            )
-            if row is not None:
-                return (row[0], row[1])
-            if await conn.fetchval("SELECT 1 FROM users WHERE id = $1", user_id):
-                return None
-        except Exception:
-            pass
-        finally:
-            await conn.close()
-        return ("test-org", "member")
-
-    monkeypatch.setattr(rbac, "lookup_org_membership", _lookup)
 
 
 @pytest.fixture(autouse=True)
@@ -345,18 +247,10 @@ def _bypass_api_key_auth(monkeypatch):
 
             sys.modules["main"].app.dependency_overrides.pop(enforce_validation_caps, None)
             sys.modules["main"].app.dependency_overrides.pop(require_paid_access, None)
-            from src.auth import free_tool_limits
-
-            for dependency in free_tool_limits.ALL:
-                sys.modules["main"].app.dependency_overrides.pop(dependency, None)
 
             sys.modules["main"].app.dependency_overrides.pop(
                 require_api_key, None
             )
-            from src.auth.rbac import require_org_checker, require_org_writer
-
-            for gate in (require_org_writer, require_org_checker):
-                sys.modules["main"].app.dependency_overrides.pop(gate, None)
             sys.modules["main"].app.dependency_overrides.pop(
                 get_db_session, None
             )
@@ -476,25 +370,3 @@ def box_step_bytes() -> bytes:
             os.unlink(path)
         except FileNotFoundError:
             pass
-
-
-@pytest_asyncio.fixture
-async def _close_shared_db_pool():
-    """Close the app's shared database pool when an async test ends.
-
-    The pool belongs to the test's own event loop. A test that leaves it open
-    makes the next Postgres test reuse it from another loop and fail ("attached
-    to a different loop"), so every async test ends by disposing it, in its own
-    loop. A later test opens a fresh pool on demand.
-    """
-    yield
-    import src.db.engine as eng
-
-    if getattr(eng, "_ENGINE", None) is not None:
-        await eng.dispose_engine()
-
-
-def pytest_collection_modifyitems(config, items):
-    for item in items:
-        if item.get_closest_marker("asyncio") is not None and "_close_shared_db_pool" not in item.fixturenames:
-            item.fixturenames.append("_close_shared_db_pool")

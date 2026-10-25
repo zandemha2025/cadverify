@@ -8,10 +8,7 @@ import src.db.engine as eng
 
 
 @pytest.fixture
-def reset_engine(monkeypatch):
-    # The suite runs without a pool (conftest sets DB_POOL=null); these tests
-    # check the production pool sizing.
-    monkeypatch.delenv("DB_POOL", raising=False)
+def reset_engine():
     saved_engine, saved_factory = eng._ENGINE, eng._SESSION_FACTORY
     eng._ENGINE = None
     eng._SESSION_FACTORY = None

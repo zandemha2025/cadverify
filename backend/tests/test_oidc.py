@@ -796,8 +796,6 @@ def test_oidc_end_to_end_real_provisioning_and_group_role_pg(app, oidc_env, monk
 
     tag = uuid.uuid4().hex[:10]
     org_id = str(ULID())
-    # The mapped org owns this deployment's IdP, so its mappings apply.
-    monkeypatch.setenv("SSO_ORG_ID", org_id)
     email = f"oidc-e2e-{tag}@example.com"
     email_lower = email.lower()
     group_value = f"cad-engineers-{tag}"
@@ -868,15 +866,14 @@ def test_oidc_end_to_end_real_provisioning_and_group_role_pg(app, oidc_env, monk
         )
         assert len(mrows) == 1 and mrows[0]["org_role"] == "member"
 
-        # No API key is minted at an SSO sign-in: there is nowhere to show
-        # its secret, and a key nobody received must not stay live.
+        # A default API key was minted for the new SSO account.
         krows = asyncio.run(
             _pg(
-                "SELECT 1 FROM api_keys WHERE user_id=$1",
+                "SELECT 1 FROM api_keys WHERE user_id=$1 AND revoked_at IS NULL",
                 user_id, fetch=True,
             )
         )
-        assert krows == []
+        assert len(krows) >= 1
     finally:
         # Collect every org the user touched (incl. the auto-provisioned personal
         # org) so cleanup is complete, then tear down.

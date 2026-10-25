@@ -20,40 +20,21 @@ from src.profiles.database import (
 )
 
 
-def is_measurement_caveat(issue: Issue) -> bool:
-    """A note on how precisely this file lets ScaleCAD measure (binary STL
-    coordinate rounding, a STEP tessellation), not a problem with the part.
-
-    The same part as STL and as STEP gets different caveats, so they must not
-    move a score or the geometry pick (M13: the pick flipped between formats
-    on nine parts because an STL-only caveat cost one process 0.1)."""
-    return issue.code.endswith("_PRECISION")
-
-
-def _design_warnings(issues: list[Issue]) -> list[Issue]:
-    return [i for i in issues if i.severity == Severity.WARNING and not is_measurement_caveat(i)]
-
-
 def score_process(
     issues: list[Issue],
     geometry: GeometryInfo,
     process: ProcessType,
 ) -> ProcessScore:
-    """Score how suitable a process is based on analysis issues.
-
-    Errors fail the process; each design warning costs 0.1. Measurement
-    caveats (``is_measurement_caveat``) still show, and still make the verdict
-    "issues", but cost nothing."""
+    """Score how suitable a process is based on analysis issues."""
     errors = [i for i in issues if i.severity == Severity.ERROR]
     warnings = [i for i in issues if i.severity == Severity.WARNING]
-    design_warnings = _design_warnings(issues)
 
     if errors:
         score = 0.0
         verdict = "fail"
     elif warnings:
-        # Deduct 0.1 per design warning, minimum 0.3
-        score = max(0.3, 1.0 - len(design_warnings) * 0.1)
+        # Deduct 0.1 per warning, minimum 0.3
+        score = max(0.3, 1.0 - len(warnings) * 0.1)
         verdict = "issues"
     else:
         score = 1.0
@@ -111,9 +92,11 @@ def _apply_geometry_affinity(
         if compactness > 10 and process in (ProcessType.CNC_3AXIS, ProcessType.CNC_5AXIS):
             score = min(1.0, score + 0.05)
 
-    # No boost from the triangle count: the same part has 12 triangles as an
-    # STL and tens of thousands once its STEP is tessellated, so a face-count
-    # rule ranked CNC differently by file format, not by shape.
+    # Simple geometry (low face count) → CNC and molding are efficient
+    if geometry.face_count < 500:
+        if process in (ProcessType.CNC_3AXIS, ProcessType.INJECTION_MOLDING):
+            score = min(1.0, score + 0.05)
+
     return score
 
 
@@ -157,23 +140,6 @@ def _estimate_cost_factor(
     return round(base_cost * max(volume_cm3, 1.0), 2)
 
 
-_PROCESS_ORDER = {p: i for i, p in enumerate(ProcessType)}
-_VERDICT_ORDER = {"pass": 0, "issues": 1, "fail": 2}
-
-
-def _rank_verdict(s: ProcessScore) -> int:
-    if s.verdict == "issues" and not any(
-        i.severity in (Severity.ERROR, Severity.WARNING) and not is_measurement_caveat(i)
-        for i in s.issues
-    ):
-        return _VERDICT_ORDER["pass"]
-    return _VERDICT_ORDER.get(s.verdict, 3)
-
-
-def _rank_key(s: ProcessScore):
-    return (-s.score, _rank_verdict(s), _PROCESS_ORDER.get(s.process, len(_PROCESS_ORDER)))
-
-
 def rank_processes(
     analysis: AnalysisResult,
     material_class: Optional[str] = None,
@@ -196,10 +162,11 @@ def rank_processes(
     # Tie-break equal scores by verdict: a clean "pass" must outrank an
     # equally-scored "issues"/"fail" process — otherwise an affinity-boosted
     # process with open issues can surface as "best" over a clean sibling.
-    # Ties break on the verdict without measurement caveats, then on the fixed
-    # process order, so the pick never depends on which caveats a file format
-    # raised or on the order the scores arrived in.
-    scores = sorted(analysis.process_scores, key=_rank_key)
+    verdict_order = {"pass": 0, "issues": 1, "fail": 2}
+    scores = sorted(
+        analysis.process_scores,
+        key=lambda s: (-s.score, verdict_order.get(s.verdict, 3)),
+    )
     if not material_class:
         return scores
     compatible = processes_for_material_class(material_class)
@@ -236,10 +203,6 @@ def best_process_for_material(
     top_score = ranked[0].score
     top = [s for s in ranked if s.score == top_score]
     if prefer:
-        # First mention wins, and anything not named sorts after every named one
-        # (["cnc_turning", "cnc_turning"] used to rank turning level with the rest).
-        prefer_order: dict[str, int] = {}
-        for i, v in enumerate(prefer):
-            prefer_order.setdefault(v, i)
-        top.sort(key=lambda s: prefer_order.get(s.process.value, len(prefer)))
+        prefer_order = {v: i for i, v in enumerate(prefer)}
+        top.sort(key=lambda s: prefer_order.get(s.process.value, len(prefer_order)))
     return top[0].process

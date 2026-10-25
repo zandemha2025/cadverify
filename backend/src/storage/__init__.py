@@ -17,12 +17,10 @@ from src.storage.base import (
 from src.storage.factory import (
     DirectUploadStoreConfigurationError,
     get_direct_upload_store,
-    get_local_direct_upload_store,
     get_object_store,
     selected_backend,
 )
 from src.storage.local import LocalObjectStore
-from src.storage.local_multipart import LocalMultipartStore, PartTooLargeError
 from src.storage.s3 import S3ObjectStore
 
 __all__ = [
@@ -33,12 +31,9 @@ __all__ = [
     "ObjectNotFoundError",
     "Payload",
     "LocalObjectStore",
-    "LocalMultipartStore",
-    "PartTooLargeError",
     "S3ObjectStore",
     "DirectUploadStoreConfigurationError",
     "get_direct_upload_store",
-    "get_local_direct_upload_store",
     "get_object_store",
     "selected_backend",
 ]

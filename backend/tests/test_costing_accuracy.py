@@ -150,23 +150,3 @@ def test_serial_am_within_band_after_xy_nesting(res):
         assert abs(per[proc]["median_signed_err"]) <= 0.60, (
             f"{proc} median {per[proc]['median_signed_err']:+.2f} must now be "
             f"within +/-60% after XY nesting")
-
-
-# ── R1S: FDM and SLA coupons against the slicer, not their volume ───────────
-def test_print_coupons_use_the_slicer_reference(res):
-    """FDM and SLA coupons the slicer reference covers are compared with R1S (PrusaSlicer's
-    own plate time and material, priced with independent rate bands), not R1's volume-only
-    band; the coupons the slicer printer can't hold keep R1."""
-    sliced = [c for c in res.comparisons if c.reference == "R1S"]
-    assert {c.process for c in sliced} == {"fdm", "sla"}
-    for c in sliced:
-        lo, hi = harness.ref_print(c.process, c.part)
-        assert (c.ref_lo, c.ref_hi) == (round(lo, 2), round(hi, 2))
-        assert c.part in harness.R1S_SLICED and c.process in harness.R1S_SLICED[c.part]
-    for c in res.comparisons:
-        if c.process in ("fdm", "sla") and c.reference != "R1S":
-            assert c.reference == "R1" and c.process not in harness.R1S_SLICED.get(c.part, {})
-    per = harness.aggregate_by_process(sliced)
-    for proc in ("fdm", "sla"):
-        assert per[proc]["pct_in_band"] >= 80.0, (proc, per[proc])
-        assert abs(per[proc]["median_signed_err"]) <= 0.60, (proc, per[proc])

@@ -24,8 +24,7 @@ from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
-from src.auth.org_binding import gate_org
-from src.db.models import ApiKey, Batch, Membership, Organization, User
+from src.db.models import ApiKey, Batch, Membership, User
 
 # org_role values allowed by the memberships CHECK constraint (migration 0009).
 ORG_ROLES = ("admin", "member", "viewer")
@@ -53,91 +52,24 @@ def personal_org_slug(email: str) -> str:
 
 
 def personal_org_name(email: str) -> str:
-    """The name personal orgs had before 0060 (and the 0009 backfill gave)."""
+    """Human-readable default name for a user's personal org."""
     local = email.split("@", 1)[0]
     return f"{local}'s Organization"
-
-
-# Second-level labels under a country code ("acme.co.uk"): the company is the label before them.
-_SECOND_LEVEL = {"co", "com", "org", "net", "ac", "gov", "edu", "ltd", "plc", "or", "ne", "go"}
-ORG_NAME_MAX = 80
-
-
-# Trade words a run-together company domain ends with ("northfieldpumps" -> "Northfield
-# Pumps", "tricountyprecision" -> "Tricounty Precision"). Only a trailing word is split
-# off, and only when at least 3 letters stay in front; anything else stays one word.
-_TRADE_WORDS = tuple(sorted({
-    "pumps", "pump", "valves", "valve", "fluid", "fluids", "precision", "machining", "machine",
-    "machines", "manufacturing", "mfg", "industries", "industrial", "systems", "engineering",
-    "aerospace", "aero", "tooling", "tools", "tool", "works", "metals", "metal", "products",
-    "controls", "robotics", "motors", "motor", "technologies", "tech", "labs", "design",
-    "fabrication", "fab", "castings", "casting", "forge", "forging", "plastics", "molding",
-    "moulding", "components", "devices", "medical", "energy", "power", "solutions", "group",
-    "automation", "dynamics", "instruments", "electric", "electronics", "hydraulics", "gears",
-    "gear", "parts", "supply", "marine", "motion", "fasteners", "springs", "bearings", "steel",
-    "foundry", "industries", "equipment", "sensors", "optics", "defense", "defence",
-}, key=len, reverse=True))
-
-
-def _split_trade_word(word: str) -> list[str]:
-    for t in _TRADE_WORDS:
-        if word.endswith(t) and len(word) - len(t) >= 3:
-            return [*_split_trade_word(word[: -len(t)]), t]
-    return [word]
-
-
-def company_from_domain(domain: str) -> str | None:
-    """The company in a work email's domain: "northfieldpumps.com" -> "Northfield Pumps",
-    "mail.acme-aero.co.uk" -> "Acme Aero", "ridgelinefluid.com" -> "Ridgeline Fluid". A
-    run-together name is split before a trailing trade word (``_TRADE_WORDS``); it is
-    a reading of the domain, so the org can be renamed (PATCH /orgs/current) and the
-    app asks once. None when there's no usable label."""
-    labels = [label for label in domain.strip().lower().rstrip(".").split(".") if label]
-    if len(labels) < 2:
-        return None
-    pick = labels[-3] if len(labels) >= 3 and labels[-2] in _SECOND_LEVEL and len(labels[-1]) == 2 else labels[-2]
-    words = [w for w in re.split(r"[-_]+", pick) if w and not w.isdigit()]
-    if not words:
-        return None
-    words = [part for w in words for part in _split_trade_word(w)]
-    return " ".join(w[:1].upper() + w[1:] for w in words)[:ORG_NAME_MAX]
-
-
-def same_org_name(a: object, b: object) -> bool:
-    """Two org names that differ only in spacing and case ("Northfieldpumps" and the
-    "Northfield Pumps" sign-up gives now) are the same name."""
-    norm = lambda x: re.sub(r"\s+", "", str(x or "")).lower()  # noqa: E731
-    return bool(norm(a)) and norm(a) == norm(b)
-
-
-def personal_org_display_name(email: str, full_name: str | None = None) -> str:
-    """What a new account's own organization is called.
-
-    A work email: the company from its domain ("Ridgelinefluid"). A personal
-    email: the person's workspace ("Jordan Pike's workspace", else the email's
-    local part). Either can be renamed later (PATCH /orgs/current).
-    """
-    from src.auth.email_tiers import email_tier
-
-    domain = email.rsplit("@", 1)[-1] if "@" in email else ""
-    if email_tier(email) == "work":
-        company = company_from_domain(domain)
-        if company:
-            return company
-    who = " ".join((full_name or "").split()) or email.split("@", 1)[0] or "Your"
-    return f"{who}'s workspace"[:ORG_NAME_MAX]
 
 
 _PERSONAL_NAME_SUFFIX = "'s Organization"
 _SHORT_ULID_RE = re.compile(r"[0-9a-z]{8}")
 
 
-def matches_legacy_personal_naming(name: object, slug: object) -> bool:
-    """True when ``(name, slug)`` is the pair personal orgs were created with before 0060.
+def is_personal_org(name: object, slug: object) -> bool:
+    """True when ``(name, slug)`` is the pair ``ensure_personal_org`` writes.
 
-    Only migration 0060's backfill uses this rule (it keeps its own copy). The
-    marker is ``organizations.is_personal``: a personal org can be renamed, so
-    its name proves nothing.
+    A personal org is named ``"<local>'s Organization"`` and slugged
+    ``"<sanitized local>-<8 ulid chars>"`` from the same email local part. A
+    named org from ``org_service.create_org`` derives its slug from its whole
+    name, so its slug carries ``-s-organization`` before the suffix and never
+    matches. Organizations have no rename path, so the pair stays a reliable
+    marker for the lifetime of the org.
     """
     if not isinstance(name, str) or not isinstance(slug, str):
         return False
@@ -147,23 +79,6 @@ def matches_legacy_personal_naming(name: object, slug: object) -> bool:
     stem = _SLUG_SANITIZE.sub("-", local.lower()).strip("-") or "org"
     prefix = f"{stem}-"
     return slug.startswith(prefix) and _SHORT_ULID_RE.fullmatch(slug[len(prefix):]) is not None
-
-
-def is_personal_org(is_personal: object) -> bool:
-    """True for a personal org, read from its ``is_personal`` column (never its name)."""
-    return is_personal is True
-
-
-async def org_is_personal(session: AsyncSession, org_id: str) -> bool:
-    """True for a personal org (the one every account gets at sign-up), by its column."""
-    row = (
-        await session.execute(
-            select(Organization.is_personal).where(Organization.id == org_id)
-        )
-    ).first()
-    if row is None:
-        return False
-    return is_personal_org(row[0])
 
 
 def caller_org_subquery(user_id: int):
@@ -191,21 +106,7 @@ def caller_org_subquery(user_id: int):
     ``user_id`` binds as a literal parameter, so the returned expression is
     self-contained (not correlated against the outer table) — safe to drop into
     any ``select`` regardless of what it reads from.
-
-    Inside a request whose role gate already checked an org for this user
-    (``auth.org_binding``, R2 F1), the answer is that org — still only while the
-    membership is live (else NULL: no rows, never another org) — so a switch
-    sent while the request runs can't move it into an org the gate never
-    checked.
     """
-    bound = gate_org(user_id)
-    if bound is not None:
-        return (
-            select(Membership.org_id)
-            .where(Membership.user_id == user_id, Membership.org_id == bound)
-            .limit(1)
-            .scalar_subquery()
-        )
     current_org = (
         select(User.current_org_id).where(User.id == user_id).scalar_subquery()
     )
@@ -242,9 +143,6 @@ async def resolve_org(session: AsyncSession, user_id: int) -> Optional[str]:
 
     Membership is RE-VALIDATED on every call (not a cached claim), so a removed
     member loses access immediately.
-
-    Inside a request whose role gate checked an org, this is that org (see
-    :func:`caller_org_subquery`).
     """
     return (
         await session.execute(select(caller_org_subquery(user_id)))
@@ -285,12 +183,7 @@ async def revoke_org_api_keys(
 
 
 async def ensure_personal_org(
-    session: AsyncSession,
-    user_id: int,
-    email: str,
-    full_name: str | None = None,
-    *,
-    name: str | None = None,
+    session: AsyncSession, user_id: int, email: str
 ) -> str:
     """Get-or-create the user's personal org; return its org_id.
 
@@ -317,10 +210,10 @@ async def ensure_personal_org(
     org_id = str(ULID())
     await session.execute(
         text(
-            "INSERT INTO organizations (id, name, slug, is_personal, created_at) "
-            "VALUES (:id, :name, :slug, true, now())"
+            "INSERT INTO organizations (id, name, slug, created_at) "
+            "VALUES (:id, :name, :slug, now())"
         ),
-        {"id": org_id, "name": name or personal_org_display_name(email, full_name), "slug": personal_org_slug(email)},
+        {"id": org_id, "name": personal_org_name(email), "slug": personal_org_slug(email)},
     )
     await session.execute(
         text(

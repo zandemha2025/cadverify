@@ -8,14 +8,11 @@
  *
  *     unit(q) = fixedAmort / q + variablePerUnit
  *
- * Preserve every reported point. Between and beyond them, an estimate that
- * carries the model's own structure (`qty_model`, ce-06) is priced by it: the
- * engine's own number at that quantity, learning and order minimums included.
- * An older record without it falls back to interpolating in inverse quantity,
- * which is approximate: minimum charges and batch rounding need a fresh run.
+ * Preserve every reported point and interpolate between neighboring points in
+ * inverse quantity. The endpoint fit is used outside the costed range. Curves
+ * are approximate: minimum charges and batch rounding need a fresh engine run.
  */
 import type { CostReport, CostEstimate } from "@/lib/api";
-import { unitCostAt as modelUnitCostAt } from "./qty-model.ts";
 
 export interface ProcessCurve {
   process: string;
@@ -29,8 +26,6 @@ export interface ProcessCurve {
   leadHigh: number | null;
   /** the actually-costed (qty, unit) points, for reference dots */
   points: { qty: number; unit: number }[];
-  /** An estimate carrying the model's own structure: the curve is then exact between points. */
-  model?: Pick<CostEstimate, "qty_model"> | null;
 }
 
 export interface Breakeven {
@@ -49,33 +44,11 @@ export interface Recommendation {
   dfmReady: boolean;
 }
 
-/** A curve priced by the model's own structure at every quantity (its estimate carries `qty_model`). */
-export function isModeled(c: ProcessCurve): boolean {
-  return !!c.model && modelUnitCostAt(c.model, 1) != null;
-}
-
-/**
- * The cost-by-quantity chart's note (C1): a record whose curves carry the
- * model (`qty_model`) is the model's own price at every quantity; an older one
- * is interpolated between the costed quantities, which is approximate. When
- * only some curves carry it, the others are named.
- */
-export function chartScaleNote(curves: readonly ProcessCurve[], name: (process: string) => string = (p) => p): string {
-  const rough = curves.filter((c) => !isModeled(c));
-  if (!curves.length || rough.length === curves.length) return "Log scales · approximate between costed quantities";
-  if (!rough.length) return "Log scales · the model’s own price at every quantity";
-  const names = [...new Set(rough.map((c) => name(c.process)))];
-  const list = names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0];
-  return `Log scales · the model’s own price at every quantity; ${list} approximate between costed quantities`;
-}
-
 /** unit cost of a curve at quantity q. */
 export function unitCostAt(c: ProcessCurve, q: number): number {
   if (q <= 0) return Infinity;
   const exact = c.points.find((p) => p.qty === q);
   if (exact) return exact.unit;
-  const modeled = c.model ? modelUnitCostAt(c.model, q) : null;
-  if (modeled != null) return modeled;
   const upper = c.points.findIndex((p) => p.qty > q);
   if (upper > 0) {
     const lo = c.points[upper - 1];
@@ -152,8 +125,6 @@ export function deriveBreakeven(report: CostReport): Breakeven | null {
       points: ests
         .map((e) => ({ qty: e.quantity, unit: e.unit_cost_usd }))
         .sort((a, b) => a.qty - b.qty),
-      // One material's model: a process priced in two grades keeps the interpolation.
-      model: new Set(ests.map((e) => e.material)).size === 1 ? ests.find((e) => e.qty_model) ?? null : null,
     });
   }
 

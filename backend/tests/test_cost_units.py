@@ -169,7 +169,7 @@ def test_inch_declaration_discloses_source_units_as_user():
     assert su is not None
     assert su["provenance"] == "USER"          # the DECLARATION is user-supplied
     assert su["value"] == MM_PER_INCH           # the scale actually applied
-    assert "scaled" in su["source"] and "before pricing" in su["source"]
+    assert "scaled" in su["source"] and "before costing" in su["source"]
 
 
 def test_warning_fires_undeclared_and_clears_when_inch_declared():

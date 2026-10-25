@@ -1,27 +1,8 @@
-"""Secure org-scoped multipart uploads: batch ZIPs and single CAD parts.
+"""Secure org-scoped S3 multipart uploads for large batch ZIP inputs.
 
 The public API deals only in opaque ``direct_upload_id`` values. Bucket names,
 provider upload IDs, and object keys are generated and retained server-side.
 Every lifecycle read is scoped to the caller's active organization.
-
-Two purposes uploaded by the browser:
-
-* ``batch_zip``: a batch's ZIP, prepared into batch items on the worker.
-* ``part``: one CAD file (STEP, IGES or STL; gzipped, or alone in a ZIP) of up
-  to ``part_max_size_bytes()`` (2 GiB by default, on every plan), checked on the
-  worker from the stored object (``src.services.stored_check_service``).
-
-And one the worker fetches: ``link``, a part imported from a share link
-(``src.services.link_import``). Its row reserves the organization's upload
-admission (the part cap until the size is known) and is taken by its check
-from the start; the bytes go straight to the worker's disk, so nothing is
-stored under its key.
-
-Transport: on S3 the browser PUTs each part to a presigned S3 URL. On the local
-backend (development, staging; never a released process) it PUTs each part to
-the API, which streams it to ``src.storage.local_multipart`` (``put_part``).
-Either way an interrupted upload resumes: ``list_parts`` says which parts
-arrived, and only the missing ones are sent again.
 """
 from __future__ import annotations
 
@@ -36,7 +17,7 @@ import re
 import tempfile
 import zipfile
 from datetime import datetime, timedelta, timezone
-from typing import Any, Iterable, Protocol
+from typing import Any, Iterable
 
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -47,50 +28,19 @@ from src.config.public_urls import error_doc_url
 from src.db.models import Batch, DirectUpload, Organization
 from src.storage import (
     DirectUploadStoreConfigurationError,
-    LocalMultipartStore,
     S3ObjectStore,
     get_direct_upload_store,
-    get_local_direct_upload_store,
     selected_backend,
 )
 
 logger = logging.getLogger("cadverify.direct_upload_service")
 
-
-class OwnedUpload(Protocol):
-    """What the download and its ownership check read of a direct upload, as the
-    worker's detached snapshot of a ``DirectUpload`` row carries it
-    (``stored_check_tasks._snapshot``). Both functions take the row too."""
-
-    @property
-    def ulid(self) -> str: ...
-    @property
-    def org_id(self) -> str: ...
-    @property
-    def purpose(self) -> str: ...
-    @property
-    def filename(self) -> str: ...
-    @property
-    def object_key(self) -> str: ...
-    @property
-    def expected_size_bytes(self) -> int: ...
-    @property
-    def expected_checksum_sha256(self) -> str: ...
-
-
 PURPOSE_BATCH_ZIP = "batch_zip"
-PURPOSE_PART = "part"
-# Not a multipart purpose: a link's row is made by POST /uploads/from-link only.
-PURPOSE_LINK = "link"
-ALLOWED_PURPOSES = frozenset({PURPOSE_BATCH_ZIP, PURPOSE_PART})
+ALLOWED_PURPOSES = frozenset({PURPOSE_BATCH_ZIP})
 ALLOWED_BATCH_ZIP_CONTENT_TYPES = frozenset(
     {"application/zip", "application/x-zip-compressed"}
 )
 ALLOWED_BATCH_ZIP_EXTENSIONS = (".zip",)
-# One CAD file, as is, gzipped, or as the one part in a ZIP.
-PART_CAD_SUFFIXES = (".stl", ".step", ".stp", ".iges", ".igs")
-PART_SUFFIXES = PART_CAD_SUFFIXES + tuple(f"{s}.gz" for s in PART_CAD_SUFFIXES) + (".zip",)
-DEFAULT_PART_MAX_BYTES = 2 * 1024**3
 
 S3_MIN_PART_SIZE_BYTES = 5 * 1024**2
 S3_MAX_PARTS = 10_000
@@ -207,25 +157,7 @@ def part_url_ttl_seconds() -> int:
     )
 
 
-def part_max_size_bytes() -> int:
-    """The largest single CAD file any plan uploads (``DIRECT_UPLOAD_PART_MAX_BYTES``).
-
-    Plan-independent, and the same number for the file as uploaded and, for a
-    gzipped or zipped part, for the CAD file inside it. How large a file the
-    worker can then check is a separate, memory-bound limit
-    (``src.services.stored_check_service.processing_cap``).
-    """
-    return _env_int(
-        "DIRECT_UPLOAD_PART_MAX_BYTES",
-        DEFAULT_PART_MAX_BYTES,
-        minimum=1024**2,
-        maximum=5 * 1024**3,
-    )
-
-
-def max_size_bytes(purpose: str = PURPOSE_BATCH_ZIP) -> int:
-    if purpose == PURPOSE_PART:
-        return part_max_size_bytes()
+def max_size_bytes() -> int:
     # Read through the batch service so tests/operator overrides share the exact
     # same authoritative cap as the proxied ZIP path.
     from src.services import batch_service
@@ -233,14 +165,8 @@ def max_size_bytes(purpose: str = PURPOSE_BATCH_ZIP) -> int:
     return int(batch_service.BATCH_MAX_ZIP_BYTES)
 
 
-def active_upload_count_limit(plan: str | None = None) -> int:
-    """Maximum concurrently reserved direct uploads for one organization.
-
-    A free (trial) account's organization gets ``DIRECT_UPLOAD_MAX_ACTIVE_PER_ORG_FREE``
-    (2 by default); every other plan ``DIRECT_UPLOAD_MAX_ACTIVE_PER_ORG`` (4).
-    """
-    if plan == "trial":
-        return _env_int("DIRECT_UPLOAD_MAX_ACTIVE_PER_ORG_FREE", 2, minimum=1, maximum=100)
+def active_upload_count_limit() -> int:
+    """Maximum concurrently reserved direct uploads for one organization."""
     return _env_int(
         "DIRECT_UPLOAD_MAX_ACTIVE_PER_ORG",
         4,
@@ -249,39 +175,14 @@ def active_upload_count_limit(plan: str | None = None) -> int:
     )
 
 
-def active_upload_bytes_limit(plan: str | None = None) -> int:
-    """Maximum declared bytes reserved by unclean uploads in one organization.
-
-    Free (trial): ``DIRECT_UPLOAD_MAX_ACTIVE_BYTES_PER_ORG_FREE``, 4 GiB by
-    default (two 2 GiB parts); every other plan 10 GiB.
-    """
-    if plan == "trial":
-        return _env_int("DIRECT_UPLOAD_MAX_ACTIVE_BYTES_PER_ORG_FREE", 4 * 1024**3, minimum=1, maximum=1024**4)
+def active_upload_bytes_limit() -> int:
+    """Maximum declared bytes reserved by unclean uploads in one organization."""
     return _env_int(
         "DIRECT_UPLOAD_MAX_ACTIVE_BYTES_PER_ORG",
         10 * 1024**3,
         minimum=1,
         maximum=1024**4,
     )
-
-
-def part_suffix(filename: str) -> str | None:
-    """The accepted compound suffix of a part's name (``.step``, ``.stl.gz``, ``.zip``), else None."""
-    lower = (filename or "").lower()
-    for suffix in sorted(PART_SUFFIXES, key=len, reverse=True):
-        if lower.endswith(suffix) and len(lower) > len(suffix):
-            return suffix
-    return None
-
-
-def part_content_type(filename: str) -> str:
-    """The content type a part is stored under, from its name (never the browser's guess)."""
-    suffix = part_suffix(filename) or ""
-    if suffix.endswith(".gz"):
-        return "application/gzip"
-    if suffix == ".zip":
-        return "application/zip"
-    return "application/octet-stream"
 
 
 def part_size_bytes(expected_size_bytes: int) -> int:
@@ -302,24 +203,9 @@ def part_size_bytes(expected_size_bytes: int) -> int:
     return math.ceil(selected / mib) * mib
 
 
-def _require_s3_store() -> S3ObjectStore | LocalMultipartStore:
-    """Return the dedicated incoming-upload store, failing closed otherwise.
-
-    The S3 namespace, or on the local backend outside production the local
-    incoming directory (parts relayed through the API). The name predates the
-    local store; tests patch it.
-    """
-    backend = selected_backend()
-    if backend == "local":
-        try:
-            return get_local_direct_upload_store()
-        except DirectUploadStoreConfigurationError as exc:
-            raise _error(
-                501,
-                "DIRECT_UPLOAD_REQUIRES_S3",
-                "Direct upload is unavailable because this server is not using S3 storage.",
-            ) from exc
-    if backend != "s3":
+def _require_s3_store() -> S3ObjectStore:
+    """Return the dedicated incoming-upload store, failing closed otherwise."""
+    if selected_backend() != "s3":
         raise _error(
             501,
             "DIRECT_UPLOAD_REQUIRES_S3",
@@ -343,33 +229,29 @@ def _require_s3_store() -> S3ObjectStore | LocalMultipartStore:
     return store
 
 
-def capability(purpose: str = PURPOSE_BATCH_ZIP, *, plan: str | None = None) -> dict[str, Any]:
+def capability(purpose: str = PURPOSE_BATCH_ZIP) -> dict[str, Any]:
     if purpose not in ALLOWED_PURPOSES:
         raise _error(
             422,
             "DIRECT_UPLOAD_INVALID_PURPOSE",
-            "purpose must be 'batch_zip' or 'part'.",
+            "purpose must be 'batch_zip'.",
         )
     available = True
     unavailable_code: str | None = None
-    transport: str | None = None
     try:
-        transport = getattr(_require_s3_store(), "transport", "s3")
+        _require_s3_store()
     except DirectUploadError as exc:
         available = False
         unavailable_code = exc.code
-    part = purpose == PURPOSE_PART
     return {
         "purpose": purpose,
         "available": available,
         "direct_upload": available,
         "unavailable_code": unavailable_code,
-        # "s3": PUT each part to its presigned URL. "relay": PUT it to the API path given.
-        "transport": transport,
-        "accepted_content_types": ["*"] if part else sorted(ALLOWED_BATCH_ZIP_CONTENT_TYPES),
-        "accepted_extensions": list(PART_SUFFIXES if part else ALLOWED_BATCH_ZIP_EXTENSIONS),
-        "max_size_bytes": max_size_bytes(purpose),
-        "part_size_bytes": part_size_bytes(max_size_bytes(purpose)),
+        "accepted_content_types": sorted(ALLOWED_BATCH_ZIP_CONTENT_TYPES),
+        "accepted_extensions": list(ALLOWED_BATCH_ZIP_EXTENSIONS),
+        "max_size_bytes": max_size_bytes(),
+        "part_size_bytes": part_size_bytes(max_size_bytes()),
         "max_parts": S3_MAX_PARTS,
         "upload_expires_in_seconds": upload_ttl_seconds(),
         "part_url_expires_in_seconds": part_url_ttl_seconds(),
@@ -379,9 +261,8 @@ def capability(purpose: str = PURPOSE_BATCH_ZIP, *, plan: str | None = None) -> 
         "checksum_algorithm": "sha256",
         "checksum_encoding": "hex",
         "checksum_required": True,
-        "max_active_uploads_per_org": active_upload_count_limit(plan),
-        "max_active_upload_bytes_per_org": active_upload_bytes_limit(plan),
-        "resumable": True,
+        "max_active_uploads_per_org": active_upload_count_limit(),
+        "max_active_upload_bytes_per_org": active_upload_bytes_limit(),
     }
 
 
@@ -397,9 +278,8 @@ def _validate_initiate(
         raise _error(
             422,
             "DIRECT_UPLOAD_INVALID_PURPOSE",
-            "purpose must be 'batch_zip' or 'part'.",
+            "purpose must be 'batch_zip'.",
         )
-    part = purpose == PURPOSE_PART
     if (
         not filename
         or len(filename) > 255
@@ -407,29 +287,14 @@ def _validate_initiate(
         or os.path.basename(filename) != filename
         or "\\" in filename
         or any(ord(char) < 32 for char in filename)
-        or (part and part_suffix(filename) is None)
-        or (not part and not filename.lower().endswith(ALLOWED_BATCH_ZIP_EXTENSIONS))
+        or not filename.lower().endswith(ALLOWED_BATCH_ZIP_EXTENSIONS)
     ):
         raise _error(
             422,
             "DIRECT_UPLOAD_INVALID_FILENAME",
-            (
-                "part filename must be a basename ending in .step, .stp, .iges, .igs or .stl, "
-                "optionally with .gz, or .zip."
-                if part
-                else "batch_zip filename must be a basename ending in .zip."
-            ),
+            "batch_zip filename must be a basename ending in .zip.",
         )
-    # A part's stored type comes from its name (part_content_type); the
-    # browser's guess is only checked for sanity.
-    if part:
-        if not isinstance(content_type, str) or len(content_type) > 255 or any(ord(c) < 32 for c in content_type):
-            raise _error(
-                422,
-                "DIRECT_UPLOAD_INVALID_CONTENT_TYPE",
-                "content_type must be a media type string.",
-            )
-    elif content_type not in ALLOWED_BATCH_ZIP_CONTENT_TYPES:
+    if content_type not in ALLOWED_BATCH_ZIP_CONTENT_TYPES:
         raise _error(
             422,
             "DIRECT_UPLOAD_INVALID_CONTENT_TYPE",
@@ -441,16 +306,12 @@ def _validate_initiate(
             "DIRECT_UPLOAD_INVALID_SIZE",
             "size_bytes must be greater than zero.",
         )
-    maximum = max_size_bytes(purpose)
+    maximum = max_size_bytes()
     if size_bytes > maximum:
         raise _error(
             413,
             "DIRECT_UPLOAD_TOO_LARGE",
-            (
-                f"This file is {_gib(size_bytes)}; the largest single file ScaleCAD takes is {_gib(maximum)}."
-                if part
-                else f"size_bytes exceeds the maximum batch ZIP size of {maximum} bytes."
-            ),
+            f"size_bytes exceeds the maximum batch ZIP size of {maximum} bytes.",
         )
     if not isinstance(checksum_sha256, str) or not _SHA256_HEX.fullmatch(
         checksum_sha256
@@ -458,19 +319,9 @@ def _validate_initiate(
         raise _error(
             422,
             "DIRECT_UPLOAD_INVALID_CHECKSUM",
-            "checksum_sha256 must be the 64-character hexadecimal SHA-256 of the file."
-            if part
-            else "checksum_sha256 must be the 64-character hexadecimal SHA-256 of the ZIP.",
+            "checksum_sha256 must be the 64-character hexadecimal SHA-256 of the ZIP.",
         )
     return checksum_sha256.lower()
-
-
-def _gib(n: int) -> str:
-    """'2 GB', '1.4 GB', '650 MB' (binary units, as the app states sizes)."""
-    if n >= 1024**3:
-        value = n / 1024**3
-        return f"{value:.0f} GB" if value >= 10 or value == int(value) else f"{value:.1f} GB"
-    return f"{max(1, round(n / 1024**2))} MB"
 
 
 def _validate_idempotency_key(idempotency_key: str | None) -> str:
@@ -508,30 +359,17 @@ def _request_fingerprint(
     return hashlib.sha256(canonical).hexdigest()
 
 
-def _object_key(org_id: str, upload_ulid: str, purpose: str = PURPOSE_BATCH_ZIP, filename: str | None = None) -> str:
+def _object_key(org_id: str, upload_ulid: str) -> str:
     if not _SAFE_SCOPE_COMPONENT.fullmatch(org_id):
         raise RuntimeError("invalid organization identifier for direct-upload storage")
     if not _SAFE_SCOPE_COMPONENT.fullmatch(upload_ulid):
         raise RuntimeError("invalid direct-upload identifier for object storage")
-    if purpose == PURPOSE_LINK:
-        # Reserved under the same layout; a fetched link's bytes are never stored here.
-        return f"incoming/{org_id}/{upload_ulid}/link"
-    if purpose == PURPOSE_PART:
-        suffix = part_suffix(filename or "")
-        if suffix is None:
-            raise RuntimeError("invalid part filename for direct-upload storage")
-        # The name the server chose, never the caller's: only the suffix carries over.
-        return f"incoming/{org_id}/{upload_ulid}/part{suffix}"
     return f"incoming/{org_id}/{upload_ulid}/batch.zip"
 
 
-def validate_owned_object_key(upload: DirectUpload | OwnedUpload) -> None:
+def validate_owned_object_key(upload: DirectUpload) -> None:
     """Reject a corrupted/tampered row before any provider object is touched."""
-    try:
-        expected = _object_key(upload.org_id, upload.ulid, upload.purpose or PURPOSE_BATCH_ZIP, upload.filename)
-    except RuntimeError:
-        expected = None
-    if upload.object_key != expected:
+    if upload.object_key != _object_key(upload.org_id, upload.ulid):
         raise DirectUploadPreparationValidationError(
             409,
             "DIRECT_UPLOAD_OBJECT_KEY_INVALID",
@@ -564,31 +402,6 @@ def serialize(
         integrity_status = "verified"
     elif upload.error_code == "DIRECT_UPLOAD_CHECKSUM_MISMATCH":
         integrity_status = "failed"
-    if upload.purpose == PURPOSE_LINK:
-        # A link's size and SHA-256 are known once fetched; until then its row
-        # holds the admission reservation and a placeholder, not facts.
-        fetched = upload.checksum_verified_at is not None
-        return {
-            "direct_upload_id": upload.ulid,
-            "purpose": upload.purpose,
-            "status": upload.status,
-            "filename": upload.filename,
-            "content_type": upload.content_type,
-            "size_bytes": upload.actual_size_bytes if fetched else None,
-            "actual_size_bytes": upload.actual_size_bytes,
-            "checksum_algorithm": "sha256",
-            "checksum_sha256": upload.expected_checksum_sha256 if fetched else None,
-            "checksum_verified_at": _serialize_timestamp(upload.checksum_verified_at),
-            "integrity_status": integrity_status,
-            "expires_at": _serialize_timestamp(upload.expires_at),
-            "completed_at": _serialize_timestamp(upload.completed_at),
-            "can_abort": False,
-            "error": (
-                {"code": upload.error_code, "message": upload.error_message}
-                if upload.error_code
-                else None
-            ),
-        }
     return {
         "direct_upload_id": upload.ulid,
         "purpose": upload.purpose,
@@ -621,13 +434,8 @@ def serialize(
     }
 
 
-def relay_part_url(upload_ulid: str, part_number: int) -> str:
-    """Where a browser PUTs one part on the local backend (through the API)."""
-    return f"/api/v1/uploads/{upload_ulid}/parts/{part_number}"
-
-
 async def _presign_parts(
-    store: S3ObjectStore | LocalMultipartStore,
+    store: S3ObjectStore,
     upload: DirectUpload,
     part_numbers: list[int],
 ) -> tuple[list[dict[str, Any]], datetime]:
@@ -635,14 +443,6 @@ async def _presign_parts(
     remaining = max(1, int((_utc(upload.expires_at) - now).total_seconds()))
     expires_in = min(part_url_ttl_seconds(), remaining)
     expires_at = now + timedelta(seconds=expires_in)
-
-    if getattr(store, "transport", "s3") == "relay" or isinstance(store, LocalMultipartStore):
-        # The relay path is authenticated and org-scoped like every other
-        # upload call; it needs no signature and lives as long as the upload.
-        parts = [{"part_number": n, "url": relay_part_url(upload.ulid, n)} for n in part_numbers]
-        for part in parts:
-            part["expires_at"] = _utc(upload.expires_at).isoformat()
-        return parts, _utc(upload.expires_at)
 
     def _generate() -> list[dict[str, Any]]:
         return [
@@ -710,7 +510,6 @@ async def _enforce_upload_admission(
     *,
     org_id: str,
     requested_size_bytes: int,
-    plan: str | None = None,
 ) -> None:
     """Reserve bounded count/bytes while the org row lock prevents races.
 
@@ -729,8 +528,8 @@ async def _enforce_upload_admission(
         )
     )
     active_count, reserved_bytes = result.one()
-    count_limit = active_upload_count_limit(plan)
-    bytes_limit = active_upload_bytes_limit(plan)
+    count_limit = active_upload_count_limit()
+    bytes_limit = active_upload_bytes_limit()
     if int(active_count) >= count_limit:
         raise _error(
             429,
@@ -759,7 +558,6 @@ async def initiate(
     size_bytes: int,
     checksum_sha256: str | None,
     idempotency_key: str | None,
-    plan: str | None = None,
 ) -> tuple[DirectUpload, list[dict[str, Any]], bool, bool]:
     """Initiate provider multipart state and atomically persist ownership+audit."""
     normalized_checksum = _validate_initiate(
@@ -785,8 +583,6 @@ async def initiate(
             "DIRECT_UPLOAD_ORG_REQUIRED",
             "An active organization is required for direct upload.",
         )
-    if purpose == PURPOSE_PART:
-        content_type = part_content_type(filename)
 
     await _lock_org_upload_admission(session, org_id)
     existing = await _idempotent_upload(
@@ -833,11 +629,10 @@ async def initiate(
         session,
         org_id=org_id,
         requested_size_bytes=size_bytes,
-        plan=plan,
     )
 
     upload_ulid = str(ULID())
-    key = _object_key(org_id, upload_ulid, purpose, filename)
+    key = _object_key(org_id, upload_ulid)
     selected_part_size = part_size_bytes(size_bytes)
     part_count = math.ceil(size_bytes / selected_part_size)
     expires_at = _now() + timedelta(seconds=upload_ttl_seconds())
@@ -957,9 +752,6 @@ async def _get_owned_upload(
 
 
 async def _cleanup_provider_state(upload: DirectUpload) -> None:
-    if upload.purpose == PURPOSE_LINK:
-        validate_owned_object_key(upload)
-        return  # nothing was stored for a link
     store = _require_s3_store()
     validate_owned_object_key(upload)
     if upload.status in {"initiated", "completing"}:
@@ -1087,73 +879,6 @@ async def refresh_part_urls(
     store = _require_s3_store()
     urls, _ = await _presign_parts(store, upload, numbers)
     return urls
-
-
-async def list_uploaded_parts(
-    session: AsyncSession,
-    *,
-    user_id: int,
-    upload_ulid: str,
-) -> list[dict[str, Any]]:
-    """The parts storage has received, so an interrupted upload sends only the rest."""
-    upload = await _get_owned_upload(session, user_id, upload_ulid, for_update=False)
-    if await _expire_if_needed(session, upload, actor_id=user_id):
-        raise _error(410, "DIRECT_UPLOAD_EXPIRED", "Direct upload has expired.")
-    if upload.status != "initiated":
-        return []
-    store = _require_s3_store()
-    validate_owned_object_key(upload)
-    try:
-        parts = await asyncio.to_thread(store.list_parts, upload.object_key, upload.multipart_upload_id)
-    except Exception as exc:
-        raise _storage_error("list the parts of") from exc
-    return [p for p in parts if 1 <= int(p["part_number"]) <= upload.part_count]
-
-
-def expected_part_bytes(upload: DirectUpload, part_number: int) -> int:
-    """Exact size of one part: the part size, or the remainder for the last part."""
-    if part_number < upload.part_count:
-        return int(upload.part_size_bytes)
-    return int(upload.expected_size_bytes) - int(upload.part_size_bytes) * (upload.part_count - 1)
-
-
-async def lock_part_for_relay(
-    session: AsyncSession,
-    *,
-    user_id: int,
-    upload_ulid: str,
-    part_number: int,
-) -> tuple[DirectUpload, LocalMultipartStore, int]:
-    """Check a relayed part PUT before reading its body: owner, state, number and exact size.
-
-    Returns the upload, the local store and the part's exact expected size.
-    The row lock is released before the body is read (the caller commits), so
-    parts upload in parallel.
-    """
-    store = _require_s3_store()
-    if getattr(store, "transport", "s3") != "relay" or not isinstance(store, LocalMultipartStore):
-        raise _error(
-            409,
-            "DIRECT_UPLOAD_RELAY_UNAVAILABLE",
-            "Parts of this upload go straight to storage; PUT them to the part URLs given.",
-        )
-    upload = await _get_owned_upload(session, user_id, upload_ulid, for_update=True)
-    if await _expire_if_needed(session, upload, actor_id=user_id):
-        raise _error(410, "DIRECT_UPLOAD_EXPIRED", "Direct upload has expired.")
-    if upload.status != "initiated":
-        raise _error(
-            409,
-            "DIRECT_UPLOAD_INVALID_STATE",
-            f"Parts cannot be uploaded while status is {upload.status}.",
-        )
-    if isinstance(part_number, bool) or not 1 <= int(part_number) <= upload.part_count:
-        raise _error(
-            422,
-            "DIRECT_UPLOAD_PARTS_INVALID",
-            f"part_number must be in [1, {upload.part_count}].",
-        )
-    validate_owned_object_key(upload)
-    return upload, store, expected_part_bytes(upload, int(part_number))
 
 
 def _normalize_completed_parts(
@@ -1608,24 +1333,18 @@ async def mark_attachment_enqueue_failed(
     )
 
 
-def download_to_bounded_tempfile(upload: DirectUpload | OwnedUpload, progress=None) -> str:
-    """Stream the incoming object into a bounded local tempfile, verifying it.
+def download_to_bounded_tempfile(upload: DirectUpload) -> str:
+    """Stream the incoming S3 ZIP into a bounded local tempfile.
 
-    Size and SHA-256 must match what was declared at initiation. The caller
-    owns the returned path. Partial files and streams are always closed on
-    failure; the object is never materialized in process memory.
-    ``progress(bytes_read)`` is called every few MiB when given.
+    The caller owns the returned path. Partial files and streams are always
+    closed on failure; the object is never materialized in process memory.
     """
     validate_owned_object_key(upload)
-    purpose = upload.purpose or PURPOSE_BATCH_ZIP
-    limit = max_size_bytes(purpose)
-    if upload.expected_size_bytes > limit:
+    if upload.expected_size_bytes > max_size_bytes():
         raise DirectUploadPreparationValidationError(
             413,
             "DIRECT_UPLOAD_TOO_LARGE",
-            "Direct-upload ZIP exceeds the configured batch size limit."
-            if purpose == PURPOSE_BATCH_ZIP
-            else "This file is over the largest single file ScaleCAD takes.",
+            "Direct-upload ZIP exceeds the configured batch size limit.",
         )
     if not isinstance(upload.expected_checksum_sha256, str) or not re.fullmatch(
         r"[0-9a-f]{64}",
@@ -1636,15 +1355,10 @@ def download_to_bounded_tempfile(upload: DirectUpload | OwnedUpload, progress=No
             "DIRECT_UPLOAD_CHECKSUM_METADATA_INVALID",
             "Direct-upload checksum ownership metadata is invalid.",
         )
-    noun = "ZIP" if purpose == PURPOSE_BATCH_ZIP else "file"
     store = _require_s3_store()
-    if purpose == PURPOSE_PART:
-        fd, path = tempfile.mkstemp(prefix="cv_direct_part_", suffix=part_suffix(upload.filename) or ".bin")
-    else:
-        fd, path = tempfile.mkstemp(prefix="cv_direct_batch_", suffix=".zip")
+    fd, path = tempfile.mkstemp(prefix="cv_direct_batch_", suffix=".zip")
     stream = None
     total = 0
-    reported = 0
     digest = hashlib.sha256()
     try:
         stream = store.open(upload.object_key)
@@ -1654,14 +1368,11 @@ def download_to_bounded_tempfile(upload: DirectUpload | OwnedUpload, progress=No
                 if not chunk:
                     break
                 total += len(chunk)
-                if progress is not None and total - reported >= 8 * 1024 * 1024:
-                    reported = total
-                    progress(total)
-                if total > upload.expected_size_bytes or total > limit:
+                if total > upload.expected_size_bytes or total > max_size_bytes():
                     raise DirectUploadPreparationValidationError(
                         422,
                         "DIRECT_UPLOAD_SIZE_MISMATCH",
-                        f"Downloaded {noun} exceeded its completed direct-upload size.",
+                        "Downloaded ZIP exceeded its completed direct-upload size.",
                     )
                 digest.update(chunk)
                 out.write(chunk)
@@ -1669,7 +1380,7 @@ def download_to_bounded_tempfile(upload: DirectUpload | OwnedUpload, progress=No
             raise DirectUploadPreparationValidationError(
                 422,
                 "DIRECT_UPLOAD_SIZE_MISMATCH",
-                f"Downloaded {noun} size did not match the completed direct upload.",
+                "Downloaded ZIP size did not match the completed direct upload.",
             )
         actual_checksum = digest.hexdigest()
         if not hmac.compare_digest(
@@ -1679,7 +1390,7 @@ def download_to_bounded_tempfile(upload: DirectUpload | OwnedUpload, progress=No
             raise DirectUploadPreparationValidationError(
                 422,
                 "DIRECT_UPLOAD_CHECKSUM_MISMATCH",
-                f"Downloaded {noun} did not match the SHA-256 declared at initiation.",
+                "Downloaded ZIP did not match the SHA-256 declared at initiation.",
             )
         return path
     except BaseException:
@@ -1700,174 +1411,8 @@ def download_to_bounded_tempfile(upload: DirectUpload | OwnedUpload, progress=No
                 pass
 
 
-PART_CHECK_ABANDON_AFTER = timedelta(hours=24)
-
-
-async def lock_completed_part_for_check(
-    session: AsyncSession, *, user_id: int, upload_ulid: str
-) -> DirectUpload:
-    """Lock a completed part upload in the caller's org before a check is started on it."""
-    upload = await _get_owned_upload(session, user_id, upload_ulid, for_update=True)
-    if upload.purpose == PURPOSE_LINK:
-        return upload  # taken by its own check when it was made; that check is answered
-    if upload.purpose != PURPOSE_PART:
-        raise _error(
-            409,
-            "DIRECT_UPLOAD_WRONG_PURPOSE",
-            "This upload is a batch ZIP; start a batch or catalog run with it instead.",
-        )
-    if await _expire_if_needed(session, upload, actor_id=user_id):
-        raise _error(410, "DIRECT_UPLOAD_EXPIRED", "Direct upload has expired.")
-    return upload
-
-
-def attach_to_check(upload: DirectUpload) -> None:
-    """Mark a locked, completed part upload as taken by a check (same transaction as its job)."""
-    if upload.status != "completed":
-        raise _error(
-            409,
-            "DIRECT_UPLOAD_NOT_AVAILABLE",
-            "This upload is not finished, or a check already took it.",
-        )
-    upload.status = "attached"
-    upload.attached_at = _now()
-
-
-async def finish_part_upload(
-    session: AsyncSession,
-    upload: DirectUpload,
-    *,
-    ok: bool,
-    error_code: str | None = None,
-    error_message: str | None = None,
-) -> None:
-    """End a part upload after its check: the incoming object is deleted either way.
-
-    A checked part's bytes live on as the organization's kept source
-    (``source_artifact_service``); the incoming copy is transient. A failed
-    delete leaves ``storage_cleaned_at`` empty for the sweep to retry.
-    """
-    now = _now()
-    upload.status = "consumed" if ok else "failed"
-    upload.terminal_at = now
-    if ok:
-        upload.consumed_at = now
-        upload.error_code = None
-        upload.error_message = None
-    else:
-        upload.error_code = error_code or "DIRECT_UPLOAD_CHECK_FAILED"
-        upload.error_message = (error_message or "The check of this file didn't finish.")[:500]
-    await session.commit()
-    try:
-        await delete_incoming_object(upload)
-    except DirectUploadError:
-        logger.warning("incoming part %s not deleted yet; the sweep retries", upload.ulid)
-        return
-    upload.storage_cleaned_at = _now()
-    await session.commit()
-
-
-LINK_PLACEHOLDER_SHA256 = "0" * 64
-
-
-async def reserve_link_upload(
-    session: AsyncSession,
-    *,
-    user_id: int,
-    org_id: str,
-    filename: str,
-    request_fingerprint: str,
-    idempotency_key: str | None,
-    plan: str | None = None,
-) -> tuple[DirectUpload, bool]:
-    """The row a link import holds while the worker fetches and checks it.
-
-    Admitted like a direct upload (the organization's count and bytes, under
-    its row lock), reserving ``part_max_size_bytes()`` until the fetch knows the
-    size. Taken by its check at once (``attached``). The caller adds the
-    check's job and commits. Returns ``(upload, replayed)``: the same
-    Idempotency-Key with the same link returns the upload already made.
-    """
-    if idempotency_key is not None:
-        key_hash = _validate_idempotency_key(idempotency_key)
-    else:
-        key_hash = hashlib.sha256(f"link:{ULID()}".encode("ascii")).hexdigest()
-    await _lock_org_upload_admission(session, org_id)
-    existing = await _idempotent_upload(session, org_id=org_id, idempotency_key_hash=key_hash)
-    if existing is not None:
-        if existing.purpose != PURPOSE_LINK or not hmac.compare_digest(existing.request_fingerprint, request_fingerprint):
-            raise _error(
-                409,
-                "DIRECT_UPLOAD_IDEMPOTENCY_CONFLICT",
-                "Idempotency-Key was already used with different upload parameters.",
-            )
-        return existing, True
-    reserved = part_max_size_bytes()
-    await _enforce_upload_admission(session, org_id=org_id, requested_size_bytes=reserved, plan=plan)
-    upload_ulid = str(ULID())
-    now = _now()
-    upload = DirectUpload(
-        ulid=upload_ulid,
-        org_id=org_id,
-        user_id=user_id,
-        idempotency_key_hash=key_hash,
-        request_fingerprint=request_fingerprint,
-        purpose=PURPOSE_LINK,
-        status="attached",
-        filename=filename,
-        content_type="application/octet-stream",
-        expected_size_bytes=reserved,
-        expected_checksum_sha256=LINK_PLACEHOLDER_SHA256,
-        part_size_bytes=DEFAULT_PART_SIZE_BYTES,
-        part_count=1,
-        object_key=_object_key(org_id, upload_ulid, PURPOSE_LINK),
-        multipart_upload_id=PURPOSE_LINK,
-        expires_at=now + timedelta(seconds=upload_ttl_seconds()),
-        attached_at=now,
-    )
-    session.add(upload)
-    await session.flush()
-    from src.services.audit_service import emit_event
-
-    await emit_event(
-        session,
-        actor_id=user_id,
-        action="direct_upload.link_reserved",
-        resource_type="direct_upload",
-        resource_id=upload.ulid,
-        detail={"purpose": PURPOSE_LINK, "reserved_bytes": reserved},
-        org_id=org_id,
-    )
-    return upload, False
-
-
-async def record_link_fetched(
-    session: AsyncSession,
-    upload: DirectUpload,
-    *,
-    size_bytes: int,
-    sha256: str,
-    filename: str,
-) -> None:
-    """A link's bytes arrived on the worker: its real size, SHA-256 and name.
-
-    The admission reservation drops from the part cap to the real size.
-    """
-    now = _now()
-    upload.filename = filename
-    upload.content_type = part_content_type(filename)
-    upload.expected_size_bytes = size_bytes
-    upload.actual_size_bytes = size_bytes
-    upload.expected_checksum_sha256 = sha256
-    upload.checksum_verified_at = now
-    upload.completed_at = now
-    await session.commit()
-
-
 async def delete_incoming_object(upload: DirectUpload) -> None:
     validate_owned_object_key(upload)
-    if upload.purpose == PURPOSE_LINK:
-        return  # a link's bytes went to the worker's disk, never to this store
     store = _require_s3_store()
     try:
         await asyncio.to_thread(store.delete, upload.object_key)
@@ -1925,19 +1470,6 @@ async def sweep_expired_and_unclean_uploads(
                             Batch.status.in_(["failed", "cancelled"]),
                             DirectUpload.storage_cleaned_at.is_(None),
                         ),
-                        # A part whose check never finished (its worker died):
-                        # its object goes after PART_CHECK_ABANDON_AFTER.
-                        and_(
-                            DirectUpload.purpose.in_([PURPOSE_PART, PURPOSE_LINK]),
-                            DirectUpload.status.in_(["attached", "preparing"]),
-                            DirectUpload.attached_at <= now - PART_CHECK_ABANDON_AFTER,
-                            DirectUpload.storage_cleaned_at.is_(None),
-                        ),
-                        and_(
-                            DirectUpload.purpose.in_([PURPOSE_PART, PURPOSE_LINK]),
-                            DirectUpload.status == "consumed",
-                            DirectUpload.storage_cleaned_at.is_(None),
-                        ),
                     )
                 )
                 .order_by(DirectUpload.expires_at.asc(), DirectUpload.id.asc())
@@ -1991,14 +1523,7 @@ async def sweep_expired_and_unclean_uploads(
 
         prior_status = upload.status
         upload.storage_cleaned_at = now
-        if upload.purpose in (PURPOSE_PART, PURPOSE_LINK) and prior_status in {"attached", "preparing"}:
-            upload.status = "failed"
-            upload.terminal_at = now
-            upload.error_code = "DIRECT_UPLOAD_CHECK_ABANDONED"
-            upload.error_message = "The check of this file never finished; upload it again to check it."
-        elif prior_status == "consumed":
-            pass
-        elif prior_status in {"initiated", "completing", "completed"}:
+        if prior_status in {"initiated", "completing", "completed"}:
             upload.status = "expired"
             upload.terminal_at = now
             upload.error_code = "DIRECT_UPLOAD_EXPIRED"
@@ -2045,18 +1570,6 @@ __all__ = [
     "DirectUploadError",
     "DirectUploadPreparationValidationError",
     "PURPOSE_BATCH_ZIP",
-    "PURPOSE_LINK",
-    "PURPOSE_PART",
-    "attach_to_check",
-    "expected_part_bytes",
-    "finish_part_upload",
-    "list_uploaded_parts",
-    "lock_completed_part_for_check",
-    "lock_part_for_relay",
-    "part_content_type",
-    "part_max_size_bytes",
-    "part_suffix",
-    "relay_part_url",
     "abort",
     "attach_to_batch",
     "attached_batch_ulid",
@@ -2071,9 +1584,7 @@ __all__ = [
     "mark_attachment_enqueue_failed",
     "mark_storage_cleaned",
     "preparation_error",
-    "record_link_fetched",
     "refresh_part_urls",
-    "reserve_link_upload",
     "serialize",
     "sweep_expired_and_unclean_uploads",
     "validate_owned_object_key",

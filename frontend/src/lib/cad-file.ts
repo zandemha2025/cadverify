@@ -27,26 +27,6 @@ export function isSupportedCad(name: string): boolean {
   return ext != null && (CAD_EXTS as readonly string[]).includes(ext);
 }
 
-/**
- * A single part compressed for upload: any CAD extension plus `.gz`
- * (bracket.step.gz), or a `.zip` holding one part. The worker unpacks it
- * (backend `services/part_archive.py`); a ZIP of many parts is a catalog run.
- */
-export function isCompressedCad(name: string): boolean {
-  const lower = name.toLowerCase();
-  if (lower.endsWith(".zip")) return lower.length > 4;
-  if (!lower.endsWith(".gz")) return false;
-  return isSupportedCad(lower.slice(0, -3));
-}
-
-/** What a single-part check takes: a CAD file, gzipped or not, or a one-part ZIP. */
-export function isUploadableCad(name: string): boolean {
-  return isSupportedCad(name) || isCompressedCad(name);
-}
-
-/** `accept=` for a single-part pick that also takes compressed parts. */
-export const CAD_UPLOAD_ACCEPT = `${CAD_ACCEPT},.gz,.zip`;
-
 /** human-readable list of accepted types, e.g. "STL, STEP or STP". */
 export function supportedCadLabel(): string {
   const upper = CAD_EXTS.map((e) => e.toUpperCase());

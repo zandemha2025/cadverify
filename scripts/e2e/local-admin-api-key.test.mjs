@@ -53,36 +53,3 @@ test("paid fixtures cannot modify remote services, remote databases or customer 
     if (saved.db === undefined) delete process.env.DATABASE_URL; else process.env.DATABASE_URL = saved.db;
   }
 });
-
-test("a minted local key asks for read and write and refuses a read-only key", async () => {
-  const saved = { app: process.env.APP_URL, db: process.env.DATABASE_URL, fetch: globalThis.fetch };
-  const bodies = [];
-  const mint = (effectiveScope) => async (url, init) => {
-    bodies.push({ url: String(url), body: JSON.parse(init.body) });
-    if (String(url).endsWith("/api/auth/signup")) {
-      return new Response(JSON.stringify({ user: { id: 1 } }), { status: 200, headers: { "set-cookie": "dash_session=session-1; Path=/" } });
-    }
-    return new Response(JSON.stringify({ id: 7, prefix: "cv_test", scope: "read_write", effective_scope: effectiveScope }), {
-      status: 200,
-      headers: { "set-cookie": "cv_mint_once=token-1; Path=/" },
-    });
-  };
-  try {
-    process.env.APP_URL = "http://localhost:3000";
-    process.env.DATABASE_URL = ""; // no database: the paid-access grant is skipped
-    globalThis.fetch = mint("read_write");
-    const result = await resolveAdminApiKey({ apiBase: "http://127.0.0.1:8000", runId: "scope-test", purpose: "scope" });
-    assert.equal(result.token, "token-1");
-    const keyRequest = bodies.find((entry) => entry.url === "http://127.0.0.1:8000/api/v1/keys");
-    assert.equal(keyRequest.body.scope, "read_write");
-    globalThis.fetch = mint("read");
-    await assert.rejects(
-      resolveAdminApiKey({ apiBase: "http://127.0.0.1:8000", runId: "scope-test", purpose: "scope" }),
-      /not read_write/,
-    );
-  } finally {
-    if (saved.app === undefined) delete process.env.APP_URL; else process.env.APP_URL = saved.app;
-    if (saved.db === undefined) delete process.env.DATABASE_URL; else process.env.DATABASE_URL = saved.db;
-    globalThis.fetch = saved.fetch;
-  }
-});

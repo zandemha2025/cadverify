@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.auth.kill_switch import require_kill_switch_open
 from src.auth.org_context import resolve_org
 from src.auth.rate_limit import limiter
-from src.auth.rbac import OrgAuthContext, OrgRole, Role, require_org_role, require_org_writer, require_role
+from src.auth.rbac import OrgAuthContext, OrgRole, Role, require_org_role, require_role
 from src.auth.require_api_key import AuthedUser
 from src.db.engine import get_db_session
 from src.services import connector_credentials_service as creds
@@ -221,7 +221,7 @@ async def create_run(
     connector_id: str = Form(...),
     mode: str = Form(svc.MODE_DRY_RUN),
     file: UploadFile = File(...),
-    user: AuthedUser = Depends(require_org_writer),
+    user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Dry-run or import an offline connector CSV and persist the run ledger.

@@ -127,7 +127,7 @@ def test_html_mirrors_verdict_and_issue_detail():
     assert "bracket &amp; housing.step" in html  # escaped, not injected
     assert "01TESTPDFVERDICT000000000" in html
     assert "FAIL" in html
-    assert "Recommended process: 3-axis milling" in html
+    assert "Recommended route: cnc_3axis" in html
     # Severity grouping
     assert "Errors (1)" in html
     assert "Warnings (1)" in html

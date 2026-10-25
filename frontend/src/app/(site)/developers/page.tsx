@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { backendOrigin } from "@/lib/api-base";
 import { DocumentPage } from "@/components/site/document-page";
 
-export const metadata: Metadata = {"title": "Developers — ScaleCAD", "description": "Send supported CAD to the API and work with structured geometry, manufacturing findings and source-backed estimates.", "alternates": {"canonical": "/developers"}};
+export const metadata: Metadata = {"title": "Developers — ScaleCad", "description": "Send supported CAD to the API and work with structured geometry, manufacturing findings and source-backed estimates.", "alternates": {"canonical": "/developers"}};
 
 export default function Page() {
   const apiOrigin = backendOrigin();
@@ -15,7 +15,7 @@ export default function Page() {
   {
     "id": "endpoints",
     "title": "Choose the analysis you need.",
-    "body": "Your API key uses the same check allowance as the web app: your free checks, or your monthly Pro checks. A check means a part: validation and costing of the same uploaded file (same name and bytes) count once, and re-running either on that file never counts again. An X-Part-Check-ID UUID groups one run's requests. Inspect error responses before interpreting a result.",
+    "body": "Your API key uses the same account allowance as the web app: 10 lifetime single-part checks, then request paid access. Validation and costing can share an X-Part-Check-ID UUID for the same uploaded file; each operation runs once per check. Inspect error responses before interpreting a result.",
     "code": `POST ${apiOrigin}/api/v1/validate
 POST ${apiOrigin}/api/v1/validate/cost
 GET  ${apiOrigin}/api/v1/cost-decisions

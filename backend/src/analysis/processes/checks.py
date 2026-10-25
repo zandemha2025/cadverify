@@ -14,16 +14,14 @@ Design rules:
 from __future__ import annotations
 
 import logging
-import math
-from typing import Any, Optional, cast
+from typing import Optional
 
 import numpy as np
 
-from src.analysis.process_names import process_phrase
 from src.analysis.citations import parse_citation
 from src.analysis.serialization import format_measurement
 from src.analysis.constants import STANDARD_GAUGES, SHEET_GAUGE_MIN_MM, SHEET_GAUGE_MAX_MM
-from src.analysis.context import DRAFT_TOL_DEG, GeometryContext, fitting_box_dimensions, wall_thickness_tolerance, envelope_nonfit_bound
+from src.analysis.context import GeometryContext, fitting_box_dimensions, wall_thickness_tolerance, envelope_nonfit_bound
 from src.analysis.features.base import (
     Feature,
     FeatureKind,
@@ -46,102 +44,18 @@ def _wall_upper(ctx: GeometryContext) -> np.ndarray:
     return np.where(np.isfinite(ctx.wall_thickness), upper, np.inf)
 
 
-def _wall_measured(ctx: GeometryContext) -> np.ndarray:
-    """Faces whose own inward ray was cast (the others copy a nearby face's value)."""
-    sampled = ctx.wall_thickness_sampled
-    if sampled is None or len(sampled) != len(ctx.wall_thickness):
-        return np.ones(len(ctx.wall_thickness), dtype=bool)
-    return np.asarray(sampled, dtype=bool)
-
-
-def _unread_gaps(ctx: GeometryContext, measured: np.ndarray) -> np.ndarray:
-    """Measured faces that gave no reading and have no read face beside them on the same surface.
-
-    A small facet at a bore's rim, tilted by tessellation, sends its ray out
-    through the end face it runs almost along, and reads nothing (see
-    ``context._GRAZING_COS``). The bore face next to it, under 30 degrees away,
-    reads the same wall, so no wall there goes unmeasured. Only a face with no
-    such neighbour is a gap. (Counting every rim facet gave a finely meshed STEP
-    a "gave no reading" note its STL, whose bore runs end to end in one row of
-    triangles, never had.)
-    """
-    wt = ctx.wall_thickness
-    unread = measured & ~np.isfinite(wt)
-    adjacency, angles = ctx.face_adjacency, ctx.dihedral_angles_rad
-    if not unread.any() or len(adjacency) == 0 or len(angles) != len(adjacency):
-        return unread
-    read = measured & np.isfinite(wt)
-    a, b = adjacency[angles <= np.radians(30.0)].T
-    covered = np.zeros(len(wt), dtype=bool)
-    covered[a[read[b]]] = True
-    covered[b[read[a]]] = True
-    return unread & ~covered
-
-
-def _wall_precision_issues(ctx: GeometryContext, process: ProcessType, min_wall_mm: float) -> list[Issue]:
-    """Say when a wall reading can't settle the limit, and only then.
-
-    A WARNING when a reading sits below the limit without proof (an ambiguous
-    hit, a decimated copy) or within its own rounding margin of the limit: the
-    answer could go either way. An INFO when some measured faces gave no stable
-    reading (a ray met an edge or nothing) but no reading is near the limit.
-    Nothing when every measured face has a stable reading clear of the limit,
-    so a clean part stays a clean pass.
-    """
-    wt = ctx.wall_thickness
-    if len(wt) == 0:
-        return []
+def _wall_precision_issues(ctx: GeometryContext, process: ProcessType) -> list[Issue]:
     upper = _wall_upper(ctx)
-    measured = _wall_measured(ctx)
-    tolerance = wall_thickness_tolerance(ctx.mesh, ctx.scale_eps)
-    error = float(ctx.mesh.metadata.get("coordinate_error", 0.0))
-    finite = np.isfinite(wt) & measured
-    stable = finite & np.isfinite(upper)
-    limit = min_wall_mm - tolerance
-    proven_thin = stable & (upper < limit)
-    # How far the true wall may sit below / above a reading: a stable
-    # reading's proved rounding bound; an ambiguous binary-STL hit, the
-    # coordinate rounding; on a decimated copy a reading below the limit
-    # proves nothing (the true wall may be anywhere above it).
-    with np.errstate(invalid="ignore"):
-        below = np.where(stable, upper - wt, 4.0 * error + tolerance)
-    above = below.copy()
-    if ctx.metadata.get("decimation", {}).get("succeeded"):
-        below = np.where(stable, below, 0.0)
-        above = np.where(stable, above, np.inf)
-    near = finite & ~proven_thin & (wt - below < limit) & (wt + above >= limit)
-    if np.any(near):
-        closest = float(wt[near][np.argmin(np.abs(wt[near] - min_wall_mm))])
-        return [Issue(
-            code="WALL_THICKNESS_PRECISION", severity=Severity.WARNING, process=process,
-            measurement_unit="mm", measured_value=closest, required_value=min_wall_mm,
-            message=(
-                f"{int(near.sum())} wall readings are within measuring precision of the {min_wall_mm}mm "
-                f"limit for {process_phrase(process)} (closest {format_measurement(closest, min_wall_mm)}mm), "
-                "so this file can't settle whether those walls pass."
-            ),
-            fix_suggestion="Confirm these walls in the source CAD; a STEP export carries exact coordinates.",
-        )]
-    # Readings that sit too near a triangle edge to prove are still readings,
-    # within coordinate rounding, and none is near the limit (checked above).
-    # Only faces with no reading at all are left out: a ray that slipped past
-    # an edge or met nothing. (Counting unproved readings here made the note
-    # come and go with where the part sits, as float32 steps grow.)
-    unsettled = int(_unread_gaps(ctx, measured).sum())
-    copied = int(len(wt) - measured.sum())
-    if unsettled == 0 and copied == 0:
+    if not ctx.mesh.metadata.get("coordinate_error") and np.all(np.isfinite(upper)):
         return []
     return [Issue(
-        code="WALL_THICKNESS_PRECISION", severity=Severity.INFO, process=process,
+        code="WALL_THICKNESS_PRECISION", severity=Severity.WARNING, process=process,
         message=(
-            f"Walls measured on {int(measured.sum())} of {len(wt)} faces"
-            + (f"; {unsettled} of those gave no reading (the ray slipped past an edge or met nothing) and are left out"
-               if unsettled else "")
-            + ". "
-            + (f"The other {copied} faces take the nearest measured face's value. " if copied else "")
-            + f"No reading is near the {min_wall_mm}mm limit."
+            f"Wall checks have stable measurements for {int(np.isfinite(upper).sum())} of {len(upper)} faces. "
+            "Thin-wall failures allow for source-coordinate rounding. Ambiguous hits and "
+            "unsampled faces cannot verify a minimum wall; a result near the limit is uncertain."
         ),
-        fix_suggestion="Confirm critical wall thicknesses in the source CAD.",
+        fix_suggestion="Confirm critical wall thicknesses in the source CAD before manufacturing.",
     )]
 
 
@@ -151,45 +65,15 @@ def check_wall_thickness(
     process: ProcessType,
     *,
     cite: str = "",
-    warn_below_mm: Optional[float] = None,
-    warn_note: str = "",
 ) -> list[Issue]:
-    """Walls under ``min_wall_mm`` (an error when they're more than 10% of the
-    measured faces). ``warn_below_mm`` adds a softer band: walls from the minimum
-    up to it print but are weak, a WARNING saying so (``warn_note``)."""
     wt = ctx.wall_thickness
     finite = np.isfinite(wt)
-    tol = wall_thickness_tolerance(ctx.mesh, ctx.scale_eps)
-    thin = finite & (_wall_upper(ctx) < min_wall_mm - tol)
+    thin = finite & (_wall_upper(ctx) < min_wall_mm - wall_thickness_tolerance(ctx.mesh, ctx.scale_eps))
     thin_faces = np.where(thin)[0]
-    issues = _wall_precision_issues(ctx, process, min_wall_mm)
+    issues = _wall_precision_issues(ctx, process)
     if len(thin_faces) == 0:
-        if warn_below_mm and warn_below_mm > min_wall_mm:
-            soft = finite & (_wall_upper(ctx) < warn_below_mm - tol)
-            soft_faces = np.where(soft)[0]
-            if len(soft_faces):
-                pct = len(soft_faces) / max(int(_wall_measured(ctx).sum()), 1) * 100
-                thinnest = float(wt[soft].min())
-                issues.append(Issue(
-                    code="THIN_WALL",
-                    measurement_unit="mm",
-                    severity=Severity.WARNING,
-                    message=(
-                        f"{len(soft_faces)} mesh triangles ({pct:.1f}%) below {warn_below_mm}mm for "
-                        f"{process_phrase(process)}. Thinnest: {format_measurement(thinnest, warn_below_mm)}mm. "
-                        f"{warn_note}".rstrip()
-                    ),
-                    process=process,
-                    affected_faces=soft_faces.tolist(),
-                    region_center=_region_center(ctx, soft_faces),
-                    measured_value=thinnest,
-                    required_value=warn_below_mm,
-                    fix_suggestion=f"Thicken walls to >= {warn_below_mm}mm for strength. {cite}".rstrip(),
-                    citation=parse_citation(cite),
-                ))
         return issues
-    # Share of the faces actually measured: only those can prove a thin wall.
-    pct = len(thin_faces) / max(int(_wall_measured(ctx).sum()), 1) * 100
+    pct = len(thin_faces) / max(len(ctx.centroids), 1) * 100
     min_measured = float(wt[thin].min())
     region = _region_center(ctx, thin_faces)
     sev = Severity.ERROR if pct > 10 else Severity.WARNING
@@ -198,9 +82,8 @@ def check_wall_thickness(
         measurement_unit="mm",
         severity=sev,
         message=(
-            # Mesh triangles, not the faces a CAD tool shows (op-15): a flat plate's dozen faces are ~88,000 here.
-            f"{len(thin_faces)} mesh triangles ({pct:.1f}%) below {min_wall_mm}mm "
-            f"min wall for {process_phrase(process)}. Thinnest: {format_measurement(min_measured, min_wall_mm)}mm."
+            f"{len(thin_faces)} faces ({pct:.1f}%) below {min_wall_mm}mm "
+            f"min wall for {process.value}. Thinnest: {format_measurement(min_measured, min_wall_mm)}mm."
         ),
         process=process,
         affected_faces=thin_faces.tolist(),
@@ -216,130 +99,44 @@ def check_wall_thickness(
 # ──────────────────────────────────────────────────────────────
 # Overhangs
 # ──────────────────────────────────────────────────────────────
-def overhang_faces(angles_from_up_deg: np.ndarray, centroids: np.ndarray, bbox_diag: float,
-                   max_angle_deg: float, angle_error_deg: np.ndarray | None = None) -> np.ndarray:
-    """Faces whose angle from +Z exceeds 90 + max_angle_deg, except those resting on the plate.
-
-    Shared by ``check_overhangs`` and the orientation comparison
-    (``src.analysis.orientation``) so both mark exactly the same faces.
-    ``angle_error_deg`` (``rounding_angle_error_deg``): a face past the limit
-    only by its source-coordinate rounding doesn't exceed it, so a face drawn
-    at exactly the limit reads the same wherever the file places the part.
-    """
-    limit = 90.0 + max_angle_deg
-    if angle_error_deg is not None and len(angle_error_deg) == len(angles_from_up_deg):
-        limit = limit + angle_error_deg
-    oh_mask = angles_from_up_deg > limit
-    # Faces resting ON the build plate need no supports: exclude near-flat
-    # downward faces whose centroid sits at the part's z-minimum (scale-aware
-    # tolerance so micro and macro parts both behave).
-    if len(centroids):
-        z = centroids[:, 2]
-        z_tol = max(0.1, bbox_diag * 1e-3)
-        on_plate = (z <= float(z.min()) + z_tol) & (angles_from_up_deg >= 175.0)
-        oh_mask = oh_mask & ~on_plate
-    return np.where(oh_mask)[0]
-
-
-def bridged_overhang_faces(ctx: GeometryContext, max_angle_deg: float, oh_faces: np.ndarray):
-    """Split marked faces into those needing support and flat spans printed as bridges.
-
-    ``src.analysis.support.support_regions`` on the context's own arrays (the
-    same marked faces), without its ray casts, with desktop FDM's published
-    bridge limit (a longer span needs support). Returns (needing faces, the
-    estimate, bridged faces), or (all marked faces, None, 0) if the bridge
-    test fails on a mesh.
-    """
-    from src.analysis.support import support_regions
-
-    try:
-        est = support_regions(
-            ctx.mesh, max_angle_deg, keep_regions=True, columns=False,
-            measures={"angles": ctx.angles_from_up_deg, "centroids": ctx.centroids,
-                      "areas": ctx.face_areas, "normals": ctx.normals, "bbox_diag": ctx.bbox_diag,
-                      "angle_error_deg": ctx.angle_error_deg},
-        )
-    except Exception:  # pragma: no cover - defensive: shapely/trimesh on a broken mesh
-        logger.warning("bridge test failed; every overhanging face stays marked", exc_info=True)
-        return oh_faces, None, 0
-    if not est.bridges:
-        return oh_faces, est, 0
-    bridged = sum(len(r.faces) for r in est.regions if r.bridge)
-    need = [r.faces for r in est.regions if not r.bridge]
-    needing = np.sort(np.concatenate(need)) if need else np.empty(0, dtype=int)
-    return needing, est, int(bridged)
-
-
 def check_overhangs(
     ctx: GeometryContext,
     max_angle_deg: float,
     process: ProcessType,
     *,
     cite: str = "",
-    bridges: bool = False,
 ) -> list[Issue]:
-    """Faces whose angle from Z-up exceeds 90 + max_angle_deg need supports.
-
-    ``bridges=True`` (FDM): a flat span whose two ends rest on the part below
-    it prints as a bridge, strand by strand, and isn't counted, up to the
-    published limit for desktop FDM (``src.analysis.support.BRIDGE_LIMITS_MM``:
-    10 mm; over 5 mm it can sag a little). A longer span needs support.
-    """
+    """Faces whose angle from Z-up exceeds 90 + max_angle_deg need supports."""
     if max_angle_deg >= 90.0:
         return []  # self-supporting process
-    oh_faces = overhang_faces(ctx.angles_from_up_deg, ctx.centroids, ctx.bbox_diag, max_angle_deg,
-                              ctx.angle_error_deg)
+    threshold = 90.0 + max_angle_deg
+    oh_mask = ctx.angles_from_up_deg > threshold
+    # Faces resting ON the build plate need no supports: exclude near-flat
+    # downward faces whose centroid sits at the part's z-minimum (scale-aware
+    # tolerance so micro and macro parts both behave).
+    if len(ctx.centroids):
+        z = ctx.centroids[:, 2]
+        z_tol = max(0.1, ctx.bbox_diag * 1e-3)
+        on_plate = (z <= float(z.min()) + z_tol) & (ctx.angles_from_up_deg >= 175.0)
+        oh_mask = oh_mask & ~on_plate
+    oh_faces = np.where(oh_mask)[0]
     if len(oh_faces) == 0:
         return []
-    est, span_faces = None, 0
-    if bridges:
-        oh_faces, est, span_faces = bridged_overhang_faces(ctx, max_angle_deg, oh_faces)
-        if len(oh_faces) == 0:
-            return []
-    spans = est.bridges if est is not None else 0
-    longest = est.longest_bridge_mm if est is not None else 0.0
     pct = len(oh_faces) / max(len(ctx.centroids), 1) * 100
     region = _region_center(ctx, oh_faces)
-    # Same quantity the threshold compares: degrees past vertical (90 = a flat ceiling).
-    steepest = float(ctx.angles_from_up_deg[oh_faces].max()) - 90.0
-    if spans == 1:
-        bridged_note = (f" A flat span between walls ({span_faces} faces, {longest:.0f} mm across) "
-                        "prints as a bridge and isn't counted.")
-    elif spans:
-        bridged_note = (f" {spans} flat spans between walls ({span_faces} faces, up to {longest:.0f} mm "
-                        "across) print as bridges and aren't counted.")
-    else:
-        bridged_note = ""
-    if est is not None and est.sagging_bridges:
-        from src.analysis.support import FDM_BRIDGE_CLEAN_MM
-
-        bridged_note += f" Over {FDM_BRIDGE_CLEAN_MM:g} mm a bridge can sag a little."
-    if est is not None and est.long_spans:
-        from src.analysis.support import FDM_BRIDGE_MAX_MM
-
-        n, far = est.long_spans, est.longest_long_span_mm
-        if n == 1:
-            bridged_note += (f" A flat span between walls is {far:.0f} mm across, longer than the "
-                             f"{FDM_BRIDGE_MAX_MM:g} mm a desktop printer bridges without sagging, so it is counted.")
-        else:
-            bridged_note += (f" {n} flat spans between walls are up to {far:.0f} mm across, longer than the "
-                             f"{FDM_BRIDGE_MAX_MM:g} mm a desktop printer bridges without sagging, so they are counted.")
     return [Issue(
         code="OVERHANG",
-        measurement_unit="deg",
         severity=Severity.WARNING,
         message=(
             f"{len(oh_faces)} faces ({pct:.1f}%) exceed {max_angle_deg}° "
-            f"overhang threshold for {process_phrase(process)}. Supports required.{bridged_note}"
+            f"overhang threshold for {process.value}. Supports required."
         ),
         process=process,
         affected_faces=oh_faces.tolist(),
         region_center=region,
-        measured_value=steepest,
-        required_value=max_angle_deg,
         fix_suggestion=(
             f"Reorient part or redesign overhangs < {max_angle_deg}° "
-            f"for {process_phrase(process)}. {cite}"
+            f"for {process.value}. {cite}"
         ),
         citation=parse_citation(cite),
     )]
@@ -389,7 +186,7 @@ def small_feature_issues(
         severity=Severity.WARNING,
         message=(
             f"{len(small)} geometric boundary spans ({pct:.1f}%) below {min_size_mm}mm "
-            f"resolution for {process_phrase(process)}. Smallest: {format_measurement(smallest, min_size_mm)}mm."
+            f"resolution for {process.value}. Smallest: {format_measurement(smallest, min_size_mm)}mm."
         ),
         process=process,
         measured_value=smallest,
@@ -440,7 +237,7 @@ def check_build_volume(
                 code="BUILD_REORIENTATION_REQUIRED",
                 severity=Severity.INFO,
                 message=(
-                    f"The uploaded orientation exceeds the {max_dims_mm}mm envelope for {process_phrase(process)}, "
+                    f"The uploaded orientation exceeds the {max_dims_mm}mm envelope for {process.value}, "
                     f"but a {tuple(round(d, 6) for d in fitting)}mm enclosing box fits after reorientation "
                     f"({basis})."
                 ),
@@ -463,35 +260,16 @@ def check_build_volume(
         return [Issue(
             code="BUILD_ENVELOPE_PRECISION", severity=Severity.WARNING, process=process,
             message=(f"Source-coordinate rounding (enclosing dimensions up to ±{precision:.3g}mm) "
-                     f"overlaps the {max_dims_mm}mm envelope for {process_phrase(process)}; fit remains uncertain."),
+                     f"overlaps the {max_dims_mm}mm envelope for {process.value}; fit remains uncertain."),
             fix_suggestion="Confirm dimensions and the planned orientation in source CAD, or use a larger machine.",
-            citation=parse_citation(cite),
-        )]
-    # The envelope is a common machine for the process, not a limit of it
-    # (src.profiles.envelopes): bigger than it is a WARNING when a larger machine
-    # ScaleCAD knows takes the part, and an ERROR only when none does. Whether
-    # the shop's own machines take it is machine fit's answer ("too big for
-    # your X: needs N, has M").
-    larger = _larger_machine_that_fits(ctx, process, dims, max_dims_mm)
-    common = f"the {_mm(max_dims_mm)}mm build size ScaleCAD assumes for {process_phrase(process)} when no machine is named"
-    if larger is not None:
-        name, env = larger
-        return [Issue(
-            code=("EXCEEDS_BUILD_VOLUME" if (bound or process == ProcessType.CNC_TURNING)
-                  else "BUILD_ENVELOPE_UNVERIFIED"),
-            severity=Severity.WARNING, process=process,
-            message=(f"Larger than {common} ({_size_reason(bound, dims)}). It fits a larger "
-                     f"{process_phrase(process)} machine, such as the {name} ({_mm(env)}mm): check it "
-                     f"against the machine that will make it."),
-            fix_suggestion="Check the size against your machine, or use a larger-format machine.",
             citation=parse_citation(cite),
         )]
     if process != ProcessType.CNC_TURNING:
         return [Issue(
             code="EXCEEDS_BUILD_VOLUME" if bound else "BUILD_ENVELOPE_UNVERIFIED",
             severity=Severity.ERROR, process=process,
-            message=(f"Larger than any {process_phrase(process)} machine ScaleCAD knows ({_size_reason(bound, dims)})." if bound else
-                     f"No fitting setup established for the {max_dims_mm}mm envelope for {process_phrase(process)}. "
+            message=(bound[3] if bound else
+                     f"No fitting setup established for the {max_dims_mm}mm envelope for {process.value}. "
                      "The limited geometry/orientation check does not prove the part is too large."),
             fix_suggestion="Verify the full XYZ setup in source CAD, including tool access, supports and fixtures.",
             citation=parse_citation(cite),
@@ -500,66 +278,13 @@ def check_build_volume(
         code="EXCEEDS_BUILD_VOLUME",
         severity=Severity.ERROR,
         message=(
-            f"Larger than any {process_phrase(process)} machine ScaleCAD knows: "
+            f"Part exceeds build envelope for {process.value}: "
             + ", ".join(exceeds) + f". {cite}"
         ),
         process=process,
         fix_suggestion="Scale down, split part, or use a larger machine.",
         citation=parse_citation(cite),
     )]
-
-
-def _mm(dims) -> str:
-    return " x ".join(f"{float(d):g}" for d in dims)
-
-
-def _size_reason(bound, dims) -> str:
-    """The proof the part exceeds the size, in plain words."""
-    if bound:
-        axis, need, have, _human = bound
-        if axis == "minimum_width_mm":
-            return f"its minimum width is at least {need:.4g} mm, more than the {have:.4g} mm smallest side"
-        if axis == "diameter_mm":
-            return f"its widest extent is at least {need:.4g} mm, more than the {have:.4g} mm diagonal"
-    return f"part {_mm(dims)}mm"
-
-
-def _larger_machine_that_fits(ctx: GeometryContext, process: ProcessType, dims, common):
-    """``(name, work area)`` of a known machine bigger than the common size that
-    takes the part in some orientation (the same fit the check uses), or None."""
-    try:
-        from src.profiles.envelopes import known_envelopes
-        envs = [(n, e) for n, e in known_envelopes(process)
-                if n != "common" and tuple(e) != tuple(common)]
-    except KeyError:
-        return None
-    if not envs:
-        return None
-    if process == ProcessType.CNC_TURNING:
-        # (swing Ø, swing Ø, between centers) against (Ø, Ø, length)
-        for name, env in envs:
-            if dims[0] <= env[0] and dims[1] <= env[1] and dims[2] <= env[2]:
-                return name, env
-        return None
-    tolerance = wall_thickness_tolerance(ctx.mesh, ctx.scale_eps)
-    if ctx.metadata.get("decimation", {}).get("succeeded"):
-        part = sorted(dims)
-        for name, env in envs:
-            if all(a <= b + tolerance for a, b in zip(part, sorted(env))):
-                return name, env
-        return None
-    # The enclosure is padded for source-coordinate rounding (a binary STL's
-    # float32 coordinates). A part that only overlaps a larger machine's work
-    # area within that rounding takes the machine as a STEP of it does: a
-    # 400 mm cube fits a 400 mm machine from either file.
-    rounding = 4.0 * float(ctx.mesh.metadata.get("coordinate_error", 0.0))
-    enclosing, _basis = ctx.enclosing_box
-    for name, env in envs:
-        caps = tuple(c + tolerance + rounding for c in env)
-        if (fitting_box_dimensions(enclosing, caps) is not None
-                or fitting_box_dimensions(enclosing, caps, ctx.enclosing_cylinder) is not None):
-            return name, env
-    return None
 
 
 # ──────────────────────────────────────────────────────────────
@@ -570,21 +295,10 @@ def check_aspect_ratio(
     max_ratio: float,
     process: ProcessType,
 ) -> list[Issue]:
-    """Tall, thin parts as built: build height over the narrowest footprint.
-
-    The risk is a part standing up on a small footprint (it sways, layers
-    shift, it breaks off the plate), so the ratio is the height along the
-    build direction (+Z of the checked orientation) over the narrowest width
-    of the part's footprint on the plate, not the longest over the shortest
-    bounding-box side: a 100 x 60 x 3 mm plate lying flat is 3 mm tall.
-    """
-    measured = ctx.__dict__.get("_build_footprint")
-    if measured is None:  # shared by every printing process's check
-        measured = ctx.__dict__["_build_footprint"] = build_height_and_footprint_width(ctx.mesh)
-    height, width = measured
-    if width < 0.1:
+    dims = sorted(ctx.info.bounding_box.dimensions)
+    if dims[0] < 0.1:
         return []
-    ratio = height / width
+    ratio = dims[2] / dims[0]
     if ratio <= max_ratio:
         return []
     return [Issue(
@@ -592,66 +306,14 @@ def check_aspect_ratio(
         measurement_unit="ratio",
         severity=Severity.WARNING,
         message=(
-            f"Built {format_measurement(height)}mm tall on a footprint {format_measurement(width)}mm wide: "
-            f"{format_measurement(ratio, max_ratio)}:1 exceeds {max_ratio}:1 for {process_phrase(process)}. "
-            "Tall, thin parts risk failure."
+            f"Aspect ratio {format_measurement(ratio, max_ratio)}:1 exceeds {max_ratio}:1 for "
+            f"{process.value}. Tall/thin parts risk failure."
         ),
         process=process,
         measured_value=ratio,
         required_value=max_ratio,
-        fix_suggestion="Lay it down (turn it so a long side is on the plate), split it, or add bracing.",
+        fix_suggestion="Split into segments, add bracing, or reorient.",
     )]
-
-
-def build_height_and_footprint_width(mesh) -> tuple[float, float]:
-    """Height along +Z and the narrowest width of the footprint's convex outline."""
-    from scipy.spatial import ConvexHull
-
-    vertices = np.asarray(mesh.vertices, dtype=np.float64)
-    if len(vertices) == 0:
-        return 0.0, 0.0
-    height = float(np.ptp(vertices[:, 2]))
-    plan = vertices[:, :2] - vertices[:, :2].mean(axis=0)
-    try:
-        hull = plan[ConvexHull(plan).vertices]
-    except Exception:
-        extents = np.ptp(plan, axis=0)
-        return height, float(extents.min())
-    return height, _narrowest_width(hull)
-
-
-def _narrowest_width(hull: np.ndarray) -> float:
-    """Narrowest caliper width of a convex outline (vertices in order).
-
-    The narrowest width is across one of the outline's edges, to the vertex
-    farthest from it; rotating calipers find that vertex for every edge in one
-    pass, so a finely tessellated round footprint (40k hull vertices) costs
-    linear time and memory, not an edges x vertices table.
-    """
-    n = len(hull)
-    if n < 3:
-        return float(np.ptp(hull, axis=0).min()) if n else 0.0
-    edges = np.roll(hull, -1, axis=0) - hull
-    lengths = np.linalg.norm(edges, axis=1)
-    if not np.any(lengths > 0):
-        return 0.0
-
-    def height(i, k):
-        e = edges[i]
-        d = hull[k] - hull[i]
-        return abs(e[0] * d[1] - e[1] * d[0]) / lengths[i]
-
-    best = float("inf")
-    k = 1
-    for i in range(n):
-        if lengths[i] <= 0:
-            continue
-        steps = 0
-        while steps < n and height(i, (k + 1) % n) > height(i, k):
-            k = (k + 1) % n
-            steps += 1
-        best = min(best, float(height(i, k)))
-    return best
 
 
 # ──────────────────────────────────────────────────────────────
@@ -681,7 +343,7 @@ def check_trapped_volumes(
                 severity=Severity.ERROR,
                 message=(
                     f"Drain opening {format_measurement(diameter, min_drain_mm)}mm is below the {min_drain_mm}mm "
-                    f"minimum for {process_phrase(process)}; material can remain trapped."
+                    f"minimum for {process.value}; material can remain trapped."
                 ),
                 process=process,
                 affected_faces=affected_faces,
@@ -708,15 +370,13 @@ def check_trapped_volumes(
             if main.is_watertight and main.contains([center])[0]:
                 issues.append(Issue(
                     code="TRAPPED_VOLUME",
-                    measurement_unit="mm",
                     severity=Severity.ERROR,
                     message=(
                         f"Internal cavity ({sub_volume:.0f}mm³) traps material "
-                        f"in {process_phrase(process)}. Needs >= {min_drain_mm}mm drain holes."
+                        f"in {process.value}. Needs >= {min_drain_mm}mm drain holes."
                     ),
                     process=process,
-                    region_center=cast("tuple[float, float, float]", tuple(float(v) for v in center)),
-                    required_value=min_drain_mm,
+                    region_center=tuple(float(v) for v in center),
                     fix_suggestion=(
                         f"Add drain holes >= {min_drain_mm}mm diameter. {cite}"
                     ),
@@ -732,295 +392,13 @@ def check_trapped_volumes(
             code="ANALYSIS_PARTIAL",
             severity=Severity.INFO,
             message=(
-                f"Trapped-volume check incomplete for {process_phrase(process)} "
+                f"Trapped-volume check incomplete for {process.value} "
                 f"(geometry/containment error)."
             ),
             process=process,
             fix_suggestion="Verify mesh integrity via /validate/quick.",
         ))
     return issues
-
-
-def _void_summary(voids: list[dict]) -> tuple[str, tuple[float, float, float]]:
-    total = sum(v["volume_mm3"] for v in voids)
-    largest = max(voids, key=lambda v: v["volume_mm3"])
-    what = "a sealed internal void" if len(voids) == 1 else f"{len(voids)} sealed internal voids"
-    return f"{what} ({total:,.0f}mm³)", largest["center"]
-
-
-def check_sealed_voids(
-    ctx: GeometryContext,
-    process: ProcessType,
-    *,
-    cite: str = "",
-) -> list[Issue]:
-    """Material removal from outside cannot reach a void with no opening.
-
-    A sealed void is a closed shell nested inside the material
-    (``ctx.sealed_voids``). No cutter, drill or wire passes through solid
-    material to reach its surface, so a part drawn with one cannot be milled,
-    turned or wire-cut as drawn.
-    """
-    voids = ctx.sealed_voids
-    if not voids:
-        return []
-    what, center = _void_summary(voids)
-    tool = "wire" if process == ProcessType.WIRE_EDM else "cutting tool"
-    return [Issue(
-        code="SEALED_VOID_NO_ACCESS",
-        severity=Severity.ERROR,
-        message=(
-            f"The part has {what} with no opening to the outside. No {tool} can reach "
-            f"{'it' if len(voids) == 1 else 'them'}, so {process_phrase(process)} can't make the part as drawn."
-        ),
-        process=process,
-        region_center=center,
-        fix_suggestion=(
-            "Open the void to the outside, or make it in two pieces joined after machining; "
-            f"a printed or cast route can form a sealed void. {cite}"
-        ).strip(),
-        citation=parse_citation(cite),
-    )]
-
-
-def check_sealed_voids_fdm(
-    ctx: GeometryContext,
-    process: ProcessType,
-    *,
-    max_overhang_deg: float,
-) -> list[Issue]:
-    """FDM leaves a sealed void empty: nothing in it needs draining.
-
-    Extrusion deposits material only along its toolpaths, so a sealed void
-    holds air, not loose powder or liquid resin. What it can hold is support:
-    if the void's ceiling faces down past the overhang limit, support printed
-    under it is sealed in with it.
-    """
-    voids = ctx.sealed_voids
-    if not voids:
-        return []
-    what, center = _void_summary(voids)
-    ceiling = False
-    for void in voids:
-        shell = void["shell"]
-        normals = np.asarray(shell.face_normals, dtype=np.float64)
-        # The void's faces seen from the material point into the void; its
-        # ceiling is the part of that shell whose material-side normal faces down.
-        outward = normals if _finite_signed_volume(shell) < 0 else -normals
-        z = np.asarray(shell.triangles_center)[:, 2]
-        downward = outward[:, 2] < -math.cos(math.radians(90.0 - max_overhang_deg)) - 1e-9
-        above_floor = z > float(z.min()) + max(0.1, ctx.bbox_diag * 1e-3)
-        if np.any(downward & above_floor):
-            ceiling = True
-            break
-    if ceiling:
-        return [Issue(
-            code="SEALED_VOID_SUPPORT",
-            severity=Severity.WARNING,
-            message=(
-                f"The part has {what}. FDM leaves it empty, so nothing needs draining, but its "
-                f"ceiling faces down past {max_overhang_deg:g}°: support printed under it stays sealed inside."
-            ),
-            process=process,
-            region_center=center,
-            fix_suggestion=(
-                "Give the void a self-supporting roof (a 45° peak or an arch), or accept the "
-                "sealed-in support. A drain hole is not needed for FDM."
-            ),
-        )]
-    return [Issue(
-        code="SEALED_VOID",
-        severity=Severity.INFO,
-        message=f"The part has {what}. FDM leaves it empty, so nothing needs draining.",
-        process=process,
-        region_center=center,
-    )]
-
-
-def _finite_signed_volume(mesh) -> float:
-    triangles = np.asarray(mesh.triangles, dtype=np.float64)
-    if triangles.ndim != 3 or len(triangles) == 0:
-        return 0.0
-    shifted = triangles - np.asarray(mesh.bounds, dtype=np.float64).mean(axis=0)
-    with np.errstate(all="ignore"):
-        six = np.einsum("ij,ij->i", shifted[:, 0], np.cross(shifted[:, 1], shifted[:, 2])).sum()
-    value = float(six) / 6.0
-    return value if np.isfinite(value) else 0.0
-
-
-# A wire touching a face lies along it, with its axis no more than a wire radius
-# off the face. Testing the plane this far out covers every wire of at least
-# twice this diameter (0.02 mm and up: all production wire sizes).
-_WIRE_PROBE_MM = 0.02
-_WIRE_MAX_SECTIONS = 32
-
-
-def check_wire_reach(
-    ctx: GeometryContext,
-    process: ProcessType,
-    *,
-    cite: str = "",
-) -> list[Issue]:
-    """A face a straight wire can't lie along cannot be wire-cut.
-
-    Every face of a wire-EDM part is either a face of the stock (so a plane
-    with the whole part on one side of it) or swept by the wire, which lies
-    along the face with its whole length clear of the finished part. On a flat
-    face that is not a stock face, the wire's line lies in a plane just off
-    the face. When that plane's section of the part closes all the way around
-    the face (the floor of a blind pocket or hole, the floor of a closed-bottom
-    cavity), every line through it runs into material, so no wire, tapered or
-    not, can cut that face. Only proved cases are reported; anything else is
-    left to the straight-profile check.
-    """
-    mesh = ctx.mesh
-    if (ctx.metadata.get("decimation", {}).get("succeeded") or not mesh.is_watertight
-            or not len(ctx.facet_groups)):
-        return []
-    try:
-        vertices = np.asarray(mesh.vertices, dtype=np.float64)
-        error = float(mesh.metadata.get("coordinate_error", 0.0))
-        tol = wall_thickness_tolerance(mesh, ctx.scale_eps) + 2.0 * error
-        probe = max(_WIRE_PROBE_MM, 4.0 * tol)
-        # A face is reported when it is closed in on all four sides in the plane
-        # just off it, and is not a stock face. The two tests don't depend on each
-        # other, and a ray's hit doesn't depend on the others cast with it, so the
-        # in-plane rays go first, for every facet in one batch, and only the
-        # closed-in facets are tested against every vertex. Stock-first tested all
-        # of them: a 9 KB tube meshed to 202,754 faces has 95,739 facets, which
-        # was 95,739 passes over its 101,377 vertices (107 s). Same faces, same order.
-        faces = np.fromiter((facet[np.argmax(ctx.face_areas[facet])] for facet in ctx.facet_groups),
-                            dtype=np.int64, count=len(ctx.facet_groups))
-        # A facet of slivers (zero-area faces, which trimesh gives a [0, 0, 0] normal)
-        # has no plane to cut along; stock-first skipped it as a stock face. It is
-        # left out here too, so no in-plane direction is divided by a zero length.
-        tested = np.flatnonzero(np.linalg.norm(ctx.normals[faces], axis=1) > 0.5)
-        faces = faces[tested]
-        normals = ctx.normals[faces]
-        points = ctx.centroids[faces]
-        # In-plane directions, each row exactly as one face's own np.cross and np.linalg.norm give it.
-        u = np.cross(normals, [1.0, 0.0, 0.0])
-        length = np.array([np.linalg.norm(row) for row in u])
-        flat = length < 0.5
-        if np.any(flat):
-            u[flat] = np.cross(normals[flat], [0.0, 1.0, 0.0])
-            length[flat] = [np.linalg.norm(row) for row in u[flat]]
-        u /= length[:, None]
-        v = np.cross(normals, u)
-        origins = np.repeat(points + normals * probe, 4, axis=0)
-        directions = np.stack((u, -u, v, -v), axis=1).reshape(-1, 3)
-        hit = np.asarray(mesh.ray.intersects_any(origins, directions), dtype=bool)
-        closed_in = hit.reshape(-1, 4).all(axis=1)
-        candidates = []
-        for index in np.flatnonzero(closed_in):
-            facet, face = ctx.facet_groups[int(tested[index])], int(faces[index])
-            normal = ctx.normals[face]
-            point = ctx.centroids[face]
-            # A stock face bounds the whole part; nothing needed to cut it.
-            if float(np.max((vertices - point) @ normal)) <= probe:
-                continue
-            candidates.append((float(ctx.face_areas[facet].sum()), face, point, normal))
-        candidates.sort(key=lambda c: -c[0])
-        for _area, face, point, normal in candidates[:_WIRE_MAX_SECTIONS]:
-            if _closed_in_plane(mesh, point + normal * probe, normal):
-                return [Issue(
-                    code="WIRE_CANNOT_REACH",
-                    severity=Severity.ERROR,
-                    message=(
-                        f"A face at ({point[0]:.1f}, {point[1]:.1f}, {point[2]:.1f}) is closed in on every "
-                        "side in its own plane, like the floor of a closed-bottom cavity or blind hole. "
-                        f"A wire has to run along a face it cuts, so {process_phrase(process)} can't make it."
-                    ),
-                    process=process,
-                    affected_faces=[int(face)],
-                    region_center=(float(point[0]), float(point[1]), float(point[2])),
-                    fix_suggestion=(
-                        "Wire EDM cuts only through-profiles. Make this cavity through, or mill or "
-                        f"sinker-EDM it. {cite}"
-                    ).strip(),
-                    citation=parse_citation(cite),
-                )]
-    except Exception:
-        logger.warning("Wire-reach check failed for %s", process.value, exc_info=True)
-    return []
-
-
-_CUP_MAX_SECTIONS = 32
-
-
-def cup_faces(mesh, *, normals: np.ndarray | None = None, centroids: np.ndarray | None = None,
-              bbox_diag: float | None = None) -> np.ndarray:
-    """Faces that roof a cup open toward the resin tank (build direction +Z).
-
-    In a resin printer the part hangs from the plate and each layer is peeled
-    off the tank floor. A cavity whose opening faces the tank and whose walls
-    close around it holds resin against the film: suction on every peel. Its
-    roof is a downward face that is (a) above the part's base (the base sits on
-    the plate), (b) open straight down (nothing of the part below it), and
-    (c) closed in by the part on every side just below the roof, in its own
-    plane. A flat-bottomed solid has none; an upturned cup or a box open at
-    the bottom does.
-    """
-    normals = np.asarray(mesh.face_normals if normals is None else normals, dtype=np.float64)
-    centroids = np.asarray(mesh.triangles_center if centroids is None else centroids, dtype=np.float64)
-    if len(normals) == 0 or not mesh.is_watertight:
-        return np.empty(0, dtype=int)
-    diag = float(np.linalg.norm(mesh.extents)) if bbox_diag is None else float(bbox_diag)
-    z = centroids[:, 2]
-    base = z <= float(z.min()) + max(0.1, diag * 1e-3)
-    down = np.flatnonzero((normals[:, 2] < -0.8) & ~base)
-    if len(down) == 0:
-        return np.empty(0, dtype=int)
-    probe = max(_WIRE_PROBE_MM, diag * 1e-5)
-    origins = centroids[down] + normals[down] * probe
-    try:
-        blocked = np.asarray(mesh.ray.intersects_any(origins, np.tile([0.0, 0.0, -1.0], (len(down), 1))), dtype=bool)
-    except Exception:
-        logger.warning("Cup check rays failed", exc_info=True)
-        return np.empty(0, dtype=int)
-    open_down = down[~blocked]
-    if len(open_down) == 0:
-        return np.empty(0, dtype=int)
-    # One section answers for a whole flat roof (a facet); test the largest roofs first.
-    all_areas = np.asarray(mesh.area_faces)
-    group = -1 - np.arange(len(normals))
-    try:
-        for index, facet in enumerate(mesh.facets):
-            group[np.asarray(facet, dtype=int)] = index
-    except Exception:
-        pass
-    unique, inverse = np.unique(group[open_down], return_inverse=True)
-    totals = np.bincount(inverse, weights=all_areas[open_down])
-    cups = []
-    for slot in np.argsort(-totals)[:_CUP_MAX_SECTIONS]:
-        members = open_down[inverse == slot]
-        face = int(members[np.argmax(all_areas[members])])
-        try:
-            if _closed_in_plane(mesh, centroids[face] + normals[face] * probe, np.array([0.0, 0.0, -1.0])):
-                cups.append(members)
-        except Exception:
-            logger.warning("Cup section failed", exc_info=True)
-    return np.concatenate(cups) if cups else np.empty(0, dtype=int)
-
-
-def _closed_in_plane(mesh, origin: np.ndarray, normal: np.ndarray) -> bool:
-    """True when ``origin`` lies in a hole of the part's section by its plane."""
-    from shapely.geometry import Point, Polygon
-
-    section = mesh.section(plane_origin=origin, plane_normal=normal)
-    if section is None:
-        return False
-    flatten = getattr(section, "to_2D", None) or section.to_planar
-    planar, to_3d = flatten(normal=normal, check=False)
-    local = np.linalg.inv(to_3d) @ np.append(origin, 1.0)
-    point = Point(float(local[0]), float(local[1]))
-    for polygon in planar.polygons_full:
-        if polygon.contains(point):
-            return False  # in material: the probe left the void side
-        for ring in polygon.interiors:
-            if Polygon(ring).contains(point):
-                return True
-    return False
 
 
 def _undersized_cavity_drain(
@@ -1124,253 +502,46 @@ def _undersized_cavity_drain(
 # ──────────────────────────────────────────────────────────────
 # Draft angles (molding / casting / forging)
 # ──────────────────────────────────────────────────────────────
-def draft_sidewalls(angles_from_up_deg: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Side walls (80–100° from +Z) and their draft, ``|90° - angle from +Z|``.
-
-    The orientation comparison's quick reading (a turned candidate's triangles);
-    a wall meets a rule within ``DRAFT_TOL_DEG`` of it (``meets_draft``).
-    """
-    sidewall_faces = np.where((angles_from_up_deg > 80) & (angles_from_up_deg < 100))[0]
-    return sidewall_faces, np.abs(90.0 - angles_from_up_deg[sidewall_faces])
-
-
-def meets_draft(draft: float | np.ndarray, need: float | np.ndarray) -> np.ndarray:
-    """A reading meets a draft rule within the file's float noise (3.000° drawn reads 2.999999999°)."""
-    return np.asarray(draft) + DRAFT_TOL_DEG >= need
-
-
 def check_draft_angles(
     ctx: GeometryContext,
     min_draft_deg: float,
     process: ProcessType,
     *,
-    internal_deg: float | None = None,
     cite: str = "",
 ) -> list[Issue]:
-    """Check side walls for the draft the tool needs to release the part along +Z.
-
-    ``min_draft_deg`` is the rule for outside walls; ``internal_deg`` (when the
-    rule has one) for inside walls, the ones facing the part across a gap
-    (``WallDraft.inside``: the box's inside, a bore, a slot), where the part
-    shrinks onto the core. Each wall is read from the B-rep's own surface when
-    the STEP/IGES mesher kept it, else from its triangles with the benefit of
-    their measurement error (``WallDraft.slack``), so a correct model never
-    fails by tessellation.
-
-    ``measured_value`` is the smallest draft on the flagged walls of the rule
-    that binds (the inside rule when inside walls fall short), rounded to 0.1°
-    and never up to the limit it failed. The minimum, not an area-weighted
-    percentile, is the honest single number: tessellation noise on a straight
-    wall or a vertical bore can only push a face's reading above the true 0°.
-    """
-    wd = ctx.wall_draft
-    if len(wd.faces) == 0:
-        return []
-    internal = float(internal_deg) if internal_deg is not None else float(min_draft_deg)
-    split = internal != float(min_draft_deg) and bool(wd.inside.any())
-    need = np.where(wd.inside, internal, float(min_draft_deg)) if split else np.full(len(wd.faces), float(min_draft_deg))
-    reading = np.minimum(wd.draft + wd.slack - DRAFT_TOL_DEG, need)
-    fail = ~meets_draft(reading, need)
-    if not fail.any():
-        return []
+    """Check sidewall faces for sufficient draft relative to Z pull."""
+    normals = ctx.normals
     areas = ctx.face_areas
-    no_draft_faces = wd.faces[fail]
-    pct = float(areas[no_draft_faces].sum()) / max(float(areas[wd.faces].sum()), 1e-9) * 100
-    groups = _wall_rule_groups(ctx, wd, fail, reading, min_draft_deg, internal) if split else []
-    binding = max((g for g in groups if g["faces"]), key=lambda g: g["need_deg"], default=None)
-    required = binding["need_deg"] if binding else float(min_draft_deg)
-    smallest = binding["measured_deg"] if binding else _shown_draft(float(reading[fail].min()), float(min_draft_deg))
-    if split:
-        breakdown = " (" + "; ".join(
-            f"{g['walls']} walls {g['shown_deg']:.1f}°, need {format_measurement(g['need_deg'])}°"
-            for g in groups if g["walls_present"]) + ")"
-        below = (f"below {min_draft_deg}° draft outside and {internal}° inside"
-                 if any(g["faces"] and g["walls"] == "inside" for g in groups)
-                 and any(g["faces"] and g["walls"] == "outside" for g in groups)
-                 else f"below {required}° draft on {'inside' if binding and binding['walls'] == 'inside' else 'outside'} walls")
-    else:
-        named = _draft_groups(ctx, no_draft_faces, reading[fail], min_draft_deg)
-        breakdown = (" (" + ", ".join(f"{name} {value:.1f}°" for name, value in named) + ")") if named else ""
-        below = f"below {min_draft_deg}° draft"
-    pull = _pull_direction(ctx)
-    turned = _drafted_file_axis(ctx, min_draft_deg)
-    extra: dict[str, Any] = {"breakdown": [{k: g[k] for k in ("walls", "need_deg", "measured_deg", "faces", "cad_faces")}
-                                           for g in groups if g["walls_present"]]} if split else {}
-    if turned is not None:
-        # Drafted along another file axis: the part is drawn turned, not undrafted.
-        axis, least = turned
-        return [Issue(
-            code="INSUFFICIENT_DRAFT",
-            measurement_unit="deg",
-            severity=Severity.WARNING,
-            message=(
-                f"{len(no_draft_faces)} sidewall faces ({pct:.1f}% of sidewall area) "
-                f"{below} for {process_phrase(process)}. "
-                f"Smallest draft: {smallest:.1f}°{breakdown}. The tool opens along {pull}; "
-                f"the walls are drafted along the file's {axis} (at least {round(least, 1):.1f}°), "
-                "so the part is drawn turned."
-            ),
-            process=process,
-            affected_faces=no_draft_faces.tolist(),
-            measured_value=smallest,
-            required_value=required,
-            fix_suggestion=f"Check the part turned so the tool opens along the file's {axis}. {cite}".strip(),
-            citation=parse_citation(cite),
-            **extra,
-        )]
-    if split and len([g for g in groups if g["faces"]]) == 2:
-        add = (f"Add >= {min_draft_deg}° draft to the outside walls and >= {internal}° to the inside walls "
-               f"along the pull direction ({pull})")
-    elif split and binding is not None:
-        add = f"Add >= {required}° draft to the {binding['walls']} walls along the pull direction ({pull})"
-    else:
-        add = f"Add >= {min_draft_deg}° draft to all walls along the pull direction ({pull})"
+    # Sidewalls: faces roughly perpendicular to Z (80–100° from Z-up)
+    sidewall_mask = (ctx.angles_from_up_deg > 80) & (ctx.angles_from_up_deg < 100)
+    sidewall_faces = np.where(sidewall_mask)[0]
+    if len(sidewall_faces) == 0:
+        return []
+    # Draft = |90 - angle_from_z|
+    draft = np.abs(90.0 - ctx.angles_from_up_deg[sidewall_faces])
+    no_draft = draft < min_draft_deg
+    no_draft_faces = sidewall_faces[no_draft]
+    if len(no_draft_faces) == 0:
+        return []
+    no_draft_area = float(areas[no_draft_faces].sum())
+    total_sidewall_area = float(areas[sidewall_faces].sum())
+    pct = no_draft_area / max(total_sidewall_area, 1e-9) * 100
     return [Issue(
         code="INSUFFICIENT_DRAFT",
         measurement_unit="deg",
         severity=Severity.ERROR,
-        # The first sentence is the one screens quote; the pull direction follows.
         message=(
             f"{len(no_draft_faces)} sidewall faces ({pct:.1f}% of sidewall area) "
-            f"{below} for {process_phrase(process)}. "
-            f"Smallest draft: {smallest:.1f}°{breakdown}. The tool opens along {pull}."
+            f"below {min_draft_deg}° draft for {process.value}."
         ),
         process=process,
         affected_faces=no_draft_faces.tolist(),
-        measured_value=smallest,
-        required_value=required,
+        required_value=min_draft_deg,
         fix_suggestion=(
-            f"{add}, or check the part turned so the tool opens along its drafted walls. {cite}"
+            f"Add >= {min_draft_deg}° draft to all walls in pull direction. {cite}"
         ),
         citation=parse_citation(cite),
-        **extra,
     )]
-
-
-def _wall_rule_groups(ctx: GeometryContext, wd, fail: np.ndarray, reading: np.ndarray,
-                      external: float, internal: float) -> list[dict]:
-    """Outside and inside walls, each with its rule, smallest reading and how many fall short."""
-    ids = ctx.cad_face_ids
-    out = []
-    for walls, mask, need in (("outside", ~wd.inside, float(external)), ("inside", wd.inside, float(internal))):
-        short = mask & fail
-        present = bool(mask.any())
-        low = float(reading[short].min()) if short.any() else (float(reading[mask].min()) if present else need)
-        shown = _shown_draft(low, need) if short.any() else round(low, 1) + 0.0
-        cad = int(len(np.unique(ids[wd.faces[short]]))) if ids is not None and short.any() else None
-        out.append({"walls": walls, "need_deg": need, "measured_deg": shown, "shown_deg": shown,
-                    "faces": int(short.sum()), "cad_faces": cad, "walls_present": present})
-    return out
-
-
-def _drafted_file_axis(ctx: GeometryContext, min_draft_deg: float) -> tuple[str, float] | None:
-    """("+X" or "+Y", smallest draft) when every side wall along that file axis has the draft.
-
-    Only for a part checked as drawn (no orientation chosen): the check reads
-    the file's +Z as the direction the tool opens, so a drafted cover drawn
-    lying on its side reads as undrafted. Its routing and verdict shouldn't
-    depend on which way the file happens to lie; the finding says which way
-    its walls are drafted and stays a warning to check it turned.
-    """
-    from src.analysis.context import cad_face_normals
-    from src.analysis.orientation import PLACED_UP_KEY
-
-    if (ctx.mesh.metadata or {}).get(PLACED_UP_KEY) is not None or not len(ctx.normals):
-        return None
-    normals = cad_face_normals(ctx.mesh)
-    if normals is None:
-        normals = ctx.normals
-    for name, axis in (("+X", np.array([1.0, 0.0, 0.0])), ("+Y", np.array([0.0, 1.0, 0.0]))):
-        with np.errstate(all="ignore"):
-            angles = np.degrees(np.arccos(np.clip(normals @ axis, -1.0, 1.0)))
-        faces, draft = draft_sidewalls(angles)
-        if len(faces) and bool(meets_draft(float(draft.min()), min_draft_deg)):
-            return name, float(draft.min())
-    return None
-
-
-def _pull_direction(ctx: GeometryContext) -> str:
-    """The file direction this check took as the pull (or build) direction."""
-    from src.analysis.orientation import direction_in_file
-
-    return direction_in_file(ctx.mesh)
-
-
-def _shown_draft(value: float, limit: float) -> float:
-    """A draft reading at 0.1° that never rounds a failing face up to its limit."""
-    shown = round(value, 1)
-    if shown >= limit:
-        shown = math.floor(value * 10.0) / 10.0
-    return shown + 0.0  # no "-0.0"
-
-
-# A wall breakdown only names groups the feature pass measured: detected
-# cylindrical bores/bosses, and "outer walls" only when every remaining face
-# lies on a plane that bounds the whole part. Otherwise the message keeps the
-# single smallest value.
-_MAX_DRAFT_PLANES = 64
-
-
-def _draft_groups(
-    ctx: GeometryContext,
-    faces: np.ndarray,
-    draft: np.ndarray,
-    limit: float,
-) -> list[tuple[str, float]]:
-    if not ctx.features:
-        return []
-    count = len(ctx.normals)
-
-    def owner(kind: FeatureKind) -> np.ndarray:
-        out = np.full(count, -1, dtype=np.int64)
-        for index, feature in enumerate(ctx.features):
-            if feature.kind != kind:
-                continue
-            idx = np.asarray(feature.face_indices, dtype=np.int64)
-            out[idx[(idx >= 0) & (idx < count)]] = index
-        return out
-
-    hole_of = owner(FeatureKind.CYLINDER_HOLE)[faces]
-    boss_of = owner(FeatureKind.CYLINDER_BOSS)[faces]
-    in_hole = hole_of >= 0
-    in_boss = (boss_of >= 0) & ~in_hole
-    walls = ~(in_hole | in_boss)
-    groups: list[tuple[str, float]] = []
-    if walls.any():
-        name = "outer walls" if _on_bounding_planes(ctx, faces[walls]) else "side walls"
-        groups.append((name, _shown_draft(float(draft[walls].min()), limit)))
-    for mask, owners, one, many in ((in_hole, hole_of, "bore", "bores"), (in_boss, boss_of, "boss", "bosses")):
-        if mask.any():
-            n = len(np.unique(owners[mask]))
-            groups.append((one if n == 1 else f"{n} {many}", _shown_draft(float(draft[mask].min()), limit)))
-    return groups if len(groups) > 1 else []
-
-
-def _on_bounding_planes(ctx: GeometryContext, faces: np.ndarray) -> bool:
-    """True when every face lies on a detected plane with the whole part behind it."""
-    count = len(ctx.normals)
-    plane_of = np.full(count, -1, dtype=np.int64)
-    flats = [f for f in ctx.features if f.kind == FeatureKind.FLAT and f.axis is not None]
-    for index, feature in enumerate(flats):
-        idx = np.asarray(feature.face_indices, dtype=np.int64)
-        plane_of[idx[(idx >= 0) & (idx < count)]] = index
-    planes = plane_of[faces]
-    if len(planes) == 0 or np.any(planes < 0):
-        return False
-    used = np.unique(planes)
-    if len(used) > _MAX_DRAFT_PLANES:
-        return False
-    vertices = np.asarray(ctx.mesh.vertices, dtype=np.float64)
-    tol = max(ctx.scale_eps, 2.0 * float(ctx.mesh.metadata.get("coordinate_error", 0.0)))
-    for index in used:
-        feature = flats[int(index)]
-        axis = np.asarray(feature.axis, dtype=np.float64)
-        point = np.asarray(feature.centroid, dtype=np.float64)
-        if not (np.isfinite(axis).all() and np.isfinite(point).all()):
-            return False
-        if float(np.max((vertices - point) @ axis)) > tol:
-            return False
-    return True
 
 
 # ──────────────────────────────────────────────────────────────
@@ -1385,7 +556,7 @@ def check_wall_uniformity(
     *,
     cite: str = "",
 ) -> list[Issue]:
-    issues = _wall_precision_issues(ctx, process, min_wall)
+    issues = _wall_precision_issues(ctx, process)
     wt = ctx.wall_thickness
     upper = _wall_upper(ctx)
     t_min_upper = float(upper.min()) if len(upper) else float("inf")
@@ -1398,7 +569,7 @@ def check_wall_uniformity(
             code="THIN_WALL_MOLDING",
             measurement_unit="mm",
             severity=Severity.ERROR,
-            message=f"Min wall {format_measurement(t_min, min_wall)}mm < {min_wall}mm for {process_phrase(process)}.",
+            message=f"Min wall {format_measurement(t_min, min_wall)}mm < {min_wall}mm for {process.value}.",
             process=process,
             measured_value=t_min,
             required_value=min_wall,
@@ -1448,59 +619,14 @@ def check_wall_uniformity(
             fix_suggestion=f"Core out thick sections. Target {ideal_wall}mm. {cite}",
             citation=parse_citation(cite),
         ))
-    elif np.isfinite(diameter_error) and diameter_error > 0 and t_max + diameter_error > max_wall + tolerance:
-        issues.append(Issue(
-            code="THICK_WALL_PRECISION",
-            measurement_unit="mm",
-            severity=Severity.WARNING,
-            message=(
-                f"Thickest sampled section {format_measurement(t_max, max_wall)}mm is within source-coordinate "
-                f"rounding of the {max_wall}mm limit for {process_phrase(process)}, so this file can't settle whether it passes."
-            ),
-            process=process,
-            measured_value=t_max,
-            required_value=max_wall,
-            fix_suggestion="Confirm the thickest section in the source CAD; a STEP export carries exact coordinates.",
-        ))
-    # The thin end of the ratio: proved readings, plus binary-STL readings whose
-    # hit sits too near a triangle edge to prove, taken at face value within
-    # coordinate rounding. Proofs fail far more often on a part far from the
-    # origin (larger float32 steps), so proved readings alone made this warning
-    # depend on where the part sits: moving a stepped shaft 1.2 m dropped it.
-    # This is a "may increase warping risk" warning, not a hard limit.
-    thin_end, thin_reading = t_min_upper, t_min
-    if not ctx.metadata.get("decimation", {}).get("succeeded"):
-        error = float(ctx.mesh.metadata.get("coordinate_error", 0.0))
-        measured = np.isfinite(wt) & _wall_measured(ctx)
-        margin = 4.0 * error + tolerance
-        # An unproved reading counts only when another face reads the same
-        # wall (within rounding): a wall many rays cross, not one stray ray.
-        order = np.argsort(np.where(measured, wt, np.inf))
-        ranked = wt[order]
-        gap = np.full(len(wt), np.inf)
-        if len(wt) > 1:
-            with np.errstate(invalid="ignore"):  # two unmeasured (inf) readings side by side
-                step = np.abs(np.diff(ranked))
-            step = np.where(np.isnan(step), np.inf, step)
-            gap[order[1:]] = np.minimum(gap[order[1:]], step)
-            gap[order[:-1]] = np.minimum(gap[order[:-1]], step)
-        corroborated = gap <= np.maximum(margin, 1e-6 * np.abs(wt))
-        estimate = np.where(np.isfinite(upper), upper,
-                            np.where(corroborated, wt + margin, np.inf))
-        estimate = np.where(measured, estimate, np.inf)
-        if len(estimate) and np.isfinite(estimate.min()) and estimate.min() < thin_end:
-            index = int(np.argmin(estimate))
-            thin_end, thin_reading = float(estimate[index]), float(wt[index])
-    if (t_max > 0 and np.isfinite(thin_reading) and thin_reading > 0
-            and t_max_lower > 2.0 * thin_end + 3.0 * tolerance):
-        t_min = thin_reading
+    if t_max > 0 and np.isfinite(t_min) and t_min > 0 and t_max_lower > 2.0 * t_min_upper + 3.0 * tolerance:
         issues.append(Issue(
             code="NON_UNIFORM_WALLS",
             measurement_unit="ratio",
             severity=Severity.WARNING,
             message=(
                 f"Sampled wall ratio {format_measurement(t_max / t_min, 2.0)}:1 ({format_measurement(t_min)}–{format_measurement(t_max)}mm) "
-                f"may increase warping risk in {process_phrase(process)}."
+                f"may increase warping risk in {process.value}."
             ),
             process=process,
             measured_value=t_max / t_min,
@@ -1553,27 +679,12 @@ def check_undercuts_molding(
     *,
     cite: str = "",
 ) -> list[Issue]:
-    """Faces a two-part mold opening along Z cannot release.
-
-    Uses ``ctx.z_release_blocked``: an upward face must see out along +Z and
-    a downward face along -Z. A floor inside an open cavity is reached by the
-    core through the opening and is not an undercut; a lip, side hole or
-    groove is. (Replaces a rule that assumed a parting plane at mid-height and
-    flagged every upward face in the lower half, including open floors.)
-    """
-    blocked = ctx.z_release_blocked
-    if blocked is None:
-        return [Issue(
-            code="ANALYSIS_PARTIAL",
-            severity=Severity.INFO,
-            message=(
-                f"Undercut check incomplete for {process_phrase(process)}: release along Z "
-                "could not be traced for this mesh."
-            ),
-            process=process,
-            fix_suggestion="Verify mesh integrity via /validate/quick.",
-        )]
-    uc_faces = np.flatnonzero(blocked)
+    mid_z = (ctx.info.bounding_box.min_z + ctx.info.bounding_box.max_z) / 2
+    upper = ctx.centroids[:, 2] > mid_z
+    lower = ~upper
+    uc_upper = upper & (ctx.normals[:, 2] < -0.3)
+    uc_lower = lower & (ctx.normals[:, 2] > 0.3)
+    uc_faces = np.where(uc_upper | uc_lower)[0]
     if len(uc_faces) == 0:
         return []
     return [Issue(
@@ -1581,7 +692,7 @@ def check_undercuts_molding(
         severity=Severity.WARNING,
         message=(
             f"{len(uc_faces)} faces form undercuts requiring side actions "
-            f"in {process_phrase(process)} tooling, with the mold opening along {_pull_direction(ctx)}."
+            f"in {process.value} tooling."
         ),
         process=process,
         affected_faces=uc_faces.tolist(),
@@ -1593,25 +704,6 @@ def check_undercuts_molding(
 # ──────────────────────────────────────────────────────────────
 # Internal corner radii (CNC)
 # ──────────────────────────────────────────────────────────────
-# A standard end mill cuts to about three times its diameter (Protolabs Network
-# CNC design guide: "end mills have limited cutting length, typically 3-4 times
-# their diameter"); long-reach cutters go to about six, slowly. The same guide
-# recommends an inside radius of at least a third of the cavity's depth.
-END_MILL_REACH_D = 3.0
-LONG_REACH_D = 6.0
-REACH_CITE = ("Protolabs Network CNC guide: end mills cut to about 3–4× their diameter; "
-              "inside corner radius ≥ 1/3 of the cavity depth recommended.")
-
-
-def _up_tenth(value: float) -> float:
-    return math.ceil(round(value * 10.0, 6)) / 10.0
-
-
-def reach_radius_mm(depth_mm: float, min_radius_mm: float) -> float:
-    """The smallest corner radius a standard end mill cuts ``depth_mm`` deep (0.1 mm up)."""
-    return max(float(min_radius_mm), _up_tenth(depth_mm / (2.0 * END_MILL_REACH_D)))
-
-
 def check_internal_radii(
     ctx: GeometryContext,
     min_radius_mm: float,
@@ -1619,94 +711,25 @@ def check_internal_radii(
     *,
     cite: str = "",
 ) -> list[Issue]:
-    """Sharp inside corners between walls, where a milling cutter leaves its radius.
-
-    ``GeometryContext.inside_corners``: a corner whose face can be the floor of
-    a cut (the foot of an L, round a boss, an open step) is cut sharp by the
-    flat end of the cutter and isn't counted. Counted in corners, not mesh
-    edges, so an STL and a STEP of the same part give the same answer.
-
-    The radius needed follows the depth: the cutter that leaves the corner's
-    radius reaches the corner's full length, and a standard end mill cuts about
-    ``END_MILL_REACH_D`` times its diameter, so a corner 20 mm deep needs a
-    Ø6.7 mm cutter: R3.3 at least, not the smallest end mill's 0.5 mm.
-    """
+    """Flag sharp concave edges that tools can't reach."""
     if len(ctx.concave_mask) == 0 or len(ctx.dihedral_angles_rad) == 0:
         return []
-    corners = ctx.inside_corners
-    if corners.corners == 0:
+    sharp = ctx.concave_mask & (ctx.dihedral_angles_rad > np.radians(30))
+    sharp_count = int(np.sum(sharp))
+    if sharp_count < 10:
         return []
-    n = corners.corners
-    deepest = corners.deepest_mm
-    need = reach_radius_mm(deepest, min_radius_mm)
-    word = "corner" if n == 1 else "corners"
-    if need > min_radius_mm:
-        why = (f"{n} sharp concave {word} between walls ({round(corners.length_mm, 1):g} mm of edge, "
-               f"{'it runs' if n == 1 else 'the deepest runs'} {round(deepest, 1):g} mm deep): a milling cutter "
-               f"leaves its own radius there, and a standard end mill reaches about {END_MILL_REACH_D:g}× its "
-               f"diameter, so {round(deepest, 1):g} mm deep takes Ø{2 * need:g} mm or more: at least R{need:g} mm. "
-               f"Applies to {process_phrase(process)}.")
-        third = _up_tenth(deepest / 3.0)
-        fix = (f"Add fillets >= {need:g}mm to the inside corners; R{third:g} mm (a third of the depth) "
-               f"lets a stiffer cutter run faster. {REACH_CITE}")
-        source = REACH_CITE
-    else:
-        why = (f"{n} sharp concave {word} between walls ({round(corners.length_mm, 1):g} mm of edge): "
-               f"a milling cutter leaves at least its {min_radius_mm}mm radius there. "
-               f"Applies to {process_phrase(process)}.")
-        fix = f"Add fillets >= {min_radius_mm}mm to internal corners. {cite}"
-        source = cite
     return [Issue(
         code="SHARP_INTERNAL_CORNERS",
         measurement_unit="mm",
         severity=Severity.WARNING,
-        message=why,
-        process=process,
-        required_value=need,
-        fix_suggestion=fix,
-        citation=parse_citation(source),
-    )]
-
-
-def check_tool_reach(ctx: GeometryContext, process: ProcessType) -> list[Issue]:
-    """Rounded inside corners deeper than the cutter that cuts their radius reaches.
-
-    A corner rounded R0.5 and 20 mm deep is cut by a Ø1 mm end mill at 20× its
-    diameter: standard end mills reach about 3×, long-reach ones about 6×, and
-    past that a shop quotes EDM or asks for a larger radius.
-    """
-    deep = [c for c in ctx.rounded_inside_corners
-            if c["depth_mm"] / (2.0 * c["radius_mm"]) > END_MILL_REACH_D + 1e-9]
-    if not deep:
-        return []
-    worst = max(deep, key=lambda c: c["depth_mm"] / c["radius_mm"])
-    ratio = worst["depth_mm"] / (2.0 * worst["radius_mm"])
-    need = max(reach_radius_mm(c["depth_mm"], 0.0) for c in deep)
-    n = len(deep)
-    beyond = ratio > LONG_REACH_D
-    faces = sorted({int(f) for c in deep for f in c["faces"]})
-    return [Issue(
-        code="TOOL_REACH",
-        measurement_unit="mm",
-        severity=Severity.WARNING,
         message=(
-            f"{n} rounded inside {'corner is' if n == 1 else 'corners are'} deeper than a standard end mill "
-            f"reaches: R{format_measurement(worst['radius_mm'])} runs {round(worst['depth_mm'], 1):g} mm deep, so "
-            f"the Ø{format_measurement(2 * worst['radius_mm'])} mm cutter that cuts it reaches {ratio:.0f}× its "
-            f"diameter (standard end mills about {END_MILL_REACH_D:g}×, long-reach about {LONG_REACH_D:g}×)."
-            + (" Past that, most shops quote EDM or ask for a larger radius." if beyond
-               else " A long-reach cutter does it, slowly.")
-            + f" Applies to {process_phrase(process)}."
+            f"{sharp_count} sharp concave edges — tool radius {min_radius_mm}mm "
+            f"cannot reach. Applies to {process.value}."
         ),
         process=process,
-        affected_faces=faces,
-        region_center=worst["center"],
-        measured_value=float(worst["radius_mm"]),
-        required_value=need,
-        fix_suggestion=(f"Make the inside corners at least R{need:g} mm (a Ø{2 * need:g} mm end mill reaches "
-                        f"{round(max(c['depth_mm'] for c in deep), 1):g} mm at {END_MILL_REACH_D:g}× its diameter). "
-                        f"{REACH_CITE}"),
-        citation=parse_citation(REACH_CITE),
+        required_value=min_radius_mm,
+        fix_suggestion=f"Add fillets >= {min_radius_mm}mm to internal corners. {cite}",
+        citation=parse_citation(cite),
     )]
 
 
@@ -1727,12 +750,9 @@ def check_fixture_surfaces(
         return []
     return [Issue(
         code="NO_FIXTURE_SURFACES",
-        measurement_unit="percent",
         severity=Severity.WARNING,
-        message=f"Only {flat_pct:.1f}% flat area — hard to fixture for {process_phrase(process)}.",
+        message=f"Only {flat_pct:.1f}% flat area — hard to fixture for {process.value}.",
         process=process,
-        measured_value=flat_pct,
-        required_value=min_flat_pct,
         fix_suggestion="Add flat datum surfaces or plan custom fixtures.",
     )]
 
@@ -1763,7 +783,7 @@ def check_fillet_requirements(
         severity=Severity.WARNING,
         message=(
             f"{count} sharp concave mesh edges need >= {min_fillet_mm}mm fillets "
-            f"for {process_phrase(process)} flow and stress distribution."
+            f"for {process.value} flow and stress distribution."
         ),
         process=process,
         required_value=min_fillet_mm,
@@ -1794,11 +814,10 @@ def check_shrinkage_risk(
         severity=Severity.WARNING,
         message=(
             f"V/SA ratio {format_measurement(compactness, max_compactness)}mm — bulky sections cause shrinkage "
-            f"porosity in {process_phrase(process)}."
+            f"porosity in {process.value}."
         ),
         process=process,
         measured_value=compactness,
-        required_value=max_compactness,
         fix_suggestion="Core out thick sections for even cooling.",
     )]
 
@@ -1816,24 +835,20 @@ def check_residual_stress(
     if len(ctx.facet_groups) == 0:
         return []
     total = float(ctx.info.surface_area) or 1.0
-    max_share_pct = 15.0
     for fg in ctx.facet_groups:
         area = float(ctx.face_areas[fg].sum())
-        if area / total < max_share_pct / 100:
+        if area / total < 0.15:
             continue
         avg_normal = ctx.normals[fg].mean(axis=0)
         if abs(avg_normal[2]) > 0.95:  # nearly horizontal
             return [Issue(
                 code="RESIDUAL_STRESS_RISK",
-                measurement_unit="percent",
                 severity=Severity.WARNING,
                 message=(
                     f"Large horizontal surface ({area:.0f}mm², "
-                    f"{area / total * 100:.0f}% of total) — curl risk in {process_phrase(process)}."
+                    f"{area / total * 100:.0f}% of total) — curl risk in {process.value}."
                 ),
                 process=process,
-                measured_value=area / total * 100,
-                required_value=max_share_pct,
                 fix_suggestion=f"Add breakup features or reorient. HIP recommended. {cite}",
                 citation=parse_citation(cite),
             )]
@@ -1865,22 +880,21 @@ def check_rotational_symmetry(
         # Two eigenvalues should be approximately equal for rotational symmetry
         ratio_01 = eig[0] / eig[1] if eig[1] > 0 else 0
         ratio_12 = eig[1] / eig[2] if eig[2] > 0 else 0
-        balanced = (abs(1.0 - ratio_01) < tolerance) or (abs(1.0 - ratio_12) < tolerance)
-        round_surface = balanced and has_rotational_surface_evidence(
-            ctx.features, ctx.info.surface_area, mesh=ctx.mesh)
-        if not round_surface:
-            # Two equal principal moments (mass spread evenly about one axis) is
-            # necessary but not enough: a cube has them. A lathe also needs a
-            # round outer surface to turn.
-            reason = ("no round outer surface was found to turn" if balanced
-                      else "it isn't round about any axis")
+        is_symmetric = (
+            (abs(1.0 - ratio_01) < tolerance)
+            or (abs(1.0 - ratio_12) < tolerance)
+        ) and has_rotational_surface_evidence(ctx.features, ctx.info.surface_area, mesh=ctx.mesh)
+        if not is_symmetric:
             return [Issue(
                 code="NOT_ROTATIONALLY_SYMMETRIC",
                 severity=Severity.ERROR,
-                message=f"A lathe can't make this part as drawn: {reason}.",
+                message=(
+                    f"Part lacks positive rotational geometry (eigenvalue ratios: "
+                    f"{ratio_01:.2f}, {ratio_12:.2f}; insufficient outer rotational "
+                    f"surface evidence). Required for {process.value}."
+                ),
                 process=process,
-                fix_suggestion=("Turning needs a part that is round about one axis. Mill it "
-                                "(3-axis or 5-axis), or use a mill-turn for a round part with milled features."),
+                fix_suggestion="CNC turning requires axially symmetric geometry. Use mill-turn or 3/5-axis CNC.",
             )]
     except Exception:
         logger.warning(
@@ -1891,9 +905,12 @@ def check_rotational_symmetry(
         return [Issue(
             code="ANALYSIS_PARTIAL",
             severity=Severity.INFO,
-            message="The roundness check for turning didn't finish: the part's mass properties couldn't be computed.",
+            message=(
+                f"Rotational-symmetry check incomplete for {process.value} "
+                f"(eigen decomposition failed)."
+            ),
             process=process,
-            fix_suggestion="Check that the file is one closed solid, then check it again.",
+            fix_suggestion="Verify mesh integrity via /validate/quick.",
         )]
     return []
 
@@ -1924,7 +941,7 @@ def check_length_diameter_ratio(
         severity=Severity.WARNING,
         message=(
             f"L/D ratio {format_measurement(ld, max_ld)}:1 exceeds {max_ld}:1 — deflection risk "
-            f"on {process_phrase(process)}. Steady rest recommended."
+            f"on {process.value}. Steady rest recommended."
         ),
         process=process,
         measured_value=ld,
@@ -1971,23 +988,7 @@ def check_sheet_gauge(
 ) -> list[Issue]:
     issues: list[Issue] = []
     dims = ctx.flat_sheet_dimensions
-    # M9: a sheet bent along parallel lines is measured from its strip profile.
-    bent = getattr(ctx, "bent_sheet", None) if dims is None else None
-    if bent is not None:
-        dims = (bent.gauge_mm, *sorted((bent.width_mm, bent.developed_mm)))
     if dims is None:
-        thick = _section_thicker_than_sheet(ctx)
-        if thick is not None:
-            return [Issue(
-                code="NOT_SHEET_STOCK", severity=Severity.ERROR,
-                measurement_unit="mm", measured_value=thick, required_value=SHEET_GAUGE_MAX_MM,
-                message=(
-                    f"A {format_measurement(thick, SHEET_GAUGE_MAX_MM)}mm-thick section fits inside the part; "
-                    f"sheet stock is at most {SHEET_GAUGE_MAX_MM:g}mm (the default gauge list), so this isn't a sheet part."
-                ),
-                process=process,
-                fix_suggestion="Machine, cast or print it, or redesign it as a constant-thickness sheet part.",
-            )]
         return [Issue(
             code="SHEET_GAUGE_UNVERIFIED", severity=Severity.WARNING,
             message="A constant flat-sheet gauge could not be verified from this geometry.",
@@ -1995,20 +996,8 @@ def check_sheet_gauge(
             fix_suggestion="Confirm material thickness and provide a flat pattern for bent or nonuniform parts; the overall envelope is not a sheet gauge.",
         )]
     t = dims[0]
-    precision = ctx.sheet_precision if bent is None else bent.precision_mm
+    precision = ctx.sheet_precision
     tolerance = wall_thickness_tolerance(ctx.mesh, ctx.scale_eps) + precision
-    if bent is not None and bent.min_inside_radius_mm < t - tolerance:
-        r = bent.min_inside_radius_mm
-        issues.append(Issue(
-            code="BEND_RADIUS_UNDER_GAUGE", severity=Severity.WARNING,
-            measurement_unit="mm", measured_value=r, required_value=t, process=process,
-            message=(f"{'A bend has a sharp inside corner' if r <= tolerance else f'Inside bend radius about {r:.1f}mm'}"
-                     f" under the {format_measurement(t, t)}mm sheet thickness: a press brake bends "
-                     f"to an inside radius of about one thickness or more."),
-            fix_suggestion=(f"Give each of the {bent.bends} bend{'s' if bent.bends != 1 else ''} an inside "
-                            f"radius of at least {format_measurement(t, t)}mm (outside radius "
-                            f"{format_measurement(2 * t, 2 * t)}mm)."),
-        ))
     if precision:
         issues.append(Issue(
             code="SHEET_GAUGE_PRECISION", severity=Severity.WARNING,
@@ -2025,17 +1014,12 @@ def check_sheet_gauge(
             fix_suggestion=f"Use >= {SHEET_GAUGE_MIN_MM:g}mm for default sheet profiles; confirm material-specific stock and machine limits.",
         ))
     elif t > SHEET_GAUGE_MAX_MM + tolerance:
-        # Thicker than the thickest gauge is plate or bar, not sheet: a 30 mm
-        # block, a bar or a tube end-on all measure their length here.
         issues.append(Issue(
-            code="TOO_THICK_SHEET", severity=Severity.ERROR,
+            code="TOO_THICK_SHEET", severity=Severity.WARNING,
             measurement_unit="mm",
-            message=(
-                f"Thickness {format_measurement(t, SHEET_GAUGE_MAX_MM)}mm exceeds the default "
-                f"{SHEET_GAUGE_MAX_MM:g}mm maximum sheet gauge: this is plate or bar stock, not sheet."
-            ),
+            message=f"Thickness {format_measurement(t, SHEET_GAUGE_MAX_MM)}mm exceeds the default {SHEET_GAUGE_MAX_MM:g}mm maximum sheet gauge.",
             process=process, measured_value=t, required_value=SHEET_GAUGE_MAX_MM,
-            fix_suggestion="Machine it, or have it cut from plate by a shop that cuts this thickness.",
+            fix_suggestion="Confirm stock and machine capacity for this thickness, or consider plate machining.",
         ))
     closest = min(STANDARD_GAUGES, key=lambda g: abs(g - t))
     if (
@@ -2050,27 +1034,6 @@ def check_sheet_gauge(
             fix_suggestion=f"Confirm supplier stock; {closest:g}mm is the nearest gauge in the default catalog.",
         ))
     return issues
-
-
-def _section_thicker_than_sheet(ctx: GeometryContext) -> float | None:
-    """A measured interior section thicker than any sheet gauge, or None.
-
-    ``maximum_inscribed_diameter`` is a ball that fits inside the material at
-    a sampled point (a lower bound on the thickest section). Sheet of gauge t,
-    flat or bent, contains no ball wider than t, so a wider one proves the
-    part was not formed from default sheet stock. Not claimed on a decimated
-    mesh or when source rounding could account for the excess.
-    """
-    if ctx.metadata.get("decimation", {}).get("succeeded"):
-        return None
-    t_max = ctx.maximum_inscribed_diameter
-    if t_max is None or not np.isfinite(t_max):
-        return None
-    error = 2.0 * float(ctx.mesh.metadata.get("coordinate_error", 0.0))
-    tolerance = wall_thickness_tolerance(ctx.mesh, ctx.scale_eps)
-    if t_max - error > SHEET_GAUGE_MAX_MM + tolerance:
-        return float(t_max)
-    return None
 
 
 # ──────────────────────────────────────────────────────────────
@@ -2099,8 +1062,7 @@ def check_bends(
     """
     if len(ctx.dihedral_angles_rad) == 0:
         return []
-    max_divergence_deg = 150.0
-    knife = ctx.dihedral_angles_rad > np.radians(max_divergence_deg)
+    knife = ctx.dihedral_angles_rad > np.radians(150)
     count = int(np.sum(knife))
     if count == 0:
         return []
@@ -2109,13 +1071,12 @@ def check_bends(
         code="SHARP_BEND", severity=Severity.ERROR,
         measurement_unit="deg",
         message=(
-            f"{count} knife-edge folds (normal divergence up to {format_measurement(tightest_deg, max_divergence_deg)}° "
+            f"{count} knife-edge folds (normal divergence up to {format_measurement(tightest_deg, 150.0)}° "
             f"≈ included bend angle < 30°) — bend radius must be >= material "
             f"thickness. DIN 6935."
         ),
         process=process,
         measured_value=tightest_deg,
-        required_value=max_divergence_deg,
         fix_suggestion=f"Increase bend radius to >= 1x material thickness. {cite}",
         citation=parse_citation(cite),
     )]
@@ -2145,13 +1106,12 @@ def check_core_feasibility(
                 if dims[0] > 0 and dims[2] / dims[0] > 6:
                     issues.append(Issue(
                         code="FRAGILE_CORE", severity=Severity.WARNING,
-                        measurement_unit="ratio", measured_value=dims[2] / dims[0],
                         message=(
                             f"Core aspect ratio {dims[2] / dims[0]:.1f}:1 "
-                            f"— may break during {process_phrase(process)}."
+                            f"— may break during {process.value}."
                         ),
                         process=process,
-                        region_center=cast("tuple[float, float, float]", tuple(float(v) for v in center)),
+                        region_center=tuple(float(v) for v in center),
                         fix_suggestion="Reduce core aspect ratio below 4:1.",
                     ))
     except Exception:
@@ -2164,7 +1124,7 @@ def check_core_feasibility(
             code="ANALYSIS_PARTIAL",
             severity=Severity.INFO,
             message=(
-                f"Core feasibility check incomplete for {process_phrase(process)} "
+                f"Core feasibility check incomplete for {process.value} "
                 f"(watertightness/containment error)."
             ),
             process=process,
@@ -2196,7 +1156,7 @@ def check_hole_depth_ratio(
                 severity=Severity.WARNING,
                 message=(
                     f"Hole depth/diameter {format_measurement(ratio, max_ratio)}:1 exceeds {max_ratio}:1 "
-                    f"for {process_phrase(process)} at ({f.centroid[0]:.0f}, {f.centroid[1]:.0f}, {f.centroid[2]:.0f})."
+                    f"for {process.value} at ({f.centroid[0]:.0f}, {f.centroid[1]:.0f}, {f.centroid[2]:.0f})."
                 ),
                 process=process,
                 measured_value=ratio,

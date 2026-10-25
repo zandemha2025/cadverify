@@ -69,7 +69,7 @@ MIN_FEATURE_SIZE: dict[ProcessType, float] = {
 # Additive build volumes (typical per-process machine envelope, mm)
 # ──────────────────────────────────────────────────────────────
 BUILD_VOLUMES: dict[ProcessType, tuple[int, int, int]] = {
-    ProcessType.FDM: (300, 300, 350),       # a large desktop FDM class (the MK4 is 250 × 210 × 220)
+    ProcessType.FDM: (300, 300, 350),       # Bambu X1C / Prusa MK4
     ProcessType.SLA: (145, 145, 175),        # Formlabs Form 4
     ProcessType.DLP: (192, 120, 200),        # Elegoo Saturn
     ProcessType.SLS: (340, 340, 600),        # EOS P 396

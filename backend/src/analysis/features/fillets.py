@@ -54,8 +54,6 @@ meaningless radius.
 
 from __future__ import annotations
 
-from typing import cast
-
 import numpy as np
 import trimesh
 
@@ -237,7 +235,7 @@ def detect_fillets(
             conf += 0.05
         conf = float(min(0.75, max(0.5, conf)))
 
-        centroid = cast("tuple[float, float, float]", tuple(float(v) for v in centroids[comp_faces].mean(axis=0)))
+        centroid = tuple(float(v) for v in centroids[comp_faces].mean(axis=0))
 
         features.append(
             Feature(
@@ -430,7 +428,7 @@ def _fit_axis_radius(
             r = float(radii.mean())
             radius = r if np.isfinite(r) and r > 0 else None
 
-        axis_out = cast("tuple[float, float, float]", tuple(float(v) for v in axis))
+        axis_out = tuple(float(v) for v in axis)
         return axis_out, radius, residual
     except Exception:
         return None, None, None

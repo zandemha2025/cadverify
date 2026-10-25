@@ -11,7 +11,6 @@ unauthenticated (mirrors the existing public analysis share route).
 
 Routes (mounted at /api/v1/cost-decisions):
   GET    ""                      list (cursor paginated; filter part/process/date)
-  GET    /latest-per-part        newest decision per part + the shop screens' fields
   GET    /compare?ids=a,b        structured diff of two owned decisions
   GET    /{id}                   full result_json envelope (owner-scoped, 404)
   PUT    /{id}/disposition       persist/withdraw the four-way human outcome
@@ -31,24 +30,20 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Literal, Optional
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
-from sqlalchemy.orm import defer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.org_context import caller_org_subquery
 from src.auth.rate_limit import limiter
-from src.auth.rbac import Role, require_org_writer, require_role
+from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_db_session
 from src.db.models import CostDecision
 from src.services import cost_decision_service as svc
-from src.services import share_links
-from src.services.share_links import ShareOptions
 from src.services import cost_pdf_service
 
 logger = logging.getLogger("cadverify.cost_decisions")
@@ -62,13 +57,9 @@ class ApprovalBody(BaseModel):
 
 
 class DispositionBody(BaseModel):
-    disposition: Literal["inhouse", "outside", "acquire", "redesign", "supplier"] | None
+    disposition: Literal["inhouse", "outside", "acquire", "redesign"] | None
     note: str | None = Field(default=None, max_length=1000)
     quantity: int | None = Field(default=None, gt=0, strict=True)
-    # The route the user chose. Omitted: the engine's recommendation at the
-    # quantity (the cheapest eligible route), as before.
-    process: str | None = Field(default=None, min_length=1, max_length=64)
-    material: str | None = Field(default=None, min_length=1, max_length=200)
 
 
 def _parse_dt(value: str, field: str) -> datetime:
@@ -102,10 +93,7 @@ async def list_cost_decisions(
     W1 step 3: org-scoped (the tenant boundary) — in v1 the personal org makes
     this identical to the old per-user list; it never leaks another org's rows.
     """
-    # Never the whole saved result (up to ~1 MB a record): the list shows only
-    # its what-if label and rate-card stamp, read below from each record's slim
-    # inputs (capacity report C6: 100 records cost 0.6-0.8 s a call).
-    stmt = select(CostDecision).options(defer(CostDecision.result_json)).where(
+    stmt = select(CostDecision).where(
         CostDecision.org_id == caller_org_subquery(user.user_id)
     )
 
@@ -126,53 +114,11 @@ async def list_cost_decisions(
     has_more = len(rows) > limit
     items = rows[:limit]
 
-    from src.services import catalog_inputs
-    from src.services.rate_card_basis import basis_for
-
-    inputs = await catalog_inputs.cost_inputs(session, [(d.id, d.ulid) for d in items])
-    results = {d.ulid: inputs.get((d.id, d.ulid)) for d in items}
-    rates = await basis_for(session, items[0].org_id, items, results=results) if items else {}
     return {
-        "cost_decisions": [
-            {**svc._list_item(d, result_json=results[d.ulid]), "rates": rates.get(d.ulid)}
-            for d in items
-        ],
+        "cost_decisions": [svc._list_item(d) for d in items],
         "next_cursor": items[-1].ulid if has_more and items else None,
         "has_more": has_more,
     }
-
-
-@router.get("/latest-per-part")
-@limiter.limit("120/hour;1000/day")
-async def latest_cost_decisions_per_part(
-    request: Request,
-    response: Response,
-    limit: int = Query(500, ge=1, le=svc.LATEST_PARTS_MAX, description="Parts to list (max 500)"),
-    detail_limit: int = Query(
-        12, ge=0, le=svc.LATEST_DETAILS_MAX,
-        description="How many of the newest parts carry their cost details (max 50)",
-    ),
-    user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
-):
-    """The newest saved decision for each part in the caller's organization,
-    newest first, in ONE request: summaries for every part (``parts``), and for
-    the newest ``detail_limit`` parts the fields the Rates and Real costs screens
-    read (``details[].result``: assumptions, material class, the decision's pick
-    per quantity, and the estimates at ``headline_qty``).
-
-    Replaces a screen's per-record GET /{id} reads (up to 16 per load) so
-    browsing stays well inside the per-route limits. Org-scoped like every
-    cost-decision read; the full record stays at GET /{id}.
-    """
-    body = await svc.latest_per_part(
-        session, user.user_id, limit=limit, detail_limit=detail_limit
-    )
-    # Already JSON-native (strings, numbers, lists, dicts, None), and large
-    # (about 1 MB for 12 detailed parts): rendered as FastAPI renders a returned
-    # dict, without first walking every value through jsonable_encoder, which
-    # took most of the call. Same bytes, same headers.
-    return JSONResponse(body)
 
 
 @router.get("/compare")
@@ -207,15 +153,10 @@ async def get_cost_decision(
 ):
     """Full saved cost decision by id (own decisions only; 404 for others)."""
     d = await svc.get_owned(session, decision_id, user.user_id)
-    from src.services.rate_card_basis import basis_for
-
-    rates = (await basis_for(session, d.org_id, [d]))[d.ulid]
     return {
         "id": d.ulid,
         "filename": d.filename,
         "file_type": d.file_type,
-        # Which rate card priced this record and which is in effect now (ce-10).
-        "rates": rates,
         "label": d.label,
         "created_at": d.created_at.isoformat(),
         "engine_version": d.engine_version,
@@ -226,31 +167,11 @@ async def get_cost_decision(
         "make_now_process": d.make_now_process,
         "crossover_qty": d.crossover_qty,
         "quantities": d.quantities or [],
-        **share_links.fields(d),
+        "is_public": d.is_public,
+        "share_url": f"/s/cost/{d.share_short_id}" if d.share_short_id else None,
         **svc.governance_fields(d),
-        **(await _signoff_fields(session, d)),
         "result": d.result_json,
     }
-
-
-async def _signoff_fields(session: AsyncSession, d) -> dict:
-    """The sign-off as people see it: who, when, the note, and whether it's out of date."""
-    from src.services import signoff_service as so
-
-    gov = svc.governance_fields(d)
-    names = await so.names_for(session, [gov.get("approved_by_user_id")])
-    return {"signoff": so.signoff_view(gov, names)}
-
-
-async def _require_signoff_role(session: AsyncSession, d, user: AuthedUser) -> None:
-    """403 unless the caller's org role clears the org's sign-off rule."""
-    from src.services import signoff_service as so
-
-    role = await so.get_role(session, d.org_id)
-    org_role = await so.org_role_of(session, d.org_id, user.user_id)
-    if not so.may_sign_off(org_role, role, is_superadmin=user.role == Role.superadmin.value):
-        raise HTTPException(status_code=403, detail={"code": "signoff_role_required",
-                                                     "message": so.refusal(role)})
 
 
 @router.put("/{decision_id}/disposition")
@@ -260,7 +181,7 @@ async def set_cost_decision_disposition(
     body: DispositionBody,
     request: Request,
     response: Response,
-    user: AuthedUser = Depends(require_org_writer),
+    user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Persist a human sourcing outcome, or withdraw it with ``null``.
@@ -275,8 +196,6 @@ async def set_cost_decision_disposition(
         disposition=body.disposition,
         note=body.note,
         quantity=body.quantity,
-        process=body.process,
-        material=body.material,
     )
     return {"id": d.ulid, **svc.governance_fields(d)}
 
@@ -291,23 +210,11 @@ async def approve_cost_decision(
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Approve/sign off a saved decision without changing its engine artifact.
-
-    Who may sign off is the organization's rule (``/orgs/signoff``). A record
-    that is out of date can't be signed off: what it was computed from changed.
-    """
-    d = await svc.get_owned(session, decision_id, user.user_id)
-    await _require_signoff_role(session, d, user)
-    if svc.governance_fields(d).get("is_stale"):
-        raise HTTPException(status_code=409, detail={
-            "code": "decision_stale",
-            "message": "This record is out of date: what it was computed from changed. "
-                       "Check the part again, then sign off the new record."})
+    """Approve/sign off a saved decision without changing its engine artifact."""
     d = await svc.approve_owned(session, decision_id, user.user_id, note=body.note)
     return {
         "id": d.ulid,
         **svc.governance_fields(d),
-        **(await _signoff_fields(session, d)),
     }
 
 
@@ -321,30 +228,11 @@ async def reopen_cost_decision_approval(
     session: AsyncSession = Depends(get_db_session),
 ):
     """Reopen approval/signoff while keeping the saved decision immutable."""
-    d = await svc.get_owned(session, decision_id, user.user_id)
-    await _require_signoff_role(session, d, user)
     d = await svc.reopen_owned(session, decision_id, user.user_id)
     return {
         "id": d.ulid,
         **svc.governance_fields(d),
-        "signoff": None,
     }
-
-
-@router.post("/{decision_id}/use-as-price")
-@limiter.limit("60/hour;300/day")
-async def use_what_if_as_price(
-    decision_id: str,
-    request: Request,
-    response: Response,
-    user: AuthedUser = Depends(require_org_writer),
-    session: AsyncSession = Depends(get_db_session),
-):
-    """Make a what-if the part's current price (ce-17, ce-08): a new record with the
-    what-if's engine result and no what-if marker. The what-if itself is unchanged."""
-    d = await svc.adopt_what_if(session, user, decision_id)
-    await session.commit()
-    return {"id": d.ulid, "adopted_from": decision_id, **svc.governance_fields(d)}
 
 
 @router.get("/{decision_id}/pdf")
@@ -359,7 +247,7 @@ async def download_cost_pdf(
     pdf_bytes, original_filename = await cost_pdf_service.get_or_generate_cost_pdf(
         decision_id, user.user_id, session
     )
-    safe_name = cost_pdf_service.safe_cost_filename(original_filename, decision_id)
+    safe_name = cost_pdf_service.safe_cost_filename(original_filename)
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -378,13 +266,9 @@ async def export_cost_json(
 ):
     """Export the glass-box decision JSON plus its governance state."""
     d = await svc.get_owned(session, decision_id, user.user_id)
-    from src.services.rate_card_basis import basis_for
-
     payload = {
         **(d.result_json or {}),
         "governance": svc.governance_fields(d),
-        # Which rate card priced it, which is in effect, out of date or not (ce-14).
-        "rates": (await basis_for(session, d.org_id, [d])).get(d.ulid),
     }
     return Response(
         content=json.dumps(payload, separators=(",", ":")),
@@ -392,7 +276,7 @@ async def export_cost_json(
         headers={
             "Content-Disposition": (
                 f'attachment; filename="'
-                f'{cost_pdf_service.safe_cost_filename(d.filename, d.ulid, "cost.json")}"'
+                f'{cost_pdf_service.safe_cost_filename(d.filename)[:-4]}.json"'
             )
         },
     )
@@ -406,19 +290,17 @@ async def export_cost_csv(
     user: AuthedUser = Depends(require_role(Role.viewer)),
     session: AsyncSession = Depends(get_db_session),
 ) -> Response:
-    """The CSV of cost inputs (ce-14): one row per cost line, with the hours, rates, kg and
-    $/kg behind it, the record id, when it was checked and exported, the rate card it was
-    priced at and whether it's out of date. Lines foot to the unit cost to the cent."""
+    """Export estimates, line items, confidence, and governance as CSV."""
     d = await svc.get_owned(session, decision_id, user.user_id)
-    from src.services.rate_card_basis import basis_for
-
-    rates = (await basis_for(session, d.org_id, [d])).get(d.ulid)
-    csv_text = svc.build_cost_inputs_csv(d, governance=svc.governance_fields(d), rates=rates)
-    name = cost_pdf_service.safe_cost_filename(d.filename, d.ulid, "cost.csv")
+    csv_text = svc.build_estimates_csv(
+        d.result_json or {},
+        governance=svc.governance_fields(d),
+    )
+    stem = cost_pdf_service.safe_cost_filename(d.filename)[:-4]
     return Response(
         content=csv_text,
         media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+        headers={"Content-Disposition": f'attachment; filename="{stem}.csv"'},
     )
 
 
@@ -428,21 +310,11 @@ async def create_cost_share(
     decision_id: str,
     request: Request,
     response: Response,
-    body: Optional[ShareOptions] = None,
-    user: AuthedUser = Depends(require_org_writer),
+    user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Share a cost decision: a public short URL (/s/cost/...) for a supplier that ends.
-
-    Body (optional): ``{"expires_in_days": 1 | 7 | 30 | 90 | 365 | null,
-    "expires_on": "YYYY-MM-DD", "include_cost": false, "include_cad": false,
-    "note": "...", "quantity": 250}``. Omitted: 7 days, no cost, no CAD, and a
-    link that is already on is returned unchanged. With a body, a new link is
-    made (one that was on stops working).
-    """
-    if body is None:
-        return await svc.create_share(decision_id, user.user_id, session, ShareOptions().expires_in_days)
-    return await svc.create_share(decision_id, user.user_id, session, body.expires_in_days, options=body)
+    """Share a cost decision — generates a public short URL (/s/cost/...)."""
+    return await svc.create_share(decision_id, user.user_id, session)
 
 
 @router.delete("/{decision_id}/share")
@@ -451,29 +323,12 @@ async def revoke_cost_share(
     decision_id: str,
     request: Request,
     response: Response,
-    user: AuthedUser = Depends(require_org_writer),
+    user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Switch the link off now (its maker or an org admin). It then says so (410)."""
+    """Revoke sharing — the public link 404s immediately."""
     await svc.revoke_share(decision_id, user.user_id, session)
     return {"message": "Share revoked"}
-
-
-@public_cost_share_router.get("/cost/{short_id}/cad")
-@limiter.limit("30/hour")
-async def get_shared_cost_cad(
-    short_id: str,
-    request: Request,
-    response: Response,
-    session: AsyncSession = Depends(get_db_session),
-):
-    """The part's CAD file, when the link's sharer included it (no auth)."""
-    from src.services import supplier_links
-
-    filename, data = await supplier_links.record_cad(session, short_id)
-    return Response(content=data, media_type="application/octet-stream", headers={
-        "Content-Disposition": f'attachment; filename="{filename}"',
-        "X-Robots-Tag": "noindex", "Cache-Control": "private, no-store"})
 
 
 @public_cost_share_router.get("/cost/{short_id}")

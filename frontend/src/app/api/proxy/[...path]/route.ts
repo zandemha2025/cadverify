@@ -19,8 +19,6 @@ import { type NextRequest } from "next/server";
 import { backendUrl } from "@/lib/api-base";
 import { getSessionToken } from "@/lib/session";
 import { prepareProxyRequestBody } from "@/lib/proxy-request-body";
-import { e2eFaultHeaders } from "@/lib/e2e-fault-headers";
-import { shouldRecompress, variesByEncoding } from "@/lib/proxy-compression";
 
 export const dynamic = "force-dynamic";
 
@@ -114,10 +112,13 @@ async function handle(
     const idempotencyKey = req.headers.get("idempotency-key");
     if (idempotencyKey) headers["idempotency-key"] = idempotencyKey;
   }
-  // Secret-gated, record-scoped release-evidence faults for local runs. The
-  // backend ignores both headers unless its non-public E2E token matches; in a
-  // release neither side honours them, so they are never forwarded there.
-  Object.assign(headers, e2eFaultHeaders(req.headers));
+  // Secret-gated, record-scoped release-evidence faults. The backend ignores
+  // both headers unless its non-public E2E token is explicitly configured and
+  // matches; forwarding them here keeps browser QA on the real same-origin path.
+  for (const name of ["x-proofshape-e2e-token", "x-proofshape-e2e-fault"]) {
+    const value = req.headers.get(name);
+    if (value) headers[name] = value;
+  }
 
   const prepared = await prepareProxyRequestBody(method, contentType, req.body);
   if (prepared.tooLarge) {
@@ -166,17 +167,7 @@ async function handle(
   // empty ReadableStream through anyway makes Chromium report ERR_ABORTED even
   // though the mutation succeeded (observed on Design Studio archive).
   const noBody = method === "HEAD" || [204, 205, 304].includes(res.status);
-  // Fetch decoded the API's gzip; send it on compressed again when the browser takes
-  // gzip (buyer-15: a part's record and analysis were 839 KB uncompressed on a phone).
-  // Its length is the compressed one, so no Content-Length; caches key on the encoding.
-  if (variesByEncoding(res.headers.get("content-type"))) relayed.append("vary", "Accept-Encoding");
-  const gzip = !noBody && !!res.body && shouldRecompress(req.headers.get("accept-encoding"), res.headers);
-  if (gzip) {
-    relayed.set("content-encoding", "gzip");
-    relayed.delete("content-length");
-  }
-  const body = noBody ? null : gzip && res.body ? res.body.pipeThrough(new CompressionStream("gzip")) : res.body;
-  return new Response(body, {
+  return new Response(noBody ? null : res.body, {
     status: res.status,
     headers: relayed,
   });

@@ -10,7 +10,6 @@ const hooks = registerHooks({ resolve(specifier, context, next) {
   if (specifier === "@/lib/session") return next(sessionStub, context);
   if (specifier === "@/lib/api-base") return next(new URL("../../../../../lib/api-base.ts", import.meta.url).href, context);
   if (specifier === "@/lib/auth-proxy") return next(new URL("../../../../../lib/auth-proxy.ts", import.meta.url).href, context);
-  if (specifier === "@/lib/same-origin-request") return next(new URL("../../../../../lib/same-origin-request.ts", import.meta.url).href, context);
   if (specifier === "./auth-proxy-ip") return next(new URL("../../../../../lib/auth-proxy-ip.ts", import.meta.url).href, context);
   return next(specifier, context);
 } });

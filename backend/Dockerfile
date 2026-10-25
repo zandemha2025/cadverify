@@ -101,12 +101,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # from trixie-security at build time. Rootfs-equivalent proof attached to the PR.
 # Require the 2026-09-29 OpenSSL fixes (CVE-2026-75804, CVE-2026-84782);
 # invalidate the old cached layer and reject mirrors missing the fixed packages.
-# Round 4 (2026-10-23): libbrotli1 -> 1.1.0-2+deb13u1 (CVE-2026-111497, critical
-# brotli decoder buffer overflow). Debian published the trixie-security update
-# carrying upstream fix da980636, so the base image's 1.1.0-2+b7 is simply
-# upgraded here -- no source rebuild (the native-security stage builds only the
-# packages Debian still leaves unfixed). The guard rejects a mirror still serving
-# the vulnerable build.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     openssl \
     libssl3t64 \
@@ -123,11 +117,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpcre2-8-0 \
     libsqlite3-0 \
     openssl-provider-legacy \
-    libbrotli1 \
     && for package in openssl libssl3t64 openssl-provider-legacy; do \
          dpkg --compare-versions "$(dpkg-query -W -f='${Version}' "$package")" ge '3.5.7-1~deb13u3' || exit 1; \
        done \
-    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libbrotli1)" ge '1.1.0-2+deb13u1' || exit 1 \
     && rm -rf /var/lib/apt/lists/*
 
 # STEP ingestion (B4): the gmsh manylinux wheel (libgmsh.so, embedded
@@ -165,11 +157,6 @@ RUN useradd --create-home --shell /bin/bash cadverify
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 ENV PYTHONDONTWRITEBYTECODE=1
-# Two glibc malloc arenas instead of eight per CPU: the parse and price threads
-# otherwise each keep their own heap, and the API and worker hold memory long
-# after a check ends. Measured on the catalog path: peak 15-30% lower on top of
-# compute_budget's malloc_trim (docs/BIG_FILES.md). Override per service if needed.
-ENV MALLOC_ARENA_MAX=2
 
 # Copy pre-baked SAM-2 model weights from builder
 COPY --from=builder /build/models /app/models

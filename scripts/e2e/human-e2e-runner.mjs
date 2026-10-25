@@ -5,7 +5,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { captureBuildIdentity, makeReleaseEvidence } from "./human-sim-release-evidence.mjs";
 import { assertWeakPasswordRejection, isExpectedSignupConsoleError } from "./signup-rejection-validation.mjs";
-import { checkPartContextRead, isPartContextRead } from "./part-context-validation.mjs";
 
 const require = createRequire(new URL("../../frontend/package.json", import.meta.url));
 const pw = require("playwright-core");
@@ -363,7 +362,7 @@ class HumanE2E {
       await this.goto("/signup", "signup");
       await this.page.getByLabel("Full name", { exact: true }).fill("ScaleCad QA User");
       await this.page.getByLabel("Email").fill(uniqueEmail("weak"));
-      await this.page.getByLabel("Password", { exact: true }).fill("short");
+      await this.page.getByLabel("Password").fill("short");
       const consoleStart = this.consoleErrors.length;
       const responsePromise = this.page.waitForResponse(
         (response) => isPostResponse(response, "/api/auth/signup"),
@@ -391,7 +390,7 @@ class HumanE2E {
       await this.step("login reuses existing synthetic account and lands in app", async () => {
         await this.goto("/login?next=/verify", "login");
         await this.page.getByLabel("Email").fill(loginEmail);
-        await this.page.getByLabel("Password", { exact: true }).fill(loginPassword);
+        await this.page.getByLabel("Password").fill(loginPassword);
         await this.page.getByRole("button", { name: /^Log in$/ }).click();
         await this.page.waitForURL((url) => url.pathname === "/verify", { timeout: 20_000 });
         await this.expectText(/ScaleCad|Home|Verify/i, "verify shell after login");
@@ -406,7 +405,7 @@ class HumanE2E {
     const password = "Passw0rd123";
     await this.step("signup creates real account and lands in app", async () => {
       await this.page.getByLabel("Email").fill(email);
-      await this.page.getByLabel("Password", { exact: true }).fill(password);
+      await this.page.getByLabel("Password").fill(password);
       await this.page.getByRole("button", { name: /^Create account$/ }).click();
       await this.page.waitForURL(/\/verify(?:\?|$)/, { timeout: 20_000 });
       await this.expectText(/MAKE THE ESTIMATES YOURS/i, "first-run Verify setup");
@@ -511,12 +510,6 @@ class HumanE2E {
         (response) => isPostResponse(response, "/api/proxy/validate/cost"),
         { timeout: cadUploadTimeoutMs },
       );
-      const fixtureSha256 = createHash("sha256").update(await readFile(fixturePath)).digest("hex");
-      const contextResponsePromise = this.page.waitForResponse(
-        (response) => isPartContextRead(response, fixtureSha256),
-        { timeout: cadUploadTimeoutMs },
-      );
-      const consoleStart = this.consoleErrors.length;
       await input.setInputFiles(fixturePath);
       await this.page.waitForTimeout(3000);
       await this.shot("verify-upload-after-3s");
@@ -544,14 +537,7 @@ class HumanE2E {
       assert(costResponse.ok(), `POST /validate/cost returned ${costResponse.status()}`);
       const validation = await validationResponse.json();
       const cost = await costResponse.json();
-      // The run reads the part's stored context. A part with nothing declared is a
-      // verified 404 "no declared context for part"; set aside only that one
-      // resource error and keep every other endpoint, status and runtime error.
-      await checkPartContextRead(await contextResponsePromise, {
-        consoleErrors: this.consoleErrors,
-        expectedConsoleErrors: this.expectedConsoleErrors,
-        consoleStart,
-      });
+      const fixtureSha256 = createHash("sha256").update(await readFile(fixturePath)).digest("hex");
       const geometry = validation?.geometry || {};
       assert(Array.isArray(geometry.bounding_box_mm), "Verify validation omitted bounding_box_mm");
       assert(typeof geometry.volume_mm3 === "number", "Verify validation omitted volume_mm3");
@@ -587,7 +573,7 @@ class HumanE2E {
       await this.page.goto("/verify", { waitUntil: "domcontentloaded" });
       await this.page.waitForURL((url) => url.pathname === "/login", { timeout: 12_000 });
       await this.page.getByLabel("Email").fill(this.account.email);
-      await this.page.getByLabel("Password", { exact: true }).fill(this.account.password);
+      await this.page.getByLabel("Password").fill(this.account.password);
       await this.page.getByRole("button", { name: /^Log in$/ }).click();
       await this.page.waitForURL((url) => url.pathname === "/verify", { timeout: 20_000 });
       await this.expectText(/ScaleCad|Home|Verify/i, "restored workspace");

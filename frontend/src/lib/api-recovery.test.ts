@@ -2,15 +2,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  authErrorMessage,
-  isPhoneVerificationMessage,
   apiProblemDetail,
   apiResourceFromUrl,
   apiRecoveryMessage,
   networkRecoveryMessage,
   isQuotaErrorMessage,
   isLifetimeQuotaErrorMessage,
-  refusalDetail,
 } from "./api-recovery.ts";
 
 for (const [status, code, detail] of [
@@ -23,10 +20,7 @@ for (const [status, code, detail] of [
       const message = apiRecoveryMessage({ status, payload, resource: "verification", retryAfter: "60" });
       assert.match(message, /verification allowance used up/i);
       assert.ok(message.includes(detail));
-      // A person's own allowance carries its own next step (upgrade); shared
-      // organization allowances still point at the people who manage them.
-      if (code === "user_validation_cap_exceeded") assert.doesNotMatch(message, /administrator/i);
-      else assert.match(message, /contact.*team/i);
+      assert.match(message, /contact.*team/i);
       assert.doesNotMatch(message, /try again in|temporarily busy|permission|too many/i);
     }
   });
@@ -125,47 +119,4 @@ test("rolling allowances retain later retry while lifetime caps do not", () => {
     payload: { code: "org_validation_cap_exceeded", window_days: 0, message: "100 checks in total" } });
   assert.equal(isLifetimeQuotaErrorMessage(lifetime), true);
   assert.doesNotMatch(lifetime, /retry|for now/i);
-});
-
-test("free and Pro allowances read as one short next step", () => {
-  const free = apiRecoveryMessage({ status: 403, resource: "verification", payload: { detail: {
-    code: "user_validation_cap_exceeded", plan: "trial", tier: "personal", window_days: 0, resets_at: null,
-    message: "Your 3 free checks are used or in progress. Upgrade to Pro to keep checking. Saved results stay available." } } });
-  assert.equal(free, "Verification allowance used up. Your 3 free checks are used or in progress. Upgrade to Pro to keep checking. Saved results stay available.");
-  assert.equal(isLifetimeQuotaErrorMessage(free), true);
-  const pro = apiRecoveryMessage({ status: 403, resource: "verification", payload: { detail: {
-    code: "user_validation_cap_exceeded", plan: "pro", window_days: 0, resets_at: "2026-11-17T00:00:00+00:00",
-    message: "You've used this month's 50 Pro checks. They reset on November 17. Saved results stay available." } } });
-  assert.match(pro, /^Verification allowance used up for now\. You've used this month's 50 Pro checks/);
-  assert.equal(isLifetimeQuotaErrorMessage(pro), false);
-  assert.equal(isQuotaErrorMessage(pro), true);
-  assert.doesNotMatch(pro, /retry after the rolling/i);
-});
-
-test("phone verification is its own recovery, not a permission error", () => {
-  const message = apiRecoveryMessage({ status: 403, resource: "verification", payload: { detail: {
-    code: "phone_verification_required", message: "Verify your phone number to start your free checks. We send one text with a code." } } });
-  assert.equal(isPhoneVerificationMessage(message), true);
-  assert.doesNotMatch(message, /permission|admin/i);
-  assert.equal(isQuotaErrorMessage(message), false);
-});
-
-test("a refused STEP probe out of checks reads as out of checks, not as an unreadable file", () => {
-  const quota = { detail: { code: "user_validation_cap_exceeded", message: "Your 3 free checks are used or in progress. Upgrade to Pro to keep checking. Saved results stay available.", cap: 3, remaining: 0, window_days: 0 } };
-  assert.ok(isQuotaErrorMessage(refusalDetail(403, quota, "verification")));
-  const phone = { detail: { code: "phone_verification_required", message: "Verify your phone number to start your free checks. We send one text with a code." } };
-  assert.ok(isPhoneVerificationMessage(refusalDetail(403, phone, "verification")));
-  const bad = { detail: { code: "unreadable_step", message: "The STEP file has no solids." } };
-  assert.equal(refusalDetail(422, bad, "verification"), "The STEP file has no solids.");
-});
-
-test("a sign-in limit says its real wait, not \"try again shortly\"", () => {
-  const message = "Too many sign-in and sign-up attempts from this network. Try again in 37 minutes.";
-  const nested = { detail: { code: "signup_rate_limited", message, limit: "ip", retry_after_seconds: 2215 } };
-  assert.equal(authErrorMessage(429, nested, "Could not send a sign-in link."), message);
-  // The API's error handler can also answer with the fields at the top level.
-  assert.equal(authErrorMessage(429, { code: "magic_link_limited", message: "Too many sign-in links sent to this email. Try again in 12 minutes.", retry_after_seconds: 717 }, "x"),
-    "Too many sign-in links sent to this email. Try again in 12 minutes.");
-  // A 429 without a stated wait keeps the general recovery copy.
-  assert.match(authErrorMessage(429, { detail: { message: "Slow down." } }, "x"), /try again shortly/i);
 });

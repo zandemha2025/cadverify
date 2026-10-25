@@ -22,11 +22,9 @@ const expected = {
   cubeSha256: "76923244d66efcbf1eb1639a26a6b4b6bd20fd73eaf44ad1b95268dddf61103a",
   cubeBytes: 19030,
   annualVolume: 12000,
-  annualizedUnitCostUsd: 7.16,
-  annualizedCostUsd: 85920,
+  annualizedUnitCostUsd: 3.44,
+  annualizedCostUsd: 41280,
   singlePartHeadlineUsd: 110.00,
-  // The portfolio row opens at the part page's quantity (5d2420eb): 100 before a yearly quantity is priced.
-  portfolioHeadline: { usd: 7.27, qty: 100 },
   procurementThresholdsUsd: {
     engineerSelfServe: 25000,
     sourcingManager: 250000,
@@ -340,13 +338,8 @@ async function main() {
       assert(approxEqual(unitCost, expected.annualizedUnitCostUsd), `exact-volume unit cost drifted: ${unitCost}`);
       assert(approxEqual(annualized, expected.annualizedCostUsd), `annualized cost oracle drifted: ${annualized}`);
       assert(
-        approxEqual(number(portfolio.single_part_unit_cost_usd, "portfolio.single_part_unit_cost_usd"), expected.singlePartHeadlineUsd),
-        `single-part headline drifted: ${portfolio.single_part_unit_cost_usd}`,
-      );
-      assert(
-        approxEqual(number(portfolio.headline_unit_cost_usd, "portfolio.headline_unit_cost_usd"), expected.portfolioHeadline.usd) &&
-          portfolio.headline_qty === expected.portfolioHeadline.qty,
-        `portfolio headline drifted: ${portfolio.headline_unit_cost_usd} @ ${portfolio.headline_qty}`,
+        approxEqual(number(portfolio.headline_unit_cost_usd, "portfolio.headline_unit_cost_usd"), expected.singlePartHeadlineUsd),
+        `single-part headline drifted: ${portfolio.headline_unit_cost_usd}`,
       );
       assert(
         !approxEqual(annualized, expected.singlePartHeadlineUsd * annualVolume),

@@ -10,7 +10,6 @@ import {
   validateGoldenPathMap,
 } from "./golden-path-evidence.mjs";
 import { configuredClientIp } from "./run-scoped-client-ip.mjs";
-import { assertNoDeclaredPartContext, isPartContextRead } from "./part-context-validation.mjs";
 
 const require = createRequire(new URL("../../frontend/package.json", import.meta.url));
 const { chromium } = require("playwright-core");
@@ -208,8 +207,6 @@ function isNetworkStatusConsoleMessage(text) {
 }
 
 function isExpectedHttpErrorResponse(entry) {
-  // A run's context read of a part with nothing declared, verified where it happened.
-  if (entry.verified === "no declared context for part") return true;
   if (entry.status === 422 && entry.path === "/api/proxy/ground-truth/recalibrate") return true;
   return [501, 503].includes(entry.status) && entry.path === "/api/proxy/reconstruct";
 }
@@ -446,7 +443,7 @@ class EnterpriseDomainQA {
       await this.step("enterprise engineer logs in and receives an org", async () => {
         await this.goto("/login?next=/verify", "login", 500);
         await this.page.getByLabel("Email").fill(loginEmail);
-        await this.page.getByLabel("Password", { exact: true }).fill(loginPassword);
+        await this.page.getByLabel("Password").fill(loginPassword);
         await this.page.getByRole("button", { name: /^Log in$/ }).click();
         await this.page.waitForURL((url) => url.pathname === "/verify", { timeout: 20_000 });
         await this.expectText(/ScaleCad|Home|Verify/i, "verify shell after login");
@@ -469,7 +466,7 @@ class EnterpriseDomainQA {
       await this.goto("/signup", "signup", 500);
       await this.page.getByLabel("Full name", { exact: true }).fill("ScaleCad QA User");
       await this.page.getByLabel("Email").fill(email);
-      await this.page.getByLabel("Password", { exact: true }).fill(password);
+      await this.page.getByLabel("Password").fill(password);
       await this.page.getByRole("button", { name: /^Create account$/ }).click();
       await this.page.waitForURL(/\/verify(?:\?|$)/, { timeout: 20_000 });
       await this.expectText(/MAKE THE ESTIMATES YOURS/i, "first-run Verify setup");
@@ -549,18 +546,10 @@ class EnterpriseDomainQA {
       assert(draft.status === "draft", `expected draft rate card, got ${draft.status}`);
       assert(draft.validated === false, "draft governed rate card must not be measured/validated");
 
-      // A rate card is published only by approving its change request; this
-      // organization's only admin approves it, and it reads self-approved.
-      const proposed = await this.expectApiOk("/governance/change-requests", {
-        method: "POST",
-        body: { asset_type: "rate_card", target_version_id: draft.id, title: "PetroVector 2026 governed defaults" },
-      });
-      const approved = await this.expectApiOk(`/governance/change-requests/${proposed.id}/approve`, {
+      const published = await this.expectApiOk(`/rate-library/${draft.id}/publish`, {
         method: "POST",
         body: {},
       });
-      const published = approved.published_version;
-      assert(approved.change_request?.self_approved === true, "the only admin's own approval must read self-approved");
       assert(published.status === "published", `expected published, got ${published.status}`);
       assert(published.validated === false, "published governed rate card must remain DEFAULT assumptions");
 
@@ -828,12 +817,6 @@ class EnterpriseDomainQA {
         response.request().method() === "POST" &&
         new URL(response.url()).pathname === "/api/proxy/validate"
       , { timeout: cadUploadTimeoutMs });
-      // The run reads the part's stored context before costing (c485111a).
-      const cubeMeshHash = await meshHashFor(cubePath);
-      const contextReadPromise = this.page.waitForResponse(
-        (response) => isPartContextRead(response, cubeMeshHash),
-        { timeout: cadUploadTimeoutMs },
-      );
       const input = this.page.locator('input[type="file"][accept*=".stl"]').first();
       await input.setInputFiles(cubePath);
       await this.page.waitForTimeout(3000);
@@ -846,19 +829,6 @@ class EnterpriseDomainQA {
         excludedCostResponse.json(),
         excludedValidationResponse.json(),
       ]);
-      // Before anything is declared about cube.step the read is the documented 404
-      // "no declared context for part"; only that verified response is expected.
-      const contextRead = await contextReadPromise;
-      if (contextRead.status() === 404) {
-        assertNoDeclaredPartContext(contextRead.status(), await contextRead.json());
-        const contextReadEntry = this.httpErrorResponses.find((entry) =>
-          !entry.verified && entry.method === "GET" && entry.status === 404 && entry.path === responsePath(contextRead),
-        );
-        assert(contextReadEntry, "the verified context read was not recorded");
-        contextReadEntry.verified = "no declared context for part";
-      } else {
-        assert(contextRead.ok(), `GET /part-context returned ${contextRead.status()}`);
-      }
       await this.page
         .waitForFunction(() => {
           const text = document.body.innerText;
@@ -1366,24 +1336,11 @@ class EnterpriseDomainQA {
       assert(rowBefore, "verified cube.step did not appear in portfolio");
       assert(rowBefore.filename === "cube.step", `portfolio filename drifted: ${rowBefore.filename}`);
       assert(rowBefore.unit_cost && isFiniteNumber(rowBefore.unit_cost.usd), "portfolio unit cost missing");
-      // Real-STEP replay: EDM wins qty 1; binder jetting wins qty 100 and 12,000.
-      // Evidence: outputs/production-audit-20260929/enterprise-cost-oracle.json.
-      const verifiedPicks = this.evidence.initialVerification?.cost?.decision?.recommendation || {};
       assert(
-        verifiedPicks["1"]?.process === "wire_edm" && approxEqual(verifiedPicks["1"].unit_cost_usd, 110.00, 0.01),
-        `single-part qty-1 oracle drifted: ${verifiedPicks["1"]?.process} ${verifiedPicks["1"]?.unit_cost_usd}`,
-      );
-      // The parts list prices a row at the quantity its part page opens at (5d2420eb):
-      // with no yearly quantity declared yet, the default rule's 100.
-      assert(
-        rowBefore.unit_cost.qty === 100 && rowBefore.unit_cost.qty_basis === "default",
-        `portfolio headline quantity drifted: ${rowBefore.unit_cost.qty} (${rowBefore.unit_cost.qty_basis})`,
-      );
-      assert(
-        verifiedPicks["100"]?.process === "binder_jetting" &&
-          approxEqual(verifiedPicks["100"].unit_cost_usd, 7.27, 0.01) &&
-          approxEqual(rowBefore.unit_cost.usd, verifiedPicks["100"].unit_cost_usd, 0.001),
-        `portfolio headline oracle drifted: ${rowBefore.unit_cost.usd}`,
+        // Real-STEP replay: EDM wins qty 1; binder jetting wins qty 12,000.
+        // Evidence: outputs/production-audit-20260929/enterprise-cost-oracle.json.
+        approxEqual(rowBefore.unit_cost.usd, 110.00, 0.01),
+        `single-part headline oracle drifted: ${rowBefore.unit_cost.usd}`,
       );
       assert(rowBefore.unit_cost.withheld !== true, "portfolio unit cost was unexpectedly withheld");
       assert(rowBefore.context?.service_environment?.sour_service === true, "portfolio lost service environment context");
@@ -1429,11 +1386,7 @@ class EnterpriseDomainQA {
       this.evidence.portfolio = {
         filename: rowAfter.filename,
         mesh_hash: this.evidence.meshHash,
-        single_part_process: verifiedPicks["1"].process,
-        single_part_unit_cost_usd: verifiedPicks["1"].unit_cost_usd,
         headline_unit_cost_usd: rowAfter.unit_cost.usd,
-        headline_qty: rowAfter.unit_cost.qty,
-        headline_qty_basis: rowAfter.unit_cost.qty_basis,
         annual_volume: annualVolume,
         withheld_before_volume: rowBefore.annualized_cost_usd == null,
         withheld_reason: rowBefore.annualized_reason,
@@ -1553,11 +1506,9 @@ class EnterpriseDomainQA {
       assert(rowAfter, "re-verified programmed row disappeared from portfolio");
       const basis = rowAfter.annualized_unit_cost;
       assert(basis && isFiniteNumber(basis.usd), "exact annualized unit-cost basis missing");
-      // Green-size nesting: 240 parts/build (test_enterprise_binder_green_batch_cost_oracle).
-      // Binder jetting buys powder (90b59c8): in this sour-service world the stainless
-      // is SS316L powder at $100/kg, so material $3.924 + machine $1.6667 + sinter $1.50
-      // + fixed $0.0729 = $7.16 a part (it was $3.44 at the $5/kg bar price).
-      assert(approxEqual(basis.usd, 7.16, 0.001), `exact annualized unit-cost oracle drifted: ${basis.usd}`);
+      // Green-size nesting: 240 parts/build; independent arithmetic is covered
+      // by test_enterprise_binder_green_batch_cost_oracle.
+      assert(approxEqual(basis.usd, 3.44, 0.001), `exact annualized unit-cost oracle drifted: ${basis.usd}`);
       assert(basis.qty === annualVolume, `annualized basis quantity drifted: ${basis.qty}`);
       assert(basis.basis === "decision.recommendation", `annualized basis source drifted: ${basis.basis}`);
       const expectedAnnualized = basis.usd * annualVolume;
@@ -1566,7 +1517,7 @@ class EnterpriseDomainQA {
         `annualized cost mismatch: got ${rowAfter.annualized_cost_usd}, expected ${expectedAnnualized}`
       );
       assert(
-        approxEqual(rowAfter.annualized_cost_usd, 85_920),
+        approxEqual(rowAfter.annualized_cost_usd, 41_280),
         `annualized cost oracle drifted: ${rowAfter.annualized_cost_usd}`,
       );
       assert(
@@ -1623,8 +1574,8 @@ class EnterpriseDomainQA {
         .inputValue();
       assert(annualVolumeInput === String(annualVolume), `Programs annual volume input drifted: ${annualVolumeInput}`);
       text = await this.visibleText();
-      assert(/\$7\.16\s*@ qty\s*12,000/i.test(text), "Programs exact annual unit-cost basis missing");
-      assert(/\$85,920\/yr/i.test(text), "Programs exact annual exposure missing");
+      assert(/\$3\.44\s*@ qty\s*12,000/i.test(text), "Programs exact annual unit-cost basis missing");
+      assert(/\$41,280\/yr/i.test(text), "Programs exact annual exposure missing");
       const programsText = text.replace(/\s+/g, " ").trim();
       const programsShot = await this.shot("ENT-04-program-exposure-ui", true);
       const programsUrl = this.page.url();
@@ -2472,7 +2423,7 @@ class EnterpriseDomainQA {
         id: "ENT-04",
         persona: "Program cost owner assigning annual volume and demanding exact-quantity economics",
         preconditions: [
-          "cube.step has the pinned single-part $110.00 EDM price at qty 1 under the governed organization fixture; its portfolio row opens at qty 100.",
+          "cube.step has the pinned single-part $110.00 headline under the governed organization fixture.",
           "The part has severe-service USER context but initially has no annual volume.",
         ],
         actions: [
@@ -2484,8 +2435,8 @@ class EnterpriseDomainQA {
           url: program.programs_url || portfolio.exact_url || "not observed",
           visible: [
             visibleSignal(programText, new RegExp(escapeRegExp(programName)), "missing program context"),
-            visibleSignal(programText, /\$7\.16\s*@ qty\s*12,000/i, "missing exact 12,000-unit basis"),
-            visibleSignal(programText, /\$85,920\/yr/i, "missing annual exposure"),
+            visibleSignal(programText, /\$3\.44\s*@ qty\s*12,000/i, "missing exact 12,000-unit basis"),
+            visibleSignal(programText, /\$41,280\/yr/i, "missing annual exposure"),
           ],
           persisted: {
             meshHash: portfolio.mesh_hash || "missing",
@@ -2497,9 +2448,7 @@ class EnterpriseDomainQA {
             rollup: portfolio.rollup || "missing",
           },
           numeric: {
-            singlePartHeadlineUsd: portfolio.single_part_unit_cost_usd ?? "missing",
-            portfolioHeadlineUsd: portfolio.headline_unit_cost_usd ?? "missing",
-            portfolioHeadlineQty: portfolio.headline_qty ?? "missing",
+            singlePartHeadlineUsd: portfolio.headline_unit_cost_usd ?? "missing",
             exactQuantity: portfolio.annualized_unit_cost_qty ?? "missing",
             exactUnitCostUsd: portfolio.annualized_unit_cost_usd ?? "missing",
             annualExposureUsd: portfolio.annualized_cost_usd ?? "missing",
@@ -2512,22 +2461,21 @@ class EnterpriseDomainQA {
         screenshot: program.programs_screenshot || portfolio.exact_screenshot || exact.screenshot,
         assertions: [
           authAssertion(),
-          assertion("single-part headline", 110.00, portfolio.single_part_unit_cost_usd ?? "missing", approxEqual(portfolio.single_part_unit_cost_usd, 110.00, 0.01)),
-          assertion("portfolio headline at its opening quantity", "$7.27 @ 100 (default)", `${portfolio.headline_unit_cost_usd ?? "missing"} @ ${portfolio.headline_qty ?? "missing"} (${portfolio.headline_qty_basis ?? "missing"})`, approxEqual(portfolio.headline_unit_cost_usd, 7.27, 0.01) && portfolio.headline_qty === 100 && portfolio.headline_qty_basis === "default"),
+          assertion("single-part headline", 110.00, portfolio.headline_unit_cost_usd ?? "missing", approxEqual(portfolio.headline_unit_cost_usd, 110.00, 0.01)),
           assertion("exposure withheld before volume", true, portfolio.withheld_before_volume ?? "missing", portfolio.withheld_before_volume === true),
           assertion("exposure withheld before exact re-verification", true, portfolio.withheld_until_exact_reverification ?? "missing", portfolio.withheld_until_exact_reverification === true),
           assertion("withheld reason gives re-verification action", "Re-verify this CAD", portfolio.exact_reverification_reason || "missing", /Re-verify this CAD/i.test(portfolio.exact_reverification_reason || "")),
           assertion("exact annual quantity", 12000, portfolio.annualized_unit_cost_qty ?? "missing", portfolio.annualized_unit_cost_qty === 12000),
-          assertion("exact annual unit cost", 7.16, portfolio.annualized_unit_cost_usd ?? "missing", approxEqual(portfolio.annualized_unit_cost_usd, 7.16, 0.001)),
-          assertion("annual exposure", 85920, portfolio.annualized_cost_usd ?? "missing", approxEqual(portfolio.annualized_cost_usd, 85920, 0.01)),
+          assertion("exact annual unit cost", 3.44, portfolio.annualized_unit_cost_usd ?? "missing", approxEqual(portfolio.annualized_unit_cost_usd, 3.44, 0.001)),
+          assertion("annual exposure", 41280, portfolio.annualized_cost_usd ?? "missing", approxEqual(portfolio.annualized_cost_usd, 41280, 0.01)),
           assertion("annual exposure multiplication", (portfolio.annualized_unit_cost_usd ?? 0) * annualVolume, portfolio.annualized_cost_usd ?? "missing", approxEqual(portfolio.annualized_cost_usd, (portfolio.annualized_unit_cost_usd ?? 0) * annualVolume, 0.01)),
           assertion("annualization basis", "decision.recommendation", portfolio.annualized_unit_cost_basis || "missing", portfolio.annualized_unit_cost_basis === "decision.recommendation"),
           assertion("single-part headline is not annualized", false, approxEqual(portfolio.annualized_cost_usd, 110.00 * annualVolume, 0.01), !approxEqual(portfolio.annualized_cost_usd, 110.00 * annualVolume, 0.01)),
           assertion("program context", programName, portfolio.program || "missing", portfolio.program === programName),
           assertion("parent assembly context", parentAssembly, portfolio.parent_assembly || "missing", portfolio.parent_assembly === parentAssembly),
           assertion("context provenance", "user", portfolio.context_provenance || "missing", portfolio.context_provenance === "user"),
-          assertion("12,000 recommendation reconciles", 7.16, annualRecommendation?.unit_cost_usd ?? "missing", approxEqual(annualRecommendation?.unit_cost_usd, 7.16, 0.001)),
-          assertion("screenshot oracle: exact Programs economics", "program + $7.16 @ qty 12,000 + $85,920/yr", programText || "missing", new RegExp(escapeRegExp(programName)).test(programText) && /\$7\.16\s*@ qty\s*12,000/i.test(programText) && /\$85,920\/yr/i.test(programText)),
+          assertion("12,000 recommendation reconciles", 3.44, annualRecommendation?.unit_cost_usd ?? "missing", approxEqual(annualRecommendation?.unit_cost_usd, 3.44, 0.001)),
+          assertion("screenshot oracle: exact Programs economics", "program + $3.44 @ qty 12,000 + $41,280/yr", programText || "missing", new RegExp(escapeRegExp(programName)).test(programText) && /\$3\.44\s*@ qty\s*12,000/i.test(programText) && /\$41,280\/yr/i.test(programText)),
         ],
       }),
 
@@ -2548,8 +2496,8 @@ class EnterpriseDomainQA {
           visible: [
             visibleSignal(program.programs_summary_text, new RegExp(escapeRegExp(programName)), "missing program name"),
             visibleSignal(program.programs_text, /cube\.step/i, "missing assigned part"),
-            visibleSignal(program.programs_text, /\$7\.16\s*@ qty\s*12,000/i, "missing exact quantity basis"),
-            visibleSignal(program.programs_text, /\$85,920\/yr/i, "missing annual exposure"),
+            visibleSignal(program.programs_text, /\$3\.44\s*@ qty\s*12,000/i, "missing exact quantity basis"),
+            visibleSignal(program.programs_text, /\$41,280\/yr/i, "missing annual exposure"),
             visibleSignal(program.records_detail_text, /cube\.step/i, "missing source decision detail"),
           ],
           persisted: {
@@ -2580,13 +2528,13 @@ class EnterpriseDomainQA {
           assertion("exposed parts", 1, program.rollup?.exposed_parts ?? "missing", program.rollup?.exposed_parts === 1),
           assertion("program annual volume input", "12000", program.programs_annual_volume_input || "missing", program.programs_annual_volume_input === "12000"),
           assertion("portfolio annual volume", 12000, program.row?.context?.annual_volume ?? "missing", program.row?.context?.annual_volume === 12000),
-          assertion("portfolio exact unit basis", { qty: 12000, usd: 7.16, basis: "decision.recommendation" }, { qty: program.row?.annualized_unit_cost?.qty, usd: program.row?.annualized_unit_cost?.usd, basis: program.row?.annualized_unit_cost?.basis }, program.row?.annualized_unit_cost?.qty === 12000 && approxEqual(program.row?.annualized_unit_cost?.usd, 7.16, 0.001) && program.row?.annualized_unit_cost?.basis === "decision.recommendation"),
-          assertion("row annual exposure", 85920, program.row?.annualized_cost_usd ?? "missing", approxEqual(program.row?.annualized_cost_usd, 85920, 0.01)),
+          assertion("portfolio exact unit basis", { qty: 12000, usd: 3.44, basis: "decision.recommendation" }, { qty: program.row?.annualized_unit_cost?.qty, usd: program.row?.annualized_unit_cost?.usd, basis: program.row?.annualized_unit_cost?.basis }, program.row?.annualized_unit_cost?.qty === 12000 && approxEqual(program.row?.annualized_unit_cost?.usd, 3.44, 0.001) && program.row?.annualized_unit_cost?.basis === "decision.recommendation"),
+          assertion("row annual exposure", 41280, program.row?.annualized_cost_usd ?? "missing", approxEqual(program.row?.annualized_cost_usd, 41280, 0.01)),
           assertion("rollup annual exposure", program.row?.annualized_cost_usd ?? "row exposure", program.rollup?.annualized_cost_usd ?? "missing", approxEqual(program.rollup?.annualized_cost_usd, program.row?.annualized_cost_usd, 0.01)),
           assertion("source decision identity", program.row?.cost_decision?.id || "portfolio source id", program.records_selected_decision_id || "missing", Boolean(program.row?.cost_decision?.id) && program.row.cost_decision.id === program.records_selected_decision_id),
           assertion("source decision appears in Records API", program.row?.cost_decision?.id || "portfolio source id", program.decision_ids || [], program.decision_ids?.includes(program.row?.cost_decision?.id)),
           assertion("source Records URL", `${baseUrl}/cost-decisions/${program.records_selected_decision_id || "missing"}`, program.url || "missing", program.url === `${baseUrl}/cost-decisions/${program.records_selected_decision_id}`),
-          assertion("program detail visible", "cube.step, $7.16 @ qty 12,000, $85,920/yr", program.programs_text || "missing", /cube\.step/i.test(program.programs_text || "") && /\$7\.16\s*@ qty\s*12,000/i.test(program.programs_text || "") && /\$85,920\/yr/i.test(program.programs_text || "")),
+          assertion("program detail visible", "cube.step, $3.44 @ qty 12,000, $41,280/yr", program.programs_text || "missing", /cube\.step/i.test(program.programs_text || "") && /\$3\.44\s*@ qty\s*12,000/i.test(program.programs_text || "") && /\$41,280\/yr/i.test(program.programs_text || "")),
         ],
       }),
     };

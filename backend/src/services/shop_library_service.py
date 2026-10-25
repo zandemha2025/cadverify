@@ -351,7 +351,6 @@ async def update_draft(
     change_note: Optional[str] = None,
     payload: Optional[dict] = None,
     slug: Optional[str] = None,
-    edited_by: Optional[int] = None,
 ) -> ShopProfileVersion:
     row = await get_version(session, org_id, version_id)
     if row is None:
@@ -369,8 +368,6 @@ async def update_draft(
         row.change_note = change_note
     if slug is not None and slug.strip():
         row.slug = _slug(slug)
-    if edited_by is not None:
-        row.edited_by = edited_by
     await session.flush()
     return row
 
@@ -506,7 +503,6 @@ def serialize_version(row: ShopProfileVersion, *, include_payload: bool = False)
         "effective_from": _iso(row.effective_from),
         "effective_to": _iso(row.effective_to),
         "created_by": row.created_by,
-        "edited_by": getattr(row, "edited_by", None),
         "created_at": _iso(row.created_at),
         "published_at": _iso(row.published_at),
         # Honest posture: a governed shop profile is the org's DECLARED shop

@@ -274,72 +274,8 @@ def test_production_oidc_valid_config_passes_startup(monkeypatch):
         "OIDC_REDIRECT_URI",
         "https://api.cadverify.com/auth/oidc/callback",
     )
-    monkeypatch.setenv("SSO_ORG_ID", "01HXSSOORG0000000000000000")
 
     main._assert_production_identity_config()
-
-
-def test_production_oidc_with_group_mapping_refuses_to_start_without_sso_org(monkeypatch):
-    monkeypatch.setenv("RELEASE", "v1.0.0")
-    monkeypatch.setenv("AUTH_MODE", "oidc")
-    monkeypatch.setenv("OIDC_ISSUER", "https://idp.example.com")
-    monkeypatch.setenv("OIDC_CLIENT_ID", "cadverify-production")
-    monkeypatch.setenv(
-        "OIDC_REDIRECT_URI",
-        "https://api.cadverify.com/auth/oidc/callback",
-    )
-    monkeypatch.delenv("OIDC_GROUPS_CLAIM", raising=False)
-    monkeypatch.delenv("SSO_ORG_ID", raising=False)
-
-    with pytest.raises(RuntimeError, match="SSO_ORG_ID is unset"):
-        main._assert_production_identity_config()
-
-
-@pytest.mark.parametrize("auth_mode", ["saml", "hybrid"])
-def test_production_saml_modes_refuse_to_start_without_sso_org(monkeypatch, auth_mode):
-    from src.auth.sso_org import assert_sso_org_configured
-
-    monkeypatch.setenv("RELEASE", "v1.0.0")
-    monkeypatch.setenv("AUTH_MODE", auth_mode)
-    monkeypatch.delenv("SSO_ORG_ID", raising=False)
-    with pytest.raises(RuntimeError, match="SSO_ORG_ID is unset"):
-        assert_sso_org_configured()
-
-    monkeypatch.setenv("SSO_ORG_ID", "01HXSSOORG0000000000000000")
-    assert_sso_org_configured()
-
-
-def test_production_sso_org_none_starts_with_no_owner(monkeypatch):
-    from src.auth.sso_org import assert_sso_org_configured, sso_org_id
-
-    monkeypatch.setenv("RELEASE", "v1.0.0")
-    monkeypatch.setenv("AUTH_MODE", "saml")
-    monkeypatch.setenv("SSO_ORG_ID", "none")
-    assert_sso_org_configured()
-    assert sso_org_id() is None
-
-
-@pytest.mark.parametrize("auth_mode", ["password", "google"])
-def test_non_sso_modes_never_need_an_sso_org(monkeypatch, auth_mode):
-    from src.auth.sso_org import assert_sso_org_configured
-
-    monkeypatch.setenv("RELEASE", "v1.0.0")
-    monkeypatch.setenv("AUTH_MODE", auth_mode)
-    monkeypatch.delenv("SSO_ORG_ID", raising=False)
-    assert_sso_org_configured()
-
-
-def test_unreleased_saml_without_sso_org_only_warns(monkeypatch, caplog):
-    import logging
-
-    from src.auth.sso_org import assert_sso_org_configured
-
-    monkeypatch.delenv("RELEASE", raising=False)
-    monkeypatch.setenv("AUTH_MODE", "saml")
-    monkeypatch.delenv("SSO_ORG_ID", raising=False)
-    with caplog.at_level(logging.WARNING, logger="cadverify.sso_org"):
-        assert_sso_org_configured()
-    assert "no SSO group mapping applies" in caplog.text
 
 
 def test_production_oidc_allows_group_mapping_to_be_disabled(monkeypatch):

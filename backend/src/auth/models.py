@@ -9,15 +9,11 @@ from src.config.public_urls import error_doc_url
 
 from dataclasses import dataclass
 import json
-from typing import TYPE_CHECKING
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.db.engine import get_engine as _engine, get_session_factory
-
-if TYPE_CHECKING:
-    from fastapi import HTTPException
 
 
 def _session() -> async_sessionmaker[AsyncSession]:
@@ -44,18 +40,6 @@ class ApiKeyRow:
     # these to match before admitting the request.
     org_id: str | None = None
     active_org_id: str | None = None
-    # 0061: the key's own scope ('read', 'read_write', or None = read and
-    # write for keys made before 0061), when it stops working, whether that
-    # moment has passed on the database clock, and the owner's org role in the
-    # key's issuing org (a viewer's key is read only whatever its scope says).
-    scope: str | None = None
-    expires_at: object = None
-    expired: bool = False
-    key_org_role: str | None = None
-    # The key's org requires two-step sign-in and its owner has none (and
-    # doesn't sign in through single sign-on): the key is refused until they
-    # set it up, then works again (``require_api_key``).
-    two_step_owed: bool = False
 
 
 @dataclass
@@ -73,17 +57,6 @@ async def upsert_user(
     disposable_flag: bool = False,
     auth_provider: str = "google",
 ) -> int:
-    """Get or create the account for a Google (or other) sign-in; returns its id.
-
-    ``email_lower`` is the stored form (``normalize_email``: no "+tag", Gmail
-    dots dropped), so it can name an account whose own address differs. A
-    Google subject therefore reaches an existing account only when that
-    account is already linked to the same subject, or is linked to none and its
-    stored address is this exact address (:func:`_same_mailbox`: case aside, and
-    dots aside on Gmail). "dana+x@corp.example" never opens "dana@corp.example",
-    and a different Google account never opens one already linked: both get a
-    409 and the account is left untouched.
-    """
     provider = (auth_provider or "google").strip().lower()
     async with _session()() as s:
         row = (
@@ -91,7 +64,14 @@ async def upsert_user(
                 text(
                     "INSERT INTO users (email, email_lower, google_sub, auth_provider, disposable_flag) "
                     "VALUES (:e, :el, :g, :ap, :d) "
-                    "ON CONFLICT (email_lower) DO NOTHING "
+                    "ON CONFLICT (email_lower) DO UPDATE SET "
+                    "google_sub = COALESCE(users.google_sub, EXCLUDED.google_sub), "
+                    "auth_provider = CASE "
+                    "WHEN users.google_sub IS NULL "
+                    "AND users.auth_provider = 'google' "
+                    "AND EXCLUDED.google_sub IS NULL "
+                    "THEN EXCLUDED.auth_provider "
+                    "ELSE users.auth_provider END "
                     "RETURNING id"
                 ),
                 {
@@ -103,40 +83,6 @@ async def upsert_user(
                 },
             )
         ).first()
-        if row is None:
-            # An account already holds this address's stored form.
-            existing = (
-                await s.execute(
-                    text(
-                        "SELECT id, email, google_sub FROM users "
-                        "WHERE email_lower = :el FOR UPDATE"
-                    ),
-                    {"el": email_lower},
-                )
-            ).first()
-            if existing is None:  # pragma: no cover - the conflicting row just existed
-                raise RuntimeError("users row vanished during sign-in")
-            if google_sub is not None:
-                if existing[2] is not None and existing[2] != google_sub:
-                    raise _google_link_refused("other_google_account")
-                if existing[2] is None:
-                    if not _same_mailbox(existing[1] or "", email or ""):
-                        raise _google_link_refused("other_address_form")
-                    await s.execute(
-                        text("UPDATE users SET google_sub = :g WHERE id = :u"),
-                        {"g": google_sub, "u": int(existing[0])},
-                    )
-            else:
-                # A sign-in without a Google subject replaces only the original
-                # Google default provider of an account Google never linked.
-                await s.execute(
-                    text(
-                        "UPDATE users SET auth_provider = :ap WHERE id = :u "
-                        "AND google_sub IS NULL AND auth_provider = 'google'"
-                    ),
-                    {"ap": provider, "u": int(existing[0])},
-                )
-            row = existing
         # W1: guarantee the (possibly brand-new) user has a personal org +
         # admin membership before any of their rows are written. Idempotent:
         # a returning/existing user already has one, so this is a no-op read.
@@ -161,52 +107,6 @@ async def upsert_user(
         await ensure_personal_org(s, uid, email)
         await s.commit()
         return uid
-
-
-# Domains where Google guarantees dots in the local part never matter:
-# "d.ana@gmail.com" and "dana@gmail.com" are one mailbox.
-_DOTLESS_LOCAL_DOMAINS = frozenset({"gmail.com", "googlemail.com"})
-
-
-def _same_mailbox(stored: str, signed_in: str) -> bool:
-    """Whether two addresses are the same mailbox, so a Google sign-in may link.
-
-    Case never matters, and on gmail.com/googlemail.com neither do dots in the
-    local part. Nothing else is set aside: a "+tag" or a dot on any other domain
-    can be someone else's mailbox.
-    """
-    def canonical(address: str) -> str:
-        local, _, domain = address.strip().lower().partition("@")
-        if domain in _DOTLESS_LOCAL_DOMAINS:
-            local = local.replace(".", "")
-        return f"{local}@{domain}"
-
-    return canonical(stored) == canonical(signed_in)
-
-
-def _google_link_refused(reason: str) -> "HTTPException":
-    """409 for a Google sign-in that may not open the account its address names."""
-    from fastapi import HTTPException
-
-    if reason == "other_google_account":
-        message = (
-            "The ScaleCAD account for this address is linked to a different Google "
-            "account. Sign in with that Google account, or with an email link or password."
-        )
-    else:
-        message = (
-            "A ScaleCAD account already uses a different form of this address, so "
-            "this Google account can't open it. Sign in to that account with its own "
-            "address, by email link or password."
-        )
-    return HTTPException(
-        status_code=409,
-        detail={
-            "code": "google_link_refused",
-            "message": message,
-            "doc_url": error_doc_url("google_link_refused"),
-        },
-    )
 
 
 def _account_deactivated() -> "HTTPException":
@@ -340,8 +240,7 @@ async def create_password_user(
         from src.auth.org_context import ensure_personal_org
 
         uid = int(row[0])
-        # Named after the work email's company, or "<name>'s workspace" (renamable).
-        await ensure_personal_org(s, uid, email, full_name)
+        await ensure_personal_org(s, uid, email)
         from src.services.audit_service import append_audit_entry
 
         await append_audit_entry(
@@ -441,33 +340,36 @@ async def set_password_hash(
 async def create_api_key(
     user_id: int, name: str, prefix: str, hmac_idx: str, secret_hash: str
 ) -> int:
-    """The key made at Google sign-in, in the account's active org.
-
-    It follows the branch's rules for every key made at sign-in
-    (``provisioning.insert_login_key``): read only, expiring in 90 days.
-    """
     from src.auth.org_context import resolve_org
-    from src.auth.provisioning import insert_login_key
 
     async with _session()() as s:
         # api_keys.org_id is NOT NULL (W1). The caller always holds a provisioned
         # org by now (signup provisions one; the 0009 backfill covers existing
         # users), so resolve_org returns it.
         org_id = await resolve_org(s, user_id)
-        if org_id is None:
-            # The NOT NULL column would refuse the insert; say why instead.
-            raise RuntimeError(f"user {user_id} has no organization to hold a sign-in key")
-        key_id = await insert_login_key(
+        row = (
+            await s.execute(
+                text(
+                    "INSERT INTO api_keys (user_id, org_id, name, prefix, hmac_index, secret_hash) "
+                    "VALUES (:u, :o, :n, :p, :h, :s) RETURNING id"
+                ),
+                {"u": user_id, "o": org_id, "n": name, "p": prefix, "h": hmac_idx, "s": secret_hash},
+            )
+        ).first()
+        from src.services.audit_service import append_audit_entry
+
+        await append_audit_entry(
             s,
-            user_id=user_id,
+            user_id,
+            "api_key.created",
+            "api_key",
+            str(row[0]),
+            {"key_prefix": prefix},
             org_id=org_id,
-            key_name=name,
-            prefix=prefix,
-            hmac_idx=hmac_idx,
-            secret_hash=secret_hash,
         )
         await s.commit()
-        return key_id
+
+        return int(row[0])
 
 
 async def user_has_active_api_key(user_id: int) -> bool:
@@ -491,8 +393,6 @@ async def user_has_active_api_key(user_id: int) -> bool:
 
 
 async def lookup_api_key(hmac_idx: str) -> ApiKeyRow | None:
-    from src.auth.two_step import SINGLE_SIGN_ON_ACCOUNT_SQL
-
     async with _session()() as s:
         r = (
             await s.execute(
@@ -506,18 +406,10 @@ async def lookup_api_key(hmac_idx: str) -> ApiKeyRow | None:
                     "(SELECT oldest_m.org_id FROM memberships oldest_m "
                     " WHERE oldest_m.user_id = k.user_id "
                     " ORDER BY oldest_m.created_at ASC, oldest_m.id ASC LIMIT 1)"
-                    ") AS active_org_id, "
-                    "k.scope, k.expires_at, "
-                    "(k.expires_at IS NOT NULL AND k.expires_at <= now()) AS expired, "
-                    "key_m.org_role AS key_org_role, "
-                    "(COALESCE(key_o.require_two_step, false) "
-                    " AND NOT COALESCE(t.enabled_at IS NOT NULL AND t.secret_sealed IS NOT NULL, false) "
-                    f" AND NOT {SINGLE_SIGN_ON_ACCOUNT_SQL}) AS two_step_owed "
+                    ") AS active_org_id "
                     "FROM api_keys k JOIN users u ON u.id = k.user_id "
                     "JOIN memberships key_m ON key_m.user_id = k.user_id "
                     "AND key_m.org_id = k.org_id "
-                    "LEFT JOIN organizations key_o ON key_o.id = k.org_id "
-                    "LEFT JOIN user_two_step t ON t.user_id = k.user_id "
                     "WHERE k.hmac_index = :h"
                 ),
                 {"h": hmac_idx},
@@ -549,27 +441,8 @@ async def lookup_org_membership(user_id: int) -> tuple[str, str] | None:
     helpers here, so it composes with ``require_api_key`` without a request DB
     dependency. Returns None for a user with no membership (a mocked test
     session, or a superadmin provisioned without one).
-
-    Once a role gate in this request checked an org (``auth.org_binding``, R2
-    F1), this answers the caller's role in THAT org (None if they left it), so
-    every later check in the request (another gate, admission, org limits)
-    reads the org the request writes to.
     """
-    from src.auth.org_binding import gate_org
-
-    bound = gate_org(user_id)
     async with _session()() as s:
-        if bound is not None:
-            r = (
-                await s.execute(
-                    text(
-                        "SELECT m.org_id, m.org_role FROM memberships m "
-                        "WHERE m.user_id = :uid AND m.org_id = :org LIMIT 1"
-                    ),
-                    {"uid": user_id, "org": bound},
-                )
-            ).first()
-            return (r[0], r[1]) if r else None
         r = (
             await s.execute(
                 text(

@@ -98,7 +98,7 @@ def test_envelope_failure_requires_geometric_evidence_and_named_bounds():
     assert failure.axis == "diameter_mm"
     assert failure.need == pytest.approx(400)
     assert failure.have == pytest.approx(sqrt(3)*200, abs=.01)
-    assert "diagonal" in failure.human and "needs 400 mm, has 346 mm" in failure.human
+    assert "diagonal" in failure.human and "not a machine specification" in failure.human
 
     # No fitting placement was established for this plate, but neither
     # necessary bound proves it too large. Do not turn failed search into proof.
@@ -136,8 +136,7 @@ def test_body_diagonal_bar_fit_uses_the_same_height_in_dfm_inventory_and_price()
     envelope = (250, 250, 250)
     assert fitting_box_dimensions((12, 12, 400), envelope) == pytest.approx(oracle)
     assert fitting_box_dimensions((12, 12, 400), (200, 200, 200)) is None
-    # The price nests on the same 250 mm cube the DFM check and the machine use.
-    rates = build_rate_card({"build_env_mm.FDM": envelope})
+    rates = build_rate_card()
     material = select_material(PT.FDM, "polymer", rates)
     machine = MachineCap(process="fdm", name="Body diagonal fixture", max_workpiece_kg=5,
                          materials=("polymer",), hourly_rate_usd=10,
@@ -196,13 +195,7 @@ def test_priced_build_fit_controls_all_quantities_overrides_and_owned_machines()
     original = asdict(result)
     report = estimate_decision(result, mesh, features, options)
     assert not any(e["process"] in {"dmls", "slm"} for e in report.estimates)
-    assert any(n.startswith("Metal powder printing (DMLS): price withheld") and "250" in n
-               for n in report.notes)
-    # The sentence names the process in words, never by its engine id (W13), and
-    # its sizes in rounded millimetres.
-    assert not any(n.startswith(("dmls:", "slm:")) for n in report.notes)
-    assert any("the 320 × 320 × 320 mm enclosing box in the priced build envelope 250 × 250 × 325 mm" in n
-               for n in report.notes)
+    assert any("dmls" in n and "250" in n and "withheld" in n for n in report.notes)
     assert asdict(result) == original  # generic DFM evidence is a separate check
     assert all(not row["costed"] for row in report.engine_feasibility
                if row["process"] in {"dmls", "slm"})
@@ -275,12 +268,9 @@ def test_enterprise_binder_green_batch_cost_oracle():
     # 18% declared green oversize, 6mm spacing, 12% packing in 400x250x250:
     # floor(3,000,000 / (29.6 * 23.7 * 17.8)) = 240 parts/build.
     assert next(d.value for d in estimate.drivers if d.name == "parts_per_build") == 240
-    # Binder jetting buys powder: the cheapest stainless powder on file is
-    # 17-4 PH at $80/kg (it was SS316L at its $5/kg bar price before W11).
-    assert estimate.material == "17-4 PH SS"
     assert estimate.line_items == pytest.approx({
-        "material": 3.0566, "machine": 1.6667, "sinter": 1.5,
+        "material": 0.1962, "machine": 1.6667, "sinter": 1.5,
         "labor": 0, "amortized_fixed": 0.0729,
     }, abs=0.00005)
-    assert round(estimate.unit_cost_usd, 2) == 6.30
-    assert round(round(estimate.unit_cost_usd, 2) * 12000, 2) == 75600
+    assert round(estimate.unit_cost_usd, 2) == 3.44
+    assert round(estimate.unit_cost_usd, 2) * 12000 == 41280

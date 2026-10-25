@@ -1,12 +1,10 @@
 import type { Metadata } from "next";
 import { connection } from "next/server";
-import { cookies, headers } from "next/headers";
+import { headers } from "next/headers";
 import { Geist, Geist_Mono, Archivo } from "next/font/google";
 import { Toaster } from "sonner";
 import { STAGE_UI } from "@/lib/stage-flag";
 import { Analytics } from "@/components/analytics";
-import { SignedInProvider } from "@/components/site/signed-in";
-import { SESSION_COOKIE } from "@/lib/session";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -37,7 +35,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(
     process.env.NEXT_PUBLIC_SITE_URL || "https://scalecad.ai"
   ),
-  title: "ScaleCAD — Know which of your parts you should be making",
+  title: "ScaleCad — Know which of your parts you should be making",
   description:
     "Check manufacturing options, review design findings, and trace the resources behind your next decision. Explore a recorded sample without an account.",
   alternates: { canonical: "/" },
@@ -45,17 +43,17 @@ export const metadata: Metadata = {
     icon: "/icon.svg",
   },
   openGraph: {
-    title: "ScaleCAD — Know which of your parts you should be making",
+    title: "ScaleCad — Know which of your parts you should be making",
     description:
       "Makeability verification for real manufacturing decisions.",
     url: "/",
-    siteName: "ScaleCAD",
+    siteName: "ScaleCad",
     images: [{ url: "/opengraph-image", width: 1200, height: 630 }],
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "ScaleCAD — Know which of your parts you should be making",
+    title: "ScaleCad — Know which of your parts you should be making",
     description:
       "Makeability verification for real manufacturing decisions.",
     images: ["/opengraph-image"],
@@ -72,7 +70,6 @@ export default async function RootLayout({
   // for a product that handles customer CAD and authentication material.
   await connection();
   const nonce = (await headers()).get("x-nonce") || undefined;
-  const signedIn = Boolean((await cookies()).get(SESSION_COOKIE)?.value);
   return (
     <html
       lang="en"
@@ -84,7 +81,7 @@ export default async function RootLayout({
       suppressHydrationWarning
     >
       <head>
-        {/* No-flash theme: ScaleCAD is light-first. Dark remains an explicit
+        {/* No-flash theme: ScaleCad is light-first. Dark remains an explicit
             user preference, but route changes never imply a theme change. */}
         <script
           nonce={nonce}
@@ -100,7 +97,7 @@ export default async function RootLayout({
         />
       </head>
       <body className="min-h-full flex flex-col">
-        <SignedInProvider signedIn={signedIn}>{children}</SignedInProvider>
+        {children}
         <Analytics token={process.env.POSTHOG_PROJECT_TOKEN || ""} nonce={nonce} />
         {/* Toasts live bottom-right so they never occlude the top-right control
             cluster (⌘K / Jump / notifications bell) or their dropdowns — a

@@ -51,7 +51,7 @@ class LocalTripoSR(ReconstructionEngine):
     def _ensure_model_loaded(self) -> None:
         if self._model is not None:
             return
-        from tsr.system import TSR  # pyright: ignore[reportMissingImports]  # optional GPU extra, not installed in CI
+        from tsr.system import TSR
 
         self._model = TSR.from_pretrained(
             self._model_path,
@@ -67,7 +67,7 @@ class LocalTripoSR(ReconstructionEngine):
 
     @property
     def _device(self) -> str:
-        import torch  # pyright: ignore[reportMissingImports]  # optional GPU extra, not installed in CI
+        import torch
 
         return "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -76,16 +76,13 @@ class LocalTripoSR(ReconstructionEngine):
     # ------------------------------------------------------------------
 
     def _infer(self, image: Image.Image, params: ReconstructParams) -> ReconstructResult:
-        import torch  # pyright: ignore[reportMissingImports]  # optional GPU extra, not installed in CI
+        import torch
         import trimesh as tm
 
-        model = self._model
-        if model is None:  # reconstruct() loads it first; calling None would raise TypeError
-            raise RuntimeError("TripoSR model is not loaded")
         t0 = time.perf_counter()
         with torch.no_grad():
-            scene_codes = model([image], device=self._device)
-            meshes = model.extract_mesh(
+            scene_codes = self._model([image], device=self._device)
+            meshes = self._model.extract_mesh(
                 scene_codes, resolution=params.resolution
             )
 

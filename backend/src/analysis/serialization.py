@@ -26,13 +26,9 @@ Design notes (the four findings-API fixes this file carries):
 from __future__ import annotations
 
 import math
-import re
-from typing import TYPE_CHECKING, Any, Optional, Sequence
+from typing import Any, Optional, Sequence
 
 from src.analysis.models import Citation, Issue
-
-if TYPE_CHECKING:
-    from numpy.typing import NDArray
 
 # Documented cap on how many affected-face indices ride in a single serialized
 # issue. Chosen well above the old 20/100 clips so a defect region is
@@ -41,52 +37,16 @@ if TYPE_CHECKING:
 MAX_SERIALIZED_AFFECTED_FACES = 2000
 
 
-# The wall check's sentence ("88060 mesh triangles (97.0%) below 0.8mm min wall for
-# 3-axis milling. Thinnest: 0.364mm."; "faces" in records made before op-15).
-_WALL_SENTENCE = re.compile(
-    r"^\s*(\d+) (?:mesh triangles|faces) \(\d+(?:\.\d+)?%\) below (\d+(?:\.\d+)?)\s?mm( min wall)? "
-    r"for ([^.]+?)\.\s*Thinnest:\s*(\d+(?:\.\d+)?)\s?mm\b", re.I)
-
-
-def wall_words(text: Optional[str]) -> Optional[str]:
-    """The wall check's sentence in plain words, the thinnest wall first (op-15):
-    "Walls down to 0.364 mm, under the 0.8 mm min wall for 3-axis milling (88,060
-    mesh triangles)". Numbers as the engine wrote them, so a 0.7999 mm wall never
-    reads as 0.8. None for any other sentence. Mirrors frontend ``tidyReason``."""
-    m = _WALL_SENTENCE.match(text or "")
-    if not m:
-        return None
-    n, need, min_wall, process, thinnest = m.groups()
-    if re.fullmatch(r"[a-z0-9_]+", process):  # older records name the method by its code ("ded")
-        from src.analysis.process_names import process_phrase
-
-        process = process_phrase(process) or process
-    rule = "min wall" if min_wall else "recommended"
-    return f"Walls down to {thinnest} mm, under the {need} mm {rule} for {process} ({int(n):,} mesh triangles)"
-
-
 def format_measurement(value: float, reference: float | None = None) -> str:
-    """Compact display without changing a measured-versus-limit comparison.
-
-    Three significant figures (never fewer than the whole-number digits, so no
-    exponent), with more digits only where fewer would make the measured value
-    and its limit compare differently. The precision is chosen from the pair, so
-    ``format_measurement(a, b)`` and ``format_measurement(b, a)`` use the same one
-    and the two printed numbers keep the true order ("0.173mm" against a 0.5 mm
-    limit, "0.7999mm" against 0.8 mm).
-    """
+    """Compact display without changing a measured-versus-limit comparison."""
     if not math.isfinite(value):
         return "unavailable"
-    whole = len(str(int(abs(value)))) if abs(value) >= 1 else 1
-    if reference is None or not math.isfinite(reference):
-        return f"{value:.{max(3, whole)}g}"
-    whole = max(whole, len(str(int(abs(reference)))) if abs(reference) >= 1 else 1)
-    want = (value < reference, value > reference)
-    for digits in range(max(3, whole), max(6, whole) + 1):
-        shown, limit = float(f"{value:.{digits}g}"), float(f"{reference:.{digits}g}")
-        if (shown < limit, shown > limit) == want:
-            return f"{value:.{digits}g}"
-    return repr(float(value))
+    shown = f"{value:.6g}"
+    if reference is not None and math.isfinite(reference):
+        rounded, limit = float(shown), float(f"{reference:.6g}")
+        if (rounded < limit) != (value < reference) or (rounded > limit) != (value > reference):
+            return repr(float(value))
+    return shown
 
 
 def serialize_citation(citation: Optional[Citation]) -> Optional[dict]:
@@ -134,10 +94,6 @@ def serialize_issue(
             # affected_face_count, so nothing is silently dropped.
             d["affected_faces_truncated"] = True
 
-    if issue.cad_face_count is not None:
-        d["cad_face_count"] = int(issue.cad_face_count)
-    if issue.breakdown:
-        d["breakdown"] = [dict(part) for part in issue.breakdown]
     if issue.region_center:
         d["region_center"] = [round(c, 2) for c in issue.region_center]
     if issue.measured_value is not None and math.isfinite(issue.measured_value):
@@ -159,7 +115,7 @@ def serialize_issue(
 
 
 def serialize_wall_thickness(
-    wall_thickness: Sequence[float] | NDArray[Any],
+    wall_thickness: Sequence[float],
     *,
     decimation: Optional[dict] = None,
 ) -> dict:

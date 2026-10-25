@@ -2,11 +2,8 @@
 
 Mounted under /auth:
   GET /google/start    → 302 to Google with state + nonce
-  GET /google/callback → validates state, upserts user (a Google account opens
-                          an existing one only on its exact address or its own
-                          linked subject), mints a read-only API key that expires
-                          in 90 days when none is active, 303 to
-                          /settings/developer?new=1 with cv_mint_once cookie
+  GET /google/callback → validates state, upserts user, mints API key,
+                          303 to /settings/developer?new=1 with cv_mint_once cookie
 """
 from __future__ import annotations
 
@@ -43,8 +40,7 @@ router = APIRouter()
 
 @router.get("/google/start")
 async def google_start(request: Request):
-    # AUTH-08: the per-IP signup limit applies to OAuth start too (office-sized,
-    # SIGNUPS_PER_IP_PER_HOUR, default 60 an hour).
+    # AUTH-08: per-IP signup limit applies to OAuth start too (3/hr/IP).
     # Per-email limit is NOT applied here — it would lock out legitimate
     # re-sign-ins; applied only at magic-link start where one email = one
     # fresh signup intent.
@@ -85,59 +81,8 @@ async def google_callback(request: Request):
                 "doc_url": error_doc_url("oauth_no_email"),
             },
         )
-    # Only an address Google itself has verified may create or reach an
-    # account; an unverified one could name someone else's existing account.
-    verified = info.get("email_verified")
-    if not (verified is True or (isinstance(verified, str) and verified.strip().lower() == "true")):
-        raise HTTPException(
-            403,
-            detail={
-                "code": "oauth_email_unverified",
-                "message": "Google has not verified this email address.",
-                "doc_url": error_doc_url("oauth_email_unverified"),
-            },
-        )
     email_norm = normalize_email(email)
     user_id = await upsert_user(email, sub, email_norm, auth_provider="google")
-
-    # Google is a consumer sign-in, not the organization's identity provider:
-    # an account with two-step on (or in an org that requires it) is asked for
-    # its code exactly as after a password. No session and no key until then.
-    from src.auth.two_step import CHALLENGE_TTL, make_challenge, sign_in_requirement_for
-
-    two_step = await sign_in_requirement_for(user_id)
-    if two_step is not None:
-        from src.config.public_urls import dashboard_origin
-
-        resp = RedirectResponse(url=f"{dashboard_origin()}/login/two-step", status_code=303)
-        resp.set_cookie(
-            "cv_two_step",
-            make_challenge(user_id, await get_user_session_version(user_id), two_step, "google"),
-            max_age=CHALLENGE_TTL,
-            secure=True,
-            httponly=True,
-            samesite="lax",
-            domain=session_cookie_domain(),
-            path="/",
-        )
-        return resp
-
-    # The sign-in row: where it came from (the browser comes back from Google
-    # straight to the API, so the verified proxy IP or else the direct peer) and
-    # the browser. Never Google's tokens or subject. A sign-in that owes a
-    # two-step code is recorded when the code is checked (two_step_routes).
-    from src.auth.client_ip import client_ip, client_user_agent
-    from src.services.audit_service import log_action
-
-    await log_action(
-        user_id=user_id,
-        user_email=email_norm,
-        action="auth.login",
-        resource_type="session",
-        detail={"auth_provider": "google"},
-        ip_address=client_ip(request),
-        user_agent=client_user_agent(request),
-    )
 
     # Mint a key only when the account has none active (S3). A returning user
     # keeps their existing key(s) — logging in must not spawn a fresh key nor
@@ -151,7 +96,6 @@ async def google_callback(request: Request):
         )
         return resp
 
-    # Read only, expiring in 90 days: the rules for every key made at sign-in.
     full_token, prefix, secret_hash = mint_token()
     await create_api_key(
         user_id, "Default", prefix, hmac_index(full_token), secret_hash

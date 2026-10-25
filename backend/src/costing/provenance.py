@@ -27,12 +27,6 @@ from enum import Enum
 from typing import Optional
 
 
-# How a driver's source says its number is an assumption, in words a buyer
-# reads (the DEFAULT tag says the same to software). Replaces the bracketed
-# "[assumption, not shop-validated]" tag the cost breakdown showed verbatim.
-TYPICAL = "typical value, not confirmed by a shop"
-
-
 class Provenance(str, Enum):
     MEASURED = "MEASURED"   # extracted from the CAD — not assumable
     USER = "USER"           # team-declared input — authoritative, not calibrated
@@ -76,7 +70,7 @@ class CostEstimate:
     variable_cost_usd: float        # per-unit costs with asymptotic full-lot setup allocation
     drivers: list[Driver]           # every line item, each tagged
     line_items: dict                # {"amortized_fixed":.., "material":.., "machine":.., "labor":..}
-    est_error_band_pct: float       # ± band: root-sum-square of the lines' own bands (band_basis says how)
+    est_error_band_pct: float       # rolled-up band (dominant cost line)
     dfm_ready: bool = True          # engine DFM verdict != "fail"
     dfm_verdict: str = "pass"       # engine verdict: pass | issues | fail
     dfm_score: float = 1.0
@@ -90,19 +84,6 @@ class CostEstimate:
     # rate — capital amortization removed because the org owns the gear; see
     # rates.machine_capital_frac). Default False => fully-loaded (rent-the-time).
     owned_in_house: bool = False
-    # The material as fields (cost_model ``material_mass``): part_kg (CAD volume ×
-    # density), used_kg (what the price is charged on), density_g_cm3, usd_per_kg.
-    # None on estimates built without it.
-    material_mass: Optional[dict] = None
-    # ce-06: the cost lines sorted by how they move with the quantity, so the price
-    # at any quantity is the model's own (src.costing.quantity_model). None on
-    # estimates built without it.
-    qty_model: Optional[dict] = None
-    # ce-02: how est_error_band_pct was rolled up from the lines' own bands, in words.
-    band_basis: Optional[str] = None
-    # ce-07: a casting's or forging's finish machining, not in its price: {per_part_usd,
-    # once_usd, source}. None for routes whose price is a finished part.
-    finish_excluded: Optional[dict] = None
 
     def assert_sums(self, tol: float = 0.01) -> None:
         """Hard invariant (gate G3): unit cost == sum of line items, or it is a bug."""

@@ -17,7 +17,7 @@ import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Optional, Sequence, cast
+from typing import Optional, Sequence
 
 import numpy as np
 import trimesh
@@ -176,7 +176,7 @@ def build_feature_matrix(
     manifest: Optional[dict[str, dict]] = None,
     progress: bool = False,
     precomputed: Optional[dict[str, np.ndarray]] = None,
-    on_checkpoint: Optional[Callable[[list[str], np.ndarray], object]] = None,
+    on_checkpoint: Optional["object"] = None,
     checkpoint_every: int = 40,
 ) -> FeatureStore:
     """Build the raw feature matrix over the given parts (default: all corpus).
@@ -210,8 +210,7 @@ def build_feature_matrix(
         i = base + j
         path = label_store.mesh_path(pid, manifest)
         try:
-            # force="mesh" hands back a Trimesh; trimesh types load() as Geometry.
-            mesh = cast(trimesh.Trimesh, trimesh.load(path, force="mesh"))
+            mesh = trimesh.load(path, force="mesh")
             rows[i] = vector_for_mesh(mesh)
         except Exception as exc:  # pragma: no cover - corrupt mesh on disk
             print(f"WARN: feature build failed for {pid}: {exc}", file=sys.stderr)
@@ -328,7 +327,7 @@ def _resolve_query_vector(
             return args.part, store.X[idx], args.part
         # Not in the prebuilt matrix — compute on the fly.
         path = label_store.mesh_path(args.part, manifest)
-        mesh = cast(trimesh.Trimesh, trimesh.load(path, force="mesh"))
+        mesh = trimesh.load(path, force="mesh")
         return args.part, vector_for_mesh(mesh), args.part
     # --stl path: hash to see if it's already in the corpus, else compute fresh.
     raw = Path(args.stl).read_bytes()
@@ -336,7 +335,7 @@ def _resolve_query_vector(
     idx = store.index_of(pid)
     if idx is not None:
         return f"{args.stl} (==corpus {pid[:12]})", store.X[idx], pid
-    mesh = cast(trimesh.Trimesh, trimesh.load(Path(args.stl), force="mesh"))
+    mesh = trimesh.load(Path(args.stl), force="mesh")
     return args.stl, vector_for_mesh(mesh), pid
 
 

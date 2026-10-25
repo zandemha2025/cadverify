@@ -33,19 +33,16 @@ Honesty contract (identical to the live decision / FE catalog):
 from __future__ import annotations
 
 import base64
-import logging
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Optional, Sequence
+from typing import Any, Optional
 
-from sqlalchemy import and_, func, literal, select, true, tuple_
+from sqlalchemy import and_, func, select, true, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.analysis.process_names import PROCESS_NAME, process_label as shared_process_label
+from src.analysis.models import ProcessType
 from src.db.models import Analysis, CostDecision, PartContext, PartSummary
 from src.services import part_context_service as pcsvc
-
-logger = logging.getLogger("cadverify.catalog_service")
 
 # ---------------------------------------------------------------------------
 # Config
@@ -151,96 +148,21 @@ def posture(drivers: Optional[list[dict]]) -> dict:
     }
 
 
-def opening_basis(quantities, declared: Optional[int] = None) -> Optional[dict]:
-    """The quantity a part opens at, the ONE rule the parts list, the part page
-    (frontend ``part/model.ts`` ``openingQty``), the catalog board and Decision
-    share (ce-19, me-22, op-08), and why:
-
-    * the part's declared yearly quantity when the record priced it (``declared``);
-    * else 10 when priced, else the first priced quantity of 10 or more, else the
-      largest (``default``). A yearly quantity the record didn't price falls
-      through to the default; the part page says so and offers to price it.
-
-    ``tests/fixtures/opening_qty_cases.json`` holds both twins to the same cases.
-    ``{"qty": 100, "basis": "default", "declared": 800}``; None when nothing was priced."""
-    qs = sorted({int(q) for q in (quantities or []) if isinstance(q, (int, float)) and not isinstance(q, bool) and q > 0})
-    if not qs:
-        return None
-    d = int(declared) if isinstance(declared, (int, float)) and not isinstance(declared, bool) and declared > 0 else None
-    if d is not None and d in qs:
-        return {"qty": d, "basis": "declared", "declared": d}
-    q = 10 if 10 in qs else next((q for q in qs if q >= 10), qs[-1])
-    return {"qty": q, "basis": "default", "declared": d}
-
-
-def opening_qty(quantities, declared: Optional[int] = None) -> Optional[int]:
-    """``opening_basis``'s quantity."""
-    b = opening_basis(quantities, declared)
-    return b["qty"] if b else None
-
-
-async def annotate_rates(session: AsyncSession, org_id: Optional[str], rows: list[dict]) -> list[dict]:
-    """Each costed row's ``rates``: the rate card its price was figured at against the
-    one in effect (``rate_card_basis.basis``), one read for the whole page (ce-10)."""
-    from src.services import rate_card_basis
-    from src.services.rate_library_service import rate_library_enabled
-
-    costed = [r for r in rows if isinstance(r.get("cost_decision"), dict)]
-    if not costed or not org_id:
-        return rows
-    card_rows = await rate_card_basis.org_rate_rows(session, org_id)
-    enabled = rate_library_enabled()
-    for r in costed:
-        cd = r["cost_decision"]
-        made = cd.get("created_at") or r.get("updated_at")
-        try:
-            when = datetime.fromisoformat(made) if isinstance(made, str) else None
-        except ValueError:
-            when = None
-        stamp = {"rate_card": {"version": cd["rate_card"]}} if isinstance(cd.get("rate_card"), int) else {}
-        r["rates"] = rate_card_basis.basis(stamp, when, card_rows, enabled=enabled)
-    return rows
-
-
-def make_now_estimate(cost_result_json: dict, *, at_opening_qty: bool = False,
-                      declared: Optional[int] = None) -> Optional[dict]:
+def make_now_estimate(cost_result_json: dict) -> Optional[dict]:
     """The estimate behind the recommended make-now route.
 
     The FIRST estimate whose ``process`` equals ``decision.make_now_process`` —
     the same ``pickEstimate`` convention the saved-decision hero and the resident
     Inspector use. None when there is no decision or no matching estimate.
-
-    ``at_opening_qty``: ScaleCAD's pick at the quantity the part page opens at
-    (``opening_qty``): the estimate of ``decision.recommendation[q]``'s process
-    and material at that quantity, the one the part page's Decision picks there
-    (the in-house rule applied, a tie included), so the parts list and the part
-    page show the same route and price (ce-19, me-22). Without a recommendation
-    at that quantity, the make-now estimate there, as before.
     """
     decision = cost_result_json.get("decision") or {}
     proc = (decision.get("make_now_process") or "").strip()
     if not proc:
         return None
-    estimates = [e for e in cost_result_json.get("estimates") or [] if isinstance(e, dict)]
-    if at_opening_qty:
-        q = opening_qty(cost_result_json.get("quantities") or [e.get("quantity") for e in estimates], declared)
-        rec = (decision.get("recommendation") or {}).get(str(q)) or {}
-        if rec.get("process"):
-            picked = [e for e in estimates if e.get("process") == rec["process"] and e.get("quantity") == q]
-            if picked:
-                mat = rec.get("material")
-                return next((e for e in picked if mat and e.get("material") == mat), picked[0])
-    matches = [e for e in estimates if e.get("process") == proc]
-    if not matches:
-        return None
-    if at_opening_qty:
-        q = opening_qty(cost_result_json.get("quantities") or [e.get("quantity") for e in matches], declared)
-        at = [e for e in matches if e.get("quantity") == q]
-        if at:
-            rec = (decision.get("recommendation") or {}).get(str(q)) or {}
-            mat = rec.get("material") if rec.get("process") == proc else decision.get("make_now_material")
-            return next((e for e in at if mat and e.get("material") == mat), at[0])
-    return matches[0]
+    for e in cost_result_json.get("estimates") or []:
+        if e.get("process") == proc:
+            return e
+    return None
 
 
 def _process_score(analysis_result_json: dict, process: str) -> Optional[dict]:
@@ -260,10 +182,6 @@ class SourceRef:
     """A hydrated source artifact (analysis or cost decision) for one part.
 
     DB-free by construction so ``derive_row`` unit-tests with plain values.
-    From the catalog folds, ``result_json`` holds the record's slim inputs
-    (``catalog_inputs``): the keys this module's derivation reads, shared
-    between requests, so never mutate it. A new reader of another key adds it
-    to ``catalog_inputs``.
     """
 
     id: str                      # the ulid (also the /api link key)
@@ -278,7 +196,6 @@ def derive_row(
     part_key: str,
     analysis: Optional[SourceRef],
     cost: Optional[SourceRef],
-    declared_qty: Optional[int] = None,
 ) -> dict:
     """Derive one catalog row from a part's (optional) analysis + cost artifacts.
 
@@ -299,16 +216,12 @@ def derive_row(
     # DFM-recommended best_process (real, but not costed). Either is honestly
     # labeled by ``source`` so the UI never conflates a costed route with a raw
     # DFM suggestion.
-    # Priced at the quantity the part opens at: its declared yearly quantity, else the default rule.
-    est = make_now_estimate(cost_json, at_opening_qty=True, declared=declared_qty) if cost else None
-    qty_basis = (opening_basis(cost_json.get("quantities") or [], declared_qty) if cost else None)
+    est = make_now_estimate(cost_json) if cost else None
     recommended_route: Optional[dict] = None
     scoped_process = ""
     if cost is not None:
         proc = (decision.get("make_now_process") or "").strip()
         if proc:
-            # ScaleCAD's pick at the opening quantity, the route the part page shows there.
-            proc = (est or {}).get("process") or proc
             scoped_process = proc
             recommended_route = {
                 "process": proc,
@@ -355,9 +268,6 @@ def derive_row(
             # truth yet); the catalog never presents an unvalidated cost as
             # measured.
             "validated": bool(ci.get("validated", False)),
-            # Why this quantity: the declared yearly one, the next priced above it, or the default rule.
-            "qty_basis": (qty_basis or {}).get("basis") if (qty_basis or {}).get("qty") == est.get("quantity") else None,
-            "declared_qty": (qty_basis or {}).get("declared"),
         }
     elif cost is not None:
         # Costed but no matching make-now estimate (e.g. GEOMETRY_INVALID) — the
@@ -372,8 +282,6 @@ def derive_row(
 
     # --- identity / links / recency ----------------------------------------
     primary = cost or analysis  # the "decision" is the headline artifact
-    if primary is None:  # one of them is set: checked at the top
-        raise ValueError("derive_row needs at least one of analysis/cost")
     updated = max(
         [r.created_at for r in (analysis, cost) if r is not None]
     )
@@ -389,12 +297,7 @@ def derive_row(
         "provenance_posture": provenance_posture,
         "route_blocker_count": route_blocker_count,
         "cost_decision": (
-            {"id": cost.id, "url": f"/api/v1/cost-decisions/{cost.id}",
-             # When it was priced and at which of the org's rate cards (stamped by
-             # rate_card_basis.apply_rate_card): the list can say a price is out of date (ce-10).
-             "created_at": cost.created_at.isoformat() if cost.created_at else None,
-             "rate_card": ((cost_json.get("rate_card") or {}).get("version")
-                           if isinstance(cost_json.get("rate_card"), dict) else None)}
+            {"id": cost.id, "url": f"/api/v1/cost-decisions/{cost.id}"}
             if cost is not None
             else None
         ),
@@ -448,7 +351,7 @@ def compute_facets(rows: list[dict]) -> dict:
     """Available facet values with real counts over the given rows (unfiltered),
     so the UI can render filter chips that reflect what is actually in the org's
     catalog — every count derived, none invented."""
-    by_state: dict[Optional[str], int] = {}  # a row's lifecycle_state, as its dict carries it
+    by_state: dict[str, int] = {}
     by_route: dict[str, int] = {}
     with_findings = 0
     without_findings = 0
@@ -483,7 +386,7 @@ def compute_facets(rows: list[dict]) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _fold_latest_by_mesh(rows: Sequence[Any]) -> dict[str, Any]:
+def _fold_latest_by_mesh(rows: list) -> dict[str, Any]:
     """Keep the latest artifact per ``mesh_hash``. ``rows`` MUST already be
     ordered ulid-desc (newest first), so the first seen per mesh is the latest.
     ULIDs are monotonic + unique, so this is a stable "latest wins"."""
@@ -494,44 +397,6 @@ def _fold_latest_by_mesh(rows: Sequence[Any]) -> dict[str, Any]:
     return latest
 
 
-async def _current_cost_rows(
-    session: AsyncSession, org_id: str, *, part_key: Optional[str], limit: int
-) -> list:
-    """The org's newest cost decisions that can be a part's price, newest first,
-    at most ``limit``: exactly the rows ``WHERE current_price_clause() ORDER BY
-    ulid DESC LIMIT limit`` returns, without reading every record's
-    ``result_json`` per request to apply that test. The rows are listed without
-    it (ulid-desc pages), and whether each one is a what-if comes from
-    ``catalog_inputs.current_flags``: the same SQL test, run once per record."""
-    from src.services import catalog_inputs
-
-    page = max(limit, 50)
-    out: list = []
-    before: Optional[str] = None
-    while len(out) < limit:
-        rows = (
-            await session.execute(
-                select(
-                    CostDecision.id, CostDecision.ulid, CostDecision.mesh_hash,
-                    CostDecision.filename, CostDecision.file_type, CostDecision.created_at,
-                )
-                .where(CostDecision.org_id == org_id)
-                .where(CostDecision.mesh_hash == part_key if part_key is not None else true())
-                .where(CostDecision.ulid < before if before is not None else true())
-                .order_by(CostDecision.ulid.desc())
-                .limit(page)
-            )
-        ).all()
-        if not rows:
-            break
-        current = await catalog_inputs.current_flags(session, [(r.id, r.ulid) for r in rows])
-        out.extend(r for r in rows if current.get((r.id, r.ulid)))
-        if len(rows) < page:
-            break
-        before = rows[-1].ulid
-    return out[:limit]
-
-
 async def _fold_org_parts(
     session: AsyncSession, org_id: str, *, part_key: Optional[str] = None
 ) -> tuple[list[tuple[str, Optional[SourceRef], Optional[SourceRef]]], bool]:
@@ -540,66 +405,53 @@ async def _fold_org_parts(
     truncated)`` — one entry per distinct part (mesh_hash) in the org, each
     hydrated into DB-free ``SourceRef``s. A single bounded, ulid-desc scan per
     source table (cap+1 so truncation is honest without a second COUNT). An
-    exact part key instead selects only its newest artifact from each table.
-
-    The scans list rows without ``result_json`` and the fold keeps the newest per
-    part; only the kept rows' result inputs are then read, slimmed to what the
-    derivation uses (``catalog_inputs``: once per record per process, then from
-    memory). Page cost no longer grows with the size of every saved result, nor
-    with re-checks of the same part (capacity report C6)."""
-    from src.services import catalog_inputs
-
+    exact part key instead selects only its newest artifact from each table."""
     # One bounded, ulid-desc query per source table (newest first). Fetch cap+1
     # so we can honestly report truncation without a second COUNT round-trip.
-    limit = 1 if part_key is not None else CATALOG_SCAN_CAP + 1
     an_rows = (
-        await session.execute(
-            select(
-                Analysis.id, Analysis.ulid, Analysis.mesh_hash,
-                Analysis.filename, Analysis.file_type, Analysis.created_at,
+        (
+            await session.execute(
+                select(Analysis)
+                .where(Analysis.org_id == org_id)
+                .where(Analysis.mesh_hash == part_key if part_key is not None else true())
+                .order_by(Analysis.ulid.desc())
+                .limit(1 if part_key is not None else CATALOG_SCAN_CAP + 1)
             )
-            .where(Analysis.org_id == org_id)
-            .where(Analysis.mesh_hash == part_key if part_key is not None else true())
-            .order_by(Analysis.ulid.desc())
-            .limit(limit)
         )
-    ).all()
-    # A what-if re-cost never becomes the part's price on the parts list (ce-17).
-    cost_rows = await _current_cost_rows(session, org_id, part_key=part_key, limit=limit)
+        .scalars()
+        .all()
+    )
+    cost_rows = (
+        (
+            await session.execute(
+                select(CostDecision)
+                .where(CostDecision.org_id == org_id)
+                .where(CostDecision.mesh_hash == part_key if part_key is not None else true())
+                .order_by(CostDecision.ulid.desc())
+                .limit(1 if part_key is not None else CATALOG_SCAN_CAP + 1)
+            )
+        )
+        .scalars()
+        .all()
+    )
     truncated = len(an_rows) > CATALOG_SCAN_CAP or len(cost_rows) > CATALOG_SCAN_CAP
     an_rows = an_rows[:CATALOG_SCAN_CAP]
     cost_rows = cost_rows[:CATALOG_SCAN_CAP]
 
     an_by_mesh = _fold_latest_by_mesh(an_rows)
     cost_by_mesh = _fold_latest_by_mesh(cost_rows)
-    an_inputs = await catalog_inputs.analysis_inputs(
-        session, [(a.id, a.ulid) for a in an_by_mesh.values()]
-    )
-    cost_inputs = await catalog_inputs.cost_inputs(
-        session, [(c.id, c.ulid) for c in cost_by_mesh.values()]
-    )
 
     parts: list[tuple[str, Optional[SourceRef], Optional[SourceRef]]] = []
-    # Sorted, so parts that tie on every later sort key (records saved in one
-    # transaction share created_at) keep one order in every process: a page
-    # boundary falls in the same place whichever API instance answers.
-    for mesh in sorted(set(an_by_mesh) | set(cost_by_mesh)):
+    for mesh in set(an_by_mesh) | set(cost_by_mesh):
         a = an_by_mesh.get(mesh)
         c = cost_by_mesh.get(mesh)
-        # A record deleted between the two reads is treated as gone.
-        if a is not None and (a.id, a.ulid) not in an_inputs:
-            a = None
-        if c is not None and (c.id, c.ulid) not in cost_inputs:
-            c = None
-        if a is None and c is None:
-            continue
         analysis_ref = (
             SourceRef(
                 id=a.ulid,
                 filename=a.filename,
                 file_type=a.file_type,
                 created_at=a.created_at,
-                result_json=an_inputs[(a.id, a.ulid)] or {},
+                result_json=a.result_json or {},
             )
             if a is not None
             else None
@@ -610,7 +462,7 @@ async def _fold_org_parts(
                 filename=c.filename,
                 file_type=c.file_type,
                 created_at=c.created_at,
-                result_json=cost_inputs[(c.id, c.ulid)] or {},
+                result_json=c.result_json or {},
             )
             if c is not None
             else None
@@ -634,9 +486,8 @@ async def build_catalog(
         return {"rows": [], "truncated": False}
 
     parts, truncated = await _fold_org_parts(session, org_id, part_key=part_key)
-    declared = {c.mesh_hash: getattr(c, "annual_volume", None) for c in await pcsvc.list_contexts(session, org_id)}
     rows = [
-        derive_row(part_key=mesh, analysis=analysis_ref, cost=cost_ref, declared_qty=declared.get(mesh))
+        derive_row(part_key=mesh, analysis=analysis_ref, cost=cost_ref)
         for (mesh, analysis_ref, cost_ref) in parts
     ]
 
@@ -1157,11 +1008,32 @@ async def portfolio_delta(
 # ---------------------------------------------------------------------------
 
 
-# Human labels for every real engine process id come from one table shared with the
-# v4 screens (src/analysis/process_names.py, mirroring process-names.ts): plain words
-# first, then the acronym engineers search for ("Filament printing (FDM/FFF)",
-# "3-axis milling"). Buckets key off the engine's own category; the label is a
-# display string only, and an unrecognized id falls back to a titleized form.
+# Human labels for every real engine process id (ProcessType). Keeps the rollup
+# honest: buckets key off the engine's own category, and the label is a display
+# string only — an unrecognized id falls back to a titleized form, never dropped.
+_PROCESS_LABELS: dict[str, str] = {
+    ProcessType.FDM.value: "FDM 3D Printing",
+    ProcessType.SLA.value: "SLA 3D Printing",
+    ProcessType.DLP.value: "DLP 3D Printing",
+    ProcessType.SLS.value: "SLS 3D Printing",
+    ProcessType.MJF.value: "MJF 3D Printing",
+    ProcessType.DMLS.value: "DMLS Metal 3D Printing",
+    ProcessType.SLM.value: "SLM Metal 3D Printing",
+    ProcessType.EBM.value: "EBM Metal 3D Printing",
+    ProcessType.BINDER_JET.value: "Binder Jetting",
+    ProcessType.DED.value: "Directed Energy Deposition",
+    ProcessType.WAAM.value: "Wire-Arc Additive (WAAM)",
+    ProcessType.CNC_3AXIS.value: "CNC Milling (3-axis)",
+    ProcessType.CNC_5AXIS.value: "CNC Milling (5-axis)",
+    ProcessType.CNC_TURNING.value: "CNC Turning",
+    ProcessType.WIRE_EDM.value: "Wire EDM",
+    ProcessType.INJECTION_MOLDING.value: "Injection Molding",
+    ProcessType.DIE_CASTING.value: "Die Casting",
+    ProcessType.INVESTMENT_CASTING.value: "Investment Casting",
+    ProcessType.SAND_CASTING.value: "Sand Casting",
+    ProcessType.SHEET_METAL.value: "Sheet Metal",
+    ProcessType.FORGING.value: "Forging",
+}
 
 # The three makeability postures. Every part lands in EXACTLY one (see
 # ``triage_bucket``); they are mutually exclusive and sum to ``total``.
@@ -1172,9 +1044,7 @@ def process_label(process_id: Optional[str]) -> str:
     """Human label for an engine process id (display only, never a category)."""
     if not process_id:
         return "Unrouted"
-    if process_id in PROCESS_NAME:
-        return shared_process_label(process_id)
-    return process_id.replace("_", " ").title()
+    return _PROCESS_LABELS.get(process_id) or process_id.replace("_", " ").title()
 
 
 def triage_bucket(row: dict) -> str:
@@ -1263,8 +1133,7 @@ def triage_rollup(
             by_process[proc] = by_process.get(proc, 0) + 1
 
         if programs:
-            part_key = r.get("part_key")
-            program = programs.get(part_key) if part_key is not None else None
+            program = programs.get(r.get("part_key"))
             if program:
                 g = prog_groups.setdefault(
                     program,
@@ -1499,7 +1368,7 @@ async def build_catalog_page(
         cur_ts, cur_mesh = _decode_page_cursor(cursor)
         q = q.where(
             tuple_(PartSummary.updated_at, PartSummary.mesh_hash)
-            < tuple_(literal(cur_ts), literal(cur_mesh))
+            < tuple_(cur_ts, cur_mesh)
         )
     # Fetch limit+1 so we know whether a further page exists without a COUNT.
     q = q.order_by(
@@ -1543,7 +1412,7 @@ MAKEABILITY_BUCKETS = (
     "makeable_in_house",   # an owned machine fits (incl. an in-house secondary op)
     "makeable_outside",    # a valid route exists but the org owns none of the family
     "needs_capability",    # owns the family but no machine fits → a concrete gap
-    "not_makeable",        # no valid route / env-excluded or DFM-blocked on every route
+    "not_makeable",        # no valid route / environment-excluded on every route
     "unknown",             # no verdict (no inventory declared, or not costed)
     "geometry_invalid",    # the geometry itself is invalid (can't be made by any)
 )
@@ -1765,7 +1634,7 @@ async def build_makeability_bucket_page(
         cur_ts, cur_mesh = _decode_page_cursor(cursor)
         q = q.where(
             tuple_(PartSummary.updated_at, PartSummary.mesh_hash)
-            < tuple_(literal(cur_ts), literal(cur_mesh))
+            < tuple_(cur_ts, cur_mesh)
         )
     q = q.order_by(
         PartSummary.updated_at.desc(), PartSummary.mesh_hash.desc()
@@ -1774,13 +1643,12 @@ async def build_makeability_bucket_page(
     fetched = (await session.execute(q)).all()
     has_more = len(fetched) > limit
     page = fetched[:limit]
-    at_qty = await _routes_at_quantity(session, org_id, page)
     rows = [
         {**r.row_json, "makeability": {
             "verdict": r.makeability_verdict,
             "stale": r.makeability_stale,
             "gap": r.makeability_gap,
-        }, "at_quantity": at_qty.get(r.mesh_hash)}
+        }}
         for r in page
     ]
     next_cursor: Optional[str] = None
@@ -1790,86 +1658,6 @@ async def build_makeability_bucket_page(
             last.row_json["updated_at"], last.mesh_hash
         )
     return {"rows": rows, "next_cursor": next_cursor}
-
-
-def route_at_quantity(result_json: dict, annual_volume: Optional[int],
-                      buy_price: Optional[dict] = None) -> Optional[dict]:
-    """The part's route and price at its own quantity, from its saved decision.
-
-    The quantity is the part's declared yearly volume when the record priced it
-    (a catalog run prices each part at its listed quantity and declares it),
-    else the record's smallest quantity above one. On a machine of yours when the
-    engine's own comparison keeps it in-house there, naming that machine (never
-    the make-now route, which may be a process you don't own); else the engine's
-    pick. Engine numbers only; None when the record has no recommendation.
-    """
-    decision = (result_json or {}).get("decision") or {}
-    rec = decision.get("recommendation") or {}
-    if not isinstance(rec, dict) or not rec:
-        return None
-    qs = sorted(int(k) for k in rec if str(k).isdigit())
-    if not qs:
-        return None
-    q = annual_volume if annual_volume in qs else next((x for x in qs if x > 1), qs[0])
-    r = rec.get(str(q)) or {}
-    opt = (decision.get("options") or {}).get(str(q)) or {}
-    inside = opt.get("in_house") or {}
-    if not inside.get("process"):
-        # No in-house side priced at this quantity: the machine the fit chose, unpriced.
-        res = ((result_json or {}).get("verification") or {}).get("resource") or {}
-        if isinstance(res, dict) and res.get("process"):
-            inside = {"process": res.get("process"), "machine": res.get("machine"), "material": None,
-                      "unit_cost_usd": None}
-    out = {"qty": q, "basis": "declared" if q == annual_volume else "record", "in_house": bool(r.get("in_house"))}
-    if inside.get("process"):
-        out["owned"] = {"process": inside.get("process"), "machine": inside.get("machine"),
-                        "material": inside.get("material"), "usd": inside.get("unit_cost_usd")}
-    out.update(process=r.get("process"), material=r.get("material"), usd=r.get("unit_cost_usd"),
-               machine=r.get("machine"), dfm_ready=r.get("dfm_ready", True))
-    each = (buy_price or {}).get("usd_each") if isinstance(buy_price, dict) else None
-    if isinstance(each, (int, float)) and not isinstance(each, bool) and each > 0 and \
-            isinstance(inside.get("unit_cost_usd"), (int, float)):
-        # What you pay today decides, as on a catalog run (a current price never
-        # changes the engine's figures, only make against buy).
-        from src.costing.decision import prefer_in_house
-
-        low = inside.get("low_usd") if isinstance(inside.get("low_usd"), (int, float)) else inside["unit_cost_usd"]
-        pick, _basis = prefer_in_house({"unit_cost_usd": inside["unit_cost_usd"], "low_usd": low, "lead_low_days": None},
-                                       {"unit_cost_usd": float(each), "lead_high_days": None})
-        # A tie with what you pay today stays bought: either way, no saving (op-07).
-        out["in_house"] = pick == "in_house" and _basis != "tie"
-        out["tie"] = _basis == "tie"
-        out["buy_price"] = {"usd_each": float(each), "source": (buy_price or {}).get("source")}
-    return out
-
-
-async def _routes_at_quantity(session: AsyncSession, org_id: str, page) -> dict:
-    """``{mesh_hash: route_at_quantity}`` for a page of makeability rows.
-
-    Each priced part's decision slice comes from its record's cached slim
-    inputs (``catalog_inputs``): listing the page's records reads no saved
-    result, where the slice taken in SQL unpacked every record's whole result
-    once per key on every request (0.3 s for a 90-part page, capacity report C6)."""
-    from src.services import catalog_inputs
-
-    ids = {r.mesh_hash: ((r.row_json or {}).get("cost_decision") or {}).get("id") for r in page}
-    ulids = [u for u in ids.values() if u]
-    if not ulids:
-        return {}
-    try:
-        keys = (await session.execute(
-            select(CostDecision.id, CostDecision.ulid)
-            .where(CostDecision.org_id == org_id, CostDecision.ulid.in_(ulids)))).all()
-        inputs = await catalog_inputs.cost_inputs(session, [(i, u) for i, u in keys])
-        decisions = {u: catalog_inputs.route_slice(inputs[(i, u)]) for i, u in keys if (i, u) in inputs}
-        contexts = {h: (v, p) for h, v, p in (await session.execute(
-            select(PartContext.mesh_hash, PartContext.annual_volume, PartContext.buy_price)
-            .where(PartContext.org_id == org_id, PartContext.mesh_hash.in_(list(ids))))).all()}
-    except Exception:
-        logger.warning("routes at quantity unavailable for org %s", org_id, exc_info=True)
-        return {}
-    return {h: route_at_quantity(decisions.get(u) or {}, *(contexts.get(h) or (None, None)))
-            for h, u in ids.items() if u in decisions}
 
 
 async def build_capability_investment(
@@ -1989,7 +1777,7 @@ async def build_capability_investment_page(
         cur_ts, cur_mesh = _decode_page_cursor(cursor)
         q = q.where(
             tuple_(PartSummary.updated_at, PartSummary.mesh_hash)
-            < tuple_(literal(cur_ts), literal(cur_mesh))
+            < tuple_(cur_ts, cur_mesh)
         )
     q = q.order_by(
         PartSummary.updated_at.desc(), PartSummary.mesh_hash.desc()
@@ -1998,13 +1786,12 @@ async def build_capability_investment_page(
     fetched = (await session.execute(q)).all()
     has_more = len(fetched) > limit
     page = fetched[:limit]
-    at_qty = await _routes_at_quantity(session, org_id, page)
     rows = [
         {**r.row_json, "makeability": {
             "verdict": r.makeability_verdict,
             "stale": r.makeability_stale,
             "gap": r.makeability_gap,
-        }, "at_quantity": at_qty.get(r.mesh_hash)}
+        }}
         for r in page
     ]
     next_cursor: Optional[str] = None

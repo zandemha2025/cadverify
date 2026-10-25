@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import io
 import logging
-from typing import Optional, cast
+from typing import Optional
 
 import numpy as np
 from PIL import Image
@@ -71,8 +71,7 @@ def remove_background(image: Image.Image) -> Image.Image:
     """Remove background using rembg and return RGB on white canvas."""
     from rembg import remove
 
-    # rembg returns the input's type: a PIL image in, a PIL image out.
-    rgba_result = cast(Image.Image, remove(image, model_name="isnet-general-use"))
+    rgba_result = remove(image, model_name="isnet-general-use")
     # Composite RGBA onto white RGB background
     white_bg = Image.new("RGB", rgba_result.size, (255, 255, 255))
     if rgba_result.mode == "RGBA":
@@ -94,7 +93,7 @@ def resize_and_center(
     w, h = image.size
     scale = target_size / max(w, h)
     new_w, new_h = int(w * scale), int(h * scale)
-    resized = image.resize((new_w, new_h), Image.Resampling.LANCZOS)  # == the old Image.LANCZOS (1)
+    resized = image.resize((new_w, new_h), Image.LANCZOS)
 
     canvas = Image.new("RGB", (target_size, target_size), (255, 255, 255))
     offset_x = (target_size - new_w) // 2

@@ -139,8 +139,7 @@ def test_report_routing_uses_actual_eligible_routes():
     from src.analysis.models import AnalysisResult, ProcessScore
     from src.costing import EstimateOptions, estimate_decision
 
-    # Above wire-arc printing's 100 mm size floor, so its route is priced (buyer-02).
-    mesh = trimesh.creation.box(extents=[160, 120, 100])
+    mesh = trimesh.creation.box(extents=[40, 30, 25])
     result = AnalysisResult(filename="routing.stl", file_type="stl",
                             geometry=analyze_geometry(mesh), process_scores=[
         ProcessScore(ProcessType.CNC_3AXIS, 0, "fail"),
@@ -158,4 +157,4 @@ def test_report_routing_uses_actual_eligible_routes():
     result.process_scores[-1].verdict = "fail"
     report = estimate_decision(result, mesh, detect_all(mesh), options)
     assert report.routing is None
-    assert any(note.startswith("No eligible process suits this shape") for note in report.notes)
+    assert any("No eligible DFM-ready geometric route" in note for note in report.notes)

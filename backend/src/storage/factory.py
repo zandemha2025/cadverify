@@ -14,10 +14,6 @@ Environment:
   ``DIRECT_UPLOAD_S3_REGION``, and ``DIRECT_UPLOAD_S3_KMS_KEY_ID`` are all
   required. ``DIRECT_UPLOAD_S3_ENDPOINT`` is optional for explicit local/Moto
   testing and is never inherited from the durable store.
-* Local direct uploads (development and staging only, never a released
-  process): ``DIRECT_UPLOAD_LOCAL_ROOT``, else ``$OBJECT_STORE_LOCAL_ROOT/
-  direct-uploads``, else ``/data/blobs/direct-uploads``. The browser sends each
-  part through the API (see ``local_multipart``).
 
 ``get_object_store(purpose, default_root)`` returns a store for a logical
 namespace. For the local backend the root defaults to the caller-supplied
@@ -32,7 +28,6 @@ from urllib.parse import urlsplit
 
 from src.storage.base import ObjectStore
 from src.storage.local import LocalObjectStore
-from src.storage.local_multipart import LocalMultipartStore
 from src.storage.s3 import S3ObjectStore
 
 _S3_BUCKET = re.compile(r"^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$")
@@ -141,40 +136,15 @@ def _direct_upload_endpoint() -> str | None:
     return endpoint.rstrip("/")
 
 
-def get_local_direct_upload_store() -> LocalMultipartStore:
-    """The local incoming-upload directory (local backend, never in production).
+def get_direct_upload_store() -> S3ObjectStore:
+    """Return the isolated, short-lived incoming-upload S3 namespace.
 
-    Its own directory, apart from every durable namespace, so cleanup of an
-    upload never touches a kept artifact.
-    """
-    from src.config.production import is_production
-
-    if selected_backend() != "local":
-        raise DirectUploadStoreConfigurationError("local direct uploads require OBJECT_STORE_BACKEND=local")
-    if is_production():
-        raise DirectUploadStoreConfigurationError(
-            "direct uploads require OBJECT_STORE_BACKEND=s3 in production"
-        )
-    root = os.getenv("DIRECT_UPLOAD_LOCAL_ROOT", "").strip()
-    if not root:
-        base = os.getenv("OBJECT_STORE_LOCAL_ROOT", "").strip() or "/data/blobs"
-        root = os.path.join(base, "direct-uploads")
-    return LocalMultipartStore(root)
-
-
-def get_direct_upload_store() -> S3ObjectStore | LocalMultipartStore:
-    """Return the isolated, short-lived incoming-upload namespace.
-
-    On S3 there is intentionally no implicit durable-store fallback. Tests
+    There is intentionally no implicit local or durable-store fallback. Tests
     that use Moto/MinIO must provide the complete ``DIRECT_UPLOAD_S3_*`` set and
     an explicit ``DIRECT_UPLOAD_S3_ENDPOINT`` when one is needed. Requiring a
     physically different bucket prevents versioned durable retention from
     accidentally preserving customer upload ZIPs after application cleanup.
-    The local backend (development, staging) gets its own directory instead
-    (:func:`get_local_direct_upload_store`); a released process never does.
     """
-    if selected_backend() == "local":
-        return get_local_direct_upload_store()
     if selected_backend() != "s3":
         raise DirectUploadStoreConfigurationError(
             "direct uploads require OBJECT_STORE_BACKEND=s3"
