@@ -33,10 +33,10 @@ async def ledger(monkeypatch):
     engine = create_async_engine(url, connect_args={'server_settings': {'search_path': schema}})
     try:
         async with engine.begin() as connection:
-            await connection.execute(text('CREATE TABLE users (id bigint PRIMARY KEY, plan text NOT NULL)'))
+            await connection.execute(text('CREATE TABLE users (id bigint PRIMARY KEY, plan text NOT NULL, email text NOT NULL)'))
             await connection.execute(text('CREATE TABLE evidence (user_id bigint REFERENCES users(id) DEFERRABLE INITIALLY DEFERRED)'))
             await connection.run_sync(TrialCheck.__table__.create)
-            await connection.execute(text("INSERT INTO users VALUES (1, 'trial'), (2, 'trial'), (3, 'pilot')"))
+            await connection.execute(text("INSERT INTO users VALUES (1, 'trial', 'engineer@factory.example'), (2, 'trial', 'person@gmail.com'), (3, 'pilot', 'pilot@factory.example')"))
         factory = async_sessionmaker(engine, expire_on_commit=False)
         monkeypatch.setattr(vc, 'get_session_factory', lambda: factory)
         yield factory
@@ -49,9 +49,9 @@ async def ledger(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_lifetime_bundle_race_refund_and_account_isolation(ledger):
-    # Eight completed checks plus one in-flight check leaves exactly one slot,
+    # Thirteen completed checks plus one in-flight check leaves exactly one slot,
     # even when sixteen requests arrive concurrently on separate connections.
-    for _ in range(8):
+    for _ in range(13):
         check = str(uuid4())
         assert await vc.reserve_check(1, check, 'file', 'analysis')
         await vc.finish_check(1, check, 'analysis', True)
@@ -63,8 +63,8 @@ async def test_lifetime_bundle_race_refund_and_account_isolation(ledger):
     rejected = [result for result in results if result is not True]
     assert all(isinstance(result, vc.HTTPException) and result.status_code == 403 for result in rejected)
     assert (await vc.user_trial_usage(1))['remaining'] == 0
-    # The tenth check can still finish its own cost and preview, never an
-    # eleventh check. Changing its file or repeating a successful step is denied.
+    # The fifteenth check can still finish its own cost and preview, never an
+    # sixteenth check. Changing its file or repeating a successful step is denied.
     last = ids[results.index(True)]
     await vc.finish_check(1, last, 'analysis', True)
     for op in ('cost', 'preview'):
@@ -80,7 +80,7 @@ async def test_lifetime_bundle_race_refund_and_account_isolation(ledger):
     assert (await vc.user_trial_usage(1))['remaining'] == 1
     await vc.reserve_check(1, pending, 'file', 'analysis')
     await vc.finish_check(1, pending, 'analysis', True)
-    assert (await vc.user_trial_usage(1))['used'] == 10
+    assert (await vc.user_trial_usage(1))['used'] == 15
     assert await vc.reserve_check(2, last, 'other-file', 'analysis')
     assert not await vc.reserve_check(3, last, 'file', 'analysis')
     assert (await vc.user_trial_usage(3))['unlimited']
@@ -114,7 +114,7 @@ async def test_http_bundle_success_failure_replay_and_fail_closed(ledger, monkey
             return await client.post(path, headers={'x-part-check-id': check}, files={'file': ('part.stp', data)})
         check = str(uuid4())
         assert (await post('/validate?fail=1', check)).status_code == 400
-        assert (await vc.user_trial_usage(1))['remaining'] == 10
+        assert (await vc.user_trial_usage(1))['remaining'] == 15
         assert (await post('/validate/preview-mesh', check)).status_code == 200
         assert (await vc.user_trial_usage(1))['reserved'] == 1
         assert (await post('/validate', check)).status_code == 200
@@ -149,7 +149,7 @@ async def test_paid_tools_require_operator_approval_and_stale_previews_expire(le
     usage = await vc.user_trial_usage(1)
     # Idle previews expire. Actual work keeps its reservation until settled,
     # even if a process stalls; elapsed time never grants concurrent free work.
-    assert usage['used'] == 0 and usage['reserved'] == 1 and usage['remaining'] == 9
+    assert usage['used'] == 0 and usage['reserved'] == 1 and usage['remaining'] == 14
 
 
 @pytest.mark.asyncio
@@ -216,3 +216,18 @@ async def test_allowance_lock_does_not_block_existing_result_foreign_keys(ledger
         assert await asyncio.wait_for(vc.reserve_check(1, check, 'file', 'analysis'), timeout=5)
         await asyncio.wait_for(vc.finish_check(1, check, 'analysis', True), timeout=5)
     assert (await vc.user_trial_usage(1))['used'] == 1
+
+
+@pytest.mark.asyncio
+async def test_personal_allowance_is_enforced_and_reports_its_actual_cap(ledger):
+    for _ in range(3):
+        check = str(uuid4())
+        await vc.reserve_check(2, check, 'file', 'analysis')
+        await vc.finish_check(2, check, 'analysis', True)
+    usage = await vc.user_trial_usage(2)
+    assert usage['cap'] == 3 and usage['remaining'] == 0
+    with pytest.raises(vc.HTTPException) as denied:
+        await vc.reserve_check(2, str(uuid4()), 'file', 'analysis')
+    assert denied.value.detail['cap'] == 3
+    assert '3 free lifetime checks' in denied.value.detail['message']
+    assert (await vc.user_trial_usage(1))['cap'] == 15

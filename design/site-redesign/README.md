@@ -80,4 +80,4 @@ drop the `<x-dc>`, `<helmet>`, `support.js`, `data-props` and `renderVals()` wra
    after the product release. This does **not** block the product launch.
 
 ## Status
-Design only. No implementation exists yet. This is net-new frontend work.
+The artboards remain the design source. The React implementation is on this branch; see [IMPLEMENTATION.md](IMPLEMENTATION.md) for confirmed decisions, release sequencing and validation. This marketing release must follow the product release.

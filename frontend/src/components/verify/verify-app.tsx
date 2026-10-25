@@ -8,6 +8,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
+import { takePendingPart } from "@/lib/site/pending-part";
 import { C, MONO, SANS } from "@/lib/verify/tokens";
 import {
   QTY_LADDER,
@@ -387,6 +388,15 @@ export function VerifyApp({
     },
     [env, materialClass, runAssemblyAnalysis]
   );
+
+  const pendingHandoff = useRef(false);
+  useEffect(() => {
+    if (!hasActiveOrganization || pendingHandoff.current) return;
+    pendingHandoff.current = true;
+    void takePendingPart().then(part => {
+      if (part) { setWelcomeOpen(false); void runVerify(part); }
+    }).catch(() => { /* The normal file picker remains available if browser storage is blocked. */ });
+  }, [hasActiveOrganization, runVerify]);
 
   const onReverify = useCallback(() => {
     if (file) void runVerify(file);

@@ -48,7 +48,7 @@ export function SignupForm() {
     <AuthFrame
       eyebrow="Free account"
       title="Create your account"
-      body="Get 10 free lifetime single-part CAD checks. No credit card or subscription required. Request paid access for more checks or advanced tools."
+      body="Get 15 free checks with a work email or 3 with a personal email. No credit card or subscription required. Request paid access for more checks or advanced tools."
       footer={<>Already have an account? <AuthTextLink href={`/login?next=${encodeURIComponent(next)}`}>Log in</AuthTextLink></>}
     >
       <form onSubmit={onSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>

@@ -11,7 +11,7 @@
     "test:e2e": "node scripts/e2e-smoke.mjs",
     "test:e2e:human": "node ../scripts/e2e/human-e2e-runner.mjs",
     "test:e2e:design-studio": "node ../scripts/e2e/design-studio-human-e2e.mjs",
-    "test:e2e:site-design": "node ../scripts/e2e/site-design-fidelity.mjs",
+    "test:e2e:site-design": "node ../scripts/e2e/site-design-fidelity.mjs && node scripts/site-redesign-states.mjs",
     "test:e2e:enterprise": "node ../scripts/e2e/enterprise-domain-runner.mjs",
     "test:e2e:p7": "node ../scripts/e2e/p7-role-failure-journey-runner.mjs",
     "test:e2e:release-evidence": "node --test ../scripts/e2e/human-sim-release-evidence.test.mjs",

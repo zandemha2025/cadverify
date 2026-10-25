@@ -1,4 +1,4 @@
-"""Ten lifetime part checks, reserved durably before any CAD computation.
+"""Email-tier lifetime part checks, reserved durably before any CAD computation.
 
 A check groups the viewer, geometry analysis and costing of one upload. Each
 operation can succeed once. The browser supplies a UUID, never an entitlement;
@@ -18,11 +18,11 @@ from sqlalchemy.dialects.postgresql import JSONPATH
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.datastructures import UploadFile
 
+from src.auth.email_tier import free_checks
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_session_factory
 from src.db.models import TrialCheck, User
 
-FREE_CHECKS = 10
 # A preview can reserve a slot while the user proceeds to analysis. Stale,
 # unfinished uploads release their slots; completed checks never reset.
 CHECK_LIFETIME = timedelta(hours=1)
@@ -36,11 +36,11 @@ def _unavailable() -> HTTPException:
     return _problem(503, "allowance_unavailable", "We couldn't confirm your check allowance. Please try again shortly.")
 
 
-def _exhausted(used: int, reserved: int) -> HTTPException:
+def _exhausted(used: int, reserved: int, cap: int) -> HTTPException:
     return _problem(
         403, "user_validation_cap_exceeded",
-        "Your 10 free lifetime checks are used or in progress. Request paid access to continue. Saved results remain available.",
-        used=used, reserved=reserved, cap=FREE_CHECKS, remaining=0, window_days=0, plan="trial",
+        f"Your {cap} free lifetime checks are used or in progress. Request paid access to continue. Saved results remain available.",
+        used=used, reserved=reserved, cap=cap, remaining=0, window_days=0, plan="trial",
     )
 
 
@@ -64,12 +64,13 @@ async def _counts(session, user_id: int, now: datetime) -> tuple[int, int]:
 async def user_trial_usage(user_id: int) -> dict:
     try:
         async with get_session_factory()() as session:
-            plan = (await session.execute(select(User.plan).where(User.id == user_id))).scalar_one()
+            plan, email = (await session.execute(select(User.plan, User.email).where(User.id == user_id))).one()
+            cap = free_checks(email)
             if plan == "pilot":
                 return {"plan": plan, "unlimited": True, "used": None, "cap": None, "remaining": None}
             used, reserved = await _counts(session, user_id, datetime.now(timezone.utc))
             return {"plan": plan, "unlimited": False, "used": used, "reserved": reserved,
-                    "cap": FREE_CHECKS, "remaining": max(0, FREE_CHECKS - used - reserved), "window_days": 0}
+                    "cap": cap, "remaining": max(0, cap - used - reserved), "window_days": 0}
     except SQLAlchemyError as exc:
         raise _unavailable() from exc
 
@@ -87,7 +88,7 @@ async def require_paid_access(user: AuthedUser = Depends(require_api_key)) -> No
 
 def paid_access_required() -> HTTPException:
     return _problem(403, "paid_access_required",
-                    "This tool requires approved paid access. Your free allowance includes 10 single-part CAD checks. Request paid access to use advanced tools.")
+                    "This tool requires approved paid access. Your free allowance covers single-part CAD checks. Request paid access to use advanced tools.")
 
 
 async def reserve_check(user_id: int, check_id: str, file_hash: str, operation: str) -> bool:
@@ -100,9 +101,10 @@ async def reserve_check(user_id: int, check_id: str, file_hash: str, operation: 
     now = datetime.now(timezone.utc)
     try:
         async with get_session_factory()() as session, session.begin():
-            plan = (await session.execute(
-                select(User.plan).where(User.id == user_id).with_for_update(key_share=True)
-            )).scalar_one()
+            plan, email = (await session.execute(
+                select(User.plan, User.email).where(User.id == user_id).with_for_update(key_share=True)
+            )).one()
+            cap = free_checks(email)
             if plan == "pilot":
                 return False
             row = await session.get(TrialCheck, (user_id, check_id))
@@ -117,8 +119,8 @@ async def reserve_check(user_id: int, check_id: str, file_hash: str, operation: 
             # for a slot again (another request may have used the released slot).
             if row is None or (not row.completed and not row.operations):
                 used, reserved = await _counts(session, user_id, now)
-                if used + reserved >= FREE_CHECKS:
-                    raise _exhausted(used, reserved)
+                if used + reserved >= cap:
+                    raise _exhausted(used, reserved, cap)
             if row is None:
                 row = TrialCheck(user_id=user_id, check_id=check_id, file_hash=file_hash,
                                  created_at=now, completed=False, operations={})

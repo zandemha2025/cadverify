@@ -3,6 +3,7 @@
 import * as React from "react";
 import { AuthFrame, AuthSubmit, AuthTextLink } from "@/components/auth/auth-frame";
 import { authErrorMessage } from "@/lib/api-recovery";
+import { hasPendingPart } from "@/lib/site/pending-part";
 import { safeLocalPath } from "@/lib/safe-return-path";
 
 
@@ -40,7 +41,8 @@ export function MagicVerifyClient() {
         setError(authErrorMessage(res.status, data, "Magic link invalid or expired."));
         return;
       }
-      const redirect = safeLocalPath(data?.redirect);
+      const pendingPart = await hasPendingPart().catch(() => false);
+      const redirect = pendingPart ? "/verify" : safeLocalPath(data?.redirect);
       window.history.replaceState(null, "", "/magic/verify");
       window.location.href = redirect;
     } catch {

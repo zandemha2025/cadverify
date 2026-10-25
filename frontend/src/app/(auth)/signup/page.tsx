@@ -1,4 +1,5 @@
-import Link from "next/link";
+import { SignupEmailForm } from "@/components/site/signup-email-form";
+import { SiteShell } from "@/components/site/site-shell";
 import { Suspense } from "react";
 import { AuthFrame, AuthTextLink } from "@/components/auth/auth-frame";
 import { publicPasswordSignupEnabled } from "@/lib/public-signup";
@@ -32,19 +33,5 @@ export default function SignupPage() {
     );
   }
 
-  return (
-    <AuthFrame
-      eyebrow="Verified access"
-      title="Create your account securely"
-      body="Production accounts begin with a single-use email link. After signing in, you can add a password in Settings → Security."
-      footer={<>Already registered? <AuthTextLink href="/login">Log in</AuthTextLink></>}
-    >
-      <Link
-        href="/login#magic-link"
-        style={{ display: "block", width: "100%", borderRadius: 999, background: "#f5f5f7", color: "#050506", padding: "13px 18px", textAlign: "center", textDecoration: "none", fontSize: 14, fontWeight: 500 }}
-      >
-        Verify email and continue
-      </Link>
-    </AuthFrame>
-  );
+  return <SiteShell><section className="cv-signup-page cv-wrap"><h1>Try ScaleCAD free.</h1><p>Enter your email and we’ll send you a link to sign in. No password needed. Then upload a part and see the answer.</p><SignupEmailForm /></section></SiteShell>;
 }
