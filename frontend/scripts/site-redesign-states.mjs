@@ -35,16 +35,17 @@ const app=spawn(process.execPath,['node_modules/next/dist/bin/next','start','--p
 });
 let logs='';app.stdout.on('data',chunk=>logs+=chunk);app.stderr.on('data',chunk=>logs+=chunk);
 let browser;
+let page;
 try {
   for(let i=0;i<100;i++) {
     if(app.exitCode!==null) throw new Error(logs);
-    if(await fetch(base).then(r=>r.ok).catch(()=>false)) break;
+    if(logs.includes("Ready in") && await fetch(base).then(r=>r.ok).catch(()=>false)) break;
     await new Promise(r=>setTimeout(r,200));
     if(i===99) throw new Error(`Site fixture did not start: ${logs}`);
   }
   browser=await chromium.launch({channel:'chrome',headless:true,args:process.env.CI?['--no-sandbox','--disable-dev-shm-usage']:[]});
   const context=await browser.newContext();
-  const page=await context.newPage();
+  page=await context.newPage();
   await page.route('https://challenges.cloudflare.com/**',r=>r.fulfill({contentType:'application/javascript',body:`window.turnstile={render(el,opts){window.__token=opts;queueMicrotask(()=>opts.callback('ui-test-token'));return 'test'},reset(){queueMicrotask(()=>window.__token.callback('ui-test-token'))},remove(){}};`}));
   await page.goto(base+'/signup?next=%2Fapp%2Fmany%3Fnew%3D1');
   const email=page.getByRole('textbox',{name:'Work email',exact:true});
@@ -65,7 +66,7 @@ try {
   await email.fill('person@gmail.com');
   await page.getByRole('button',{name:'Try ScaleCAD free',exact:true}).click();
   await page.getByRole('status').filter({hasText:'with 3 free checks'}).waitFor();
-  await page.goto(base);
+  await page.goto(base, {waitUntil:'networkidle'});
   await page.locator('.cv-upload-choice input').setInputFiles({name:'part.txt',mimeType:'text/plain',buffer:Buffer.from('invalid')});
   await page.getByRole('alert').filter({hasText:'STEP, STL and IGES'}).waitFor();
   await page.locator('.cv-upload-choice input').setInputFiles({name:'part.step',mimeType:'application/octet-stream',buffer:Buffer.from('ISO-10303-21;')});
@@ -89,21 +90,27 @@ try {
   assert(await authed.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1), 'Signed-in header fits 320px');
   await signed.close();
   await context.addCookies([{name:'dash_session',value:'site-test',url:base}]);
-  await page.goto(base);
+  await page.goto(base, {waitUntil:'networkidle'});
   await page.getByLabel('Account', {exact:true}).click();
-  await page.getByRole('button', {name:'Log out',exact:true}).click();
+  const [logoutFailure]=await Promise.all([
+    page.waitForResponse(r=>r.url()===base+'/api/auth/logout' && r.request().method()==='POST'),
+    page.getByRole('button', {name:'Log out',exact:true}).click(),
+  ]);
+  assert.equal(logoutFailure.status(),503,await logoutFailure.text());
   await page.getByRole('alert').filter({hasText:'This browser signed out'}).waitFor();
   assert.equal((await context.cookies()).filter(c=>c.name==='dash_session').length,0);
   logoutStatus=200;
   await context.addCookies([{name:'dash_session',value:'site-test',url:base}]);
-  await page.goto(base);
+  await page.goto(base, {waitUntil:'networkidle'});
   await page.getByLabel('Account', {exact:true}).click();
   await page.getByRole('button', {name:'Log out',exact:true}).click();
   await page.locator('header[data-signed-in="false"]').waitFor();
 
   console.log('PASS: email tiers, real proxy errors/retry/success, reset, local CAD handoff, server-rendered signed-in navigation, and logout success/failure');
+} catch (error) {
+  console.error(logs);
+  if (page && !page.isClosed()) console.error(await page.locator("header").innerText().catch(()=>"Header unavailable"));
+  throw error;
 } finally {
-  await browser?.close();
-  app.kill('SIGTERM');
-  backend.close();
+  try { await browser?.close(); } finally { app.kill("SIGTERM"); backend.close(); }
 }
