@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sign-up form states</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Funnel+Display:wght@500;600&amp;family=Funnel+Sans:wght@400;500;600&amp;family=Martian+Mono:wght@500&amp;display=swap">
+<style>
+body{margin:0;background:#F4F5F2;color:#0D0F0E;font-family:'Funnel Sans',system-ui,-apple-system,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box}
+a{color:#0D0F0E}a:hover{color:#474D4A}
+.mono{font-family:'Martian Mono',ui-monospace,monospace;font-size:11px;font-weight:500;letter-spacing:.02em;text-transform:uppercase;color:#636966}
+.card{background:#FFFFFF;border-radius:20px;box-shadow:0 0 0 1px #E2E4E0,0 24px 48px -36px rgba(13,15,14,.4);padding:26px;display:flex;flex-direction:column;gap:12px}
+.field{width:100%;height:52px;padding:0 14px;border-radius:14px;border:1px solid #CBCFCA;background:#FFFFFF;font-family:inherit;font-size:16px;color:#0D0F0E}
+.field::placeholder{color:#6E7471}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:54px;padding:0 20px;border-radius:999px;font-family:inherit;font-size:16px;font-weight:600;border:0;width:100%}
+.btn-signal{background:#FF5B1F;color:#0D0F0E;box-shadow:inset 0 -2px 0 rgba(13,15,14,.16)}
+.btn-ghost{background:#FFFFFF;color:#0D0F0E;box-shadow:inset 0 0 0 1px #CBCFCA;width:auto}
+.tier{margin:0;padding:12px 14px;border-radius:10px;font-size:14px;line-height:1.45}
+</style>
+</helmet>
+<div style="width: 1440px; height: 760px; padding: 56px 64px; display: flex; flex-direction: column; gap: 36px">
+<div style="display: flex; justify-content: space-between; align-items: flex-end; gap: 40px">
+<div style="display: flex; flex-direction: column; gap: 12px">
+<h1 style="margin: 0; font-family: 'Funnel Display', system-ui, sans-serif; font-size: 44px; font-weight: 600; letter-spacing: -0.04em; line-height: 1">One email box. The address sets the free checks.</h1>
+</div>
+<p style="margin: 0; max-width: 380px; font-size: 15.5px; line-height: 1.55; color: #474D4A">The number updates as people type. A personal address still works; it just gets fewer checks.</p>
+</div>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px; flex: 1">
+
+<div style="display: flex; flex-direction: column; gap: 14px">
+<span class="mono" style="color: #0D0F0E">01 · Empty</span>
+<form class="card">
+<label for="s1-email" style="font-size: 15px; font-weight: 600">Work email</label>
+<input id="s1-email" class="field" type="email" placeholder="you@company.com">
+<p class="tier" style="background: #F4F5F2; color: #474D4A">Work emails get 15 free checks. Personal emails get 3.</p>
+<button class="btn btn-signal" type="button">Try ScaleCAD free</button>
+<p style="margin: 0; font-size: 12.5px; text-align: center; color: #636966">No password. No credit card.</p>
+</form>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 14px">
+<span class="mono" style="color: #0D0F0E">02 · Personal email</span>
+<form class="card">
+<label for="s2-email" style="font-size: 15px; font-weight: 600">Work email</label>
+<input id="s2-email" class="field" type="email" value="austin.r@gmail.com">
+<p class="tier" style="background: #FBF6EC; color: #5C3D00"><strong>Personal email: 3 free checks.</strong> Use your work email to start with 15.</p>
+<button class="btn btn-signal" type="button">Try ScaleCAD free</button>
+<p style="margin: 0; font-size: 12.5px; text-align: center; color: #636966">No password. No card.</p>
+</form>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 14px">
+<span class="mono" style="color: #0D0F0E">03 · Work email</span>
+<form class="card" style="box-shadow: 0 0 0 2px #17603D, 0 24px 48px -36px rgba(13,15,14,.4)">
+<label for="s3-email" style="font-size: 15px; font-weight: 600">Work email</label>
+<input id="s3-email" class="field" type="email" value="austin@[company].com">
+<p class="tier" style="display: flex; gap: 8px; align-items: center; background: #E4F1E9; color: #17603D"><svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M5 10.4l3.2 3.2L15 6.8" stroke="#17603D" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg><strong>Work email: 15 free checks.</strong></p>
+<button class="btn btn-signal" type="button">Try ScaleCAD free</button>
+<p style="margin: 0; font-size: 12.5px; text-align: center; color: #636966">No password. No card.</p>
+</form>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 14px">
+<span class="mono" style="color: #0D0F0E">04 · Link sent</span>
+<div class="card" style="gap: 14px">
+<svg width="44" height="44" viewBox="0 0 48 48" fill="none" aria-hidden="true"><rect x="5" y="10" width="38" height="28" rx="5" stroke="#0D0F0E" stroke-width="2"></rect><path d="M7 13l17 13 17-13" stroke="#FF5B1F" stroke-width="2" stroke-linejoin="round"></path></svg>
+<h2 style="margin: 0; font-family: 'Funnel Display', system-ui, sans-serif; font-size: 28px; font-weight: 600; letter-spacing: -0.03em">Check your inbox.</h2>
+<p style="margin: 0; font-size: 15px; line-height: 1.55; color: #474D4A">We sent a sign-in link to <strong style="color: #0D0F0E">austin@[company].com</strong>. Click it to open ScaleCAD with 15 free checks.</p>
+<button class="btn btn-ghost" type="button" style="align-self: flex-start; min-height: 46px">Use a different email</button>
+</div>
+</div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":760}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

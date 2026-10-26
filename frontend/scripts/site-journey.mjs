@@ -12,6 +12,8 @@ const errors = [];
 page.on('pageerror', error => errors.push(error.message));
 page.on('console', message => { if(message.type() === 'error' && !message.text().includes('503') && !message.text().includes('mailto:') && !(message.text().includes('400') && message.location().url.includes('/api/auth/password/reset/complete'))) errors.push(message.text()); });
 const checks = [];
+// UI fixture only: never contact CAPTCHA providers or send real sign-in emails.
+await page.route('https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit', route => route.fulfill({ contentType: 'application/javascript', body: `const widgets=new Map();window.turnstile={render(el,opts){const id=String(widgets.size);widgets.set(id,opts);queueMicrotask(()=>opts.callback('ui-test-token'));return id},reset(id){queueMicrotask(()=>widgets.get(id)?.callback('ui-test-token'))},remove(id){widgets.delete(id)}};` }));
 async function visit(route) {
   const response = await page.goto(base + route, { waitUntil: 'networkidle' });
   if (response) assert.equal(response.status(), 200, route);
@@ -28,13 +30,22 @@ async function visit(route) {
 }
 try {
   await visit('/');
-  assert.equal(await page.locator('h1').innerText(), 'Know which of your parts you should be making.');
+  assert.equal((await page.locator('h1').innerText()).replace(/\s+/g, ' '), 'Can you make it?');
   await page.getByRole('navigation', { name: 'Primary', exact: true }).getByRole('link', { name: 'Pricing', exact: true }).waitFor();
   await page.screenshot({ path: output + 'home-desktop.png', fullPage: true });
   await page.screenshot({ path: output + 'hero-desktop.png' });
   const apiRequests = [];
   page.on('request', request => { if(request.url().includes('/api/proxy/')) apiRequests.push(request.url()); });
-  await page.getByRole('link', { name: 'Explore a sample part', exact: true }).first().click();
+  await page.getByRole('link', { name: 'View sample output', exact: true }).click();
+  await page.getByRole('button', { name: 'What’s wrong with the design?', exact: true }).click();
+  await page.getByRole('heading', { name: 'Two problems. Neither one stops a lathe.' }).waitFor();
+  await page.getByRole('button', { name: 'What will it cost?', exact: true }).click();
+  await page.getByRole('heading', { name: '$14.14 a part. Here’s where it goes.' }).waitFor();
+  await page.getByRole('button', { name: 'Shenzhen example prices', exact: true }).click();
+  await page.getByText('$2.68', { exact: true }).waitFor();
+  await page.getByRole('button', { name: /Hourly machine rate/ }).click();
+  await page.getByText('What the example shop charges per hour for this printer. On your account, it’s your own rate.').waitFor();
+  await page.getByRole('link', { name: 'Sample part', exact: true }).click();
   await page.waitForURL('**/sample');
   await page.getByRole('button', { name: 'Design review', exact: true }).click();
   // The injection-molding row names its blocking finding: "Blocked: <finding>" (a5bc6367).
@@ -73,14 +84,12 @@ try {
   assert.equal(new URL(page.url()).pathname, '/company', 'About resolves to the canonical company page');
   await page.getByRole('heading', { name: 'Nazeem Ahmed · Founder' }).waitFor();
   await visit('/pricing');
-  await page.getByRole('heading', { name: '$7,500 pilot · 4–6 weeks · up to 500 parts' }).waitFor();
-  // Pricing offers the self-serve 50-part catalog run and points to the team-assisted 25-part qualification (a81c11ff).
-  await page.getByRole('heading', { name: 'Not sure yet? Run 50 parts free', exact: true }).waitFor();
-  assert.match(await page.locator('#qualification').innerText(), /free, team-assisted 25-part qualification/);
-  await page.getByRole('heading', { name: /^Pro · / }).waitFor();
-  await page.getByRole('heading', { name: 'Free · $0' }).waitFor();
-  assert.match(await page.locator('main').innerText(), /Counts toward your first year if you continue/);
-  assert.doesNotMatch(await page.locator('main').innerText(), /lifetime|paid access/i);
+  await page.getByRole('heading', { name: 'Free to start.' }).waitFor();
+  assert((await page.locator('h1').boundingBox()).y < 500, 'Pricing headline stays above the fold');
+  await page.getByText('One factory, up to 500 parts, 4–6 weeks. Counts toward your first year.').waitFor();
+  await page.getByText('Send us 25 typical parts and we’ll tell you, free.').waitFor();
+  assert.match(await page.locator('main').innerText(), /Contact us/);
+  assert.doesNotMatch(await page.locator('main').innerText(), /\[149\]|\[50\]/);
   await page.screenshot({ path: output + 'pricing-desktop.png', fullPage: true });
   await visit('/contact');
   assert.equal(await page.locator('main a[href="mailto:nazeem@scalecad.ai"]').count(), 2);
@@ -88,7 +97,6 @@ try {
   await page.getByRole('link', { name: 'Email the security contact', exact: true }).waitFor();
   checks.push('Audit regressions: pricing and qualification scope, about redirect, founder attribution, branded contacts');
   // UI fixtures never contact Turnstile or send real reset emails.
-  await page.route('https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit', route => route.fulfill({ contentType: 'application/javascript', body: `window.turnstile={render(el,opts){queueMicrotask(()=>opts.callback('ui-test-token'));return 'test-widget'},reset(){},remove(){}};` }));
   await visit('/login');
   await page.getByRole('link', { name: 'Forgot your password?', exact: true }).click();
   await page.waitForURL('**/forgot-password');
@@ -117,7 +125,6 @@ try {
     checks.push('Password recovery request: honest unavailable state without configured Turnstile site key');
   }
   await page.screenshot({ path: output + 'forgot-password-desktop.png', fullPage: true });
-  await page.unroute('https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit');
   await visit('/reset-password');
   await page.getByRole('alert').filter({ hasText: 'missing or malformed' }).waitFor();
   const resetToken = 'A'.repeat(43);
@@ -185,8 +192,8 @@ try {
   await page.screenshot({ path: output + 'hero-mobile.png' });
   await page.getByRole('button', { name: 'Open navigation' }).click();
   assert.equal(await page.getByRole('button', { name: 'Close navigation' }).getAttribute('aria-expanded'), 'true');
-  await page.getByRole('navigation', { name: 'Primary', exact: true }).getByRole('link', { name: 'Workflows', exact: true }).click();
-  await page.waitForURL('**/teams');
+  await page.getByRole('navigation', { name: 'Primary', exact: true }).getByRole('link', { name: 'Developers', exact: true }).click();
+  await page.waitForURL('**/developers');
   await visit('/sample?view=resources');
   await page.getByText('$14.14', { exact: true }).waitFor();
   await page.screenshot({ path: output + 'sample-mobile.png', fullPage: true });

@@ -1,6 +1,6 @@
 import { ImageResponse } from "next/og";
 
-export const alt = "ScaleCAD - Know which of your parts you should be making";
+export const alt = "ScaleCAD - Can you make it?";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -12,8 +12,8 @@ export default function OpenGraphImage() {
           width: "100%",
           height: "100%",
           display: "flex",
-          background: "#ddebaf",
-          color: "#183d32",
+          background: "#f4f5f2",
+          color: "#0d0f0e",
           fontFamily: "Arial, sans-serif",
           padding: 64,
         }}
@@ -22,15 +22,15 @@ export default function OpenGraphImage() {
           <div style={{ fontSize: 34, letterSpacing: "-0.02em", fontWeight: 700 }}>ScaleCAD</div>
           <div style={{ display: "flex", flexDirection: "column" }}>
             <div style={{ fontSize: 70, lineHeight: 0.95, letterSpacing: "-0.035em", fontWeight: 300, maxWidth: 1000 }}>
-              Know which of your parts you should be making.
+              Can you make it?
             </div>
-            <div style={{ marginTop: 30, fontSize: 28, color: "#53635a", maxWidth: 820 }}>
-              Your part. Your next decision. The evidence to move forward.
+            <div style={{ marginTop: 30, fontSize: 28, color: "#474d4a", maxWidth: 820 }}>
+              Every number shows where it came from.
             </div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 18, color: "#53635a", fontSize: 22 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 18, color: "#474d4a", fontSize: 22 }}>
             <span>CAD in</span>
-            <span style={{ width: 54, height: 1, background: "#839874" }} />
+            <span style={{ width: 54, height: 1, background: "#ff5b1f" }} />
             <span>decision out</span>
           </div>
         </div>

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { connection } from "next/server";
 import { cookies, headers } from "next/headers";
-import { Geist, Geist_Mono, Archivo } from "next/font/google";
+import localFont from "next/font/local";
 import { Toaster } from "sonner";
 import { STAGE_UI } from "@/lib/stage-flag";
 import { Analytics } from "@/components/analytics";
@@ -9,35 +9,15 @@ import { SignedInProvider } from "@/components/site/signed-in";
 import { SESSION_COOKIE } from "@/lib/session";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
-// MARKETING-ONLY. Archivo was the authed app's display voice pre-"Governed
-// Catalog" re-founding; that identity retired it in favor of Geist Mono for
-// the one hero metric (see globals.css --font-display comment). It's loaded
-// here — WITH the width axis (`wdth`) for the Expanded cut — only as the
-// `--font-display` fallback the (deferred) marketing surfaces still consume;
-// the authed app never sets it. Keep the import until the marketing
-// re-founding decision lands; do not read this as the app's current voice.
-const archivo = Archivo({
-  variable: "--font-archivo",
-  subsets: ["latin"],
-  axes: ["wdth"],
-  display: "swap",
-});
+const geistSans = localFont({ src: "./fonts/geist.ttf", variable: "--font-geist-sans", weight: "100 900", display: "swap" });
+const geistMono = localFont({ src: "./fonts/geistmono.ttf", variable: "--font-geist-mono", weight: "100 900", display: "swap" });
+const archivo = localFont({ src: "./fonts/archivo.ttf", variable: "--font-archivo", weight: "100 900", display: "swap" });
 
 export const metadata: Metadata = {
   metadataBase: new URL(
     process.env.NEXT_PUBLIC_SITE_URL || "https://scalecad.ai"
   ),
-  title: "ScaleCAD — Know which of your parts you should be making",
+  title: "ScaleCAD — Can you make it?",
   description:
     "Check manufacturing options, review design findings, and trace the resources behind your next decision. Explore a recorded sample without an account.",
   alternates: { canonical: "/" },
@@ -45,7 +25,7 @@ export const metadata: Metadata = {
     icon: "/icon.svg",
   },
   openGraph: {
-    title: "ScaleCAD — Know which of your parts you should be making",
+    title: "ScaleCAD — Can you make it?",
     description:
       "Makeability verification for real manufacturing decisions.",
     url: "/",
@@ -55,7 +35,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "ScaleCAD — Know which of your parts you should be making",
+    title: "ScaleCAD — Can you make it?",
     description:
       "Makeability verification for real manufacturing decisions.",
     images: ["/opengraph-image"],

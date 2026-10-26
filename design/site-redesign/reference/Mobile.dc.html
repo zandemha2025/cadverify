@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ScaleCAD mobile home</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Funnel+Display:wght@500;600&amp;family=Funnel+Sans:wght@400;500;600&amp;family=Martian+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#F4F5F2;color:#0D0F0E;font-family:'Funnel Sans',system-ui,-apple-system,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box}
+a{color:#0D0F0E}a:hover{color:#474D4A}
+.display{font-family:'Funnel Display','Funnel Sans',system-ui,sans-serif}
+.mono{font-family:'Martian Mono',ui-monospace,monospace;font-weight:400}
+.btn{display:flex;align-items:center;justify-content:center;gap:10px;min-height:54px;padding:0 20px;border-radius:999px;font-size:16px;font-weight:600;text-decoration:none;white-space:nowrap}
+.pill{display:inline-flex;align-items:center;font-size:12px;font-weight:600;line-height:1.25;padding:5px 8px;border-radius:7px}
+.gcell{display:flex;flex-direction:column;gap:8px;padding:14px}
+.qtab{display:inline-flex;align-items:center;min-height:44px;padding:0 16px;border-radius:999px;font-size:14.5px;font-weight:600;white-space:nowrap;background:#FFFFFF;color:#474D4A;box-shadow:inset 0 0 0 1px #DDE0DB}
+</style>
+</helmet>
+<div style="width: 390px; height: 1900px; overflow: hidden; position: relative; background: #F4F5F2">
+
+<header style="height: 64px; padding: 0 16px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border-bottom: 1px solid rgba(13,15,14,0.08); background: #F4F5F2">
+<a href="#" aria-label="ScaleCAD home" style="display: flex; align-items: center; gap: 8px; text-decoration: none"><svg width="22" height="22" viewBox="0 0 26 26" fill="none" aria-hidden="true"><path d="M13 2.6 22.4 8v10L13 23.4 3.6 18V8L13 2.6Z" stroke="#0D0F0E" stroke-width="2" stroke-linejoin="round"></path><path d="M3.6 8 13 13.4 22.4 8M13 13.4v10" stroke="#0D0F0E" stroke-width="2" stroke-linejoin="round"></path></svg><span class="display" style="font-size: 19px; font-weight: 600; letter-spacing: -0.035em">ScaleCAD</span></a>
+<div style="display: flex; align-items: center; gap: 4px">
+<a href="#" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border-radius: 999px; background: #FF5B1F; color: #0D0F0E; font-size: 14px; font-weight: 600; text-decoration: none; white-space: nowrap; box-shadow: inset 0 -2px 0 rgba(13,15,14,.14)">Try ScaleCAD free</a>
+<button type="button" aria-label="Open menu" style="width: 44px; height: 44px; border: 0; background: transparent; display: grid; place-items: center"><svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true"><path d="M3 7h16M3 15h16" stroke="#0D0F0E" stroke-width="1.9" stroke-linecap="round"></path></svg></button>
+</div>
+</header>
+
+<section style="padding: 40px 16px 28px; display: flex; flex-direction: column; gap: 22px; background: radial-gradient(ellipse 90% 60% at 60% 30%, #FFFFFF 0%, rgba(255,255,255,0) 70%), linear-gradient(180deg, #F4F5F2 0%, #ECEEEA 100%)">
+<h1 class="display" style="margin: 0; font-size: 72px; font-weight: 500; line-height: 0.92; letter-spacing: -0.04em">Can you<br>make it?</h1>
+<p style="margin: 0; font-size: 17.5px; line-height: 1.55; color: #3A3F3C">Upload a 3D model of a part. ScaleCAD tells you whether your machines can make it, which materials will hold up, how long it takes and what it costs. Every number shows where it came from.</p>
+<div style="display: flex; flex-direction: column; gap: 10px">
+<a class="btn" href="#" style="background: #FF5B1F; color: #0D0F0E; box-shadow: inset 0 -2px 0 rgba(13,15,14,.14), 0 6px 16px -8px rgba(13,15,14,.35)">Try ScaleCAD free <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"></path></svg></a>
+<a class="btn" href="#" style="background: #FFFFFF; color: #0D0F0E; box-shadow: inset 0 0 0 1px #C9CDC8">View sample output</a>
+</div>
+<p style="margin: 0; font-size: 13.5px; line-height: 1.5; color: #5A605D; text-align: center">15 free checks with a work email, 3 with a personal email. No credit card.</p>
+
+<figure style="margin: 4px 0 0; position: relative; aspect-ratio: 4 / 3; overflow: hidden; border-radius: 22px">
+<img src="/_blob/ee41ec3eba4b8344d7196c5528b87470" alt="The sample part, a small round fitting about 2 cm across, inside a box showing its measured size" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover">
+<svg viewBox="0 0 1200 1000" preserveAspectRatio="xMidYMid slice" aria-hidden="true" style="position: absolute; inset: 0; width: 100%; height: 100%"><path d="M602 200 L862 350 L862 650 L602 800 L342 650 L342 350 Z" fill="none" stroke="#0D0F0E" stroke-opacity="0.55" stroke-width="1.2" vector-effect="non-scaling-stroke"></path><path d="M342 350 L602 500 L862 350 M602 500 L602 800" fill="none" stroke="#0D0F0E" stroke-opacity="0.3" stroke-width="1" vector-effect="non-scaling-stroke"></path><circle cx="486" cy="640" r="10" fill="#FF5B1F"></circle></svg>
+<figcaption class="mono" style="position: absolute; left: 50%; top: 6%; transform: translateX(-50%); font-size: 10.5px; color: #474D4A; white-space: nowrap">Sample part · about 2 cm across</figcaption>
+</figure>
+<div style="margin-top: -30px; position: relative; background: #FFFFFF; border-radius: 20px; box-shadow: 0 0 0 1px rgba(13,15,14,.07), 0 24px 48px -28px rgba(13,15,14,.34)">
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr))">
+<div class="gcell"><span class="mono" style="font-size: 10.5px; color: #5A605D">01</span><span style="font-size: 14.5px; font-weight: 600">Fits your machines?</span><span class="pill" style="align-self: flex-start; border: 1px dashed #9AA09C; color: #474D4A">Add your machines</span></div>
+<div class="gcell" style="box-shadow: inset 1px 0 0 #EEF0EC"><span class="mono" style="font-size: 10.5px; color: #5A605D">02</span><span style="font-size: 14.5px; font-weight: 600">Right material?</span><span class="pill" style="align-self: flex-start; border: 1px dashed #9AA09C; color: #474D4A">Add where it’s used</span></div>
+<div class="gcell" style="box-shadow: inset 0 1px 0 #EEF0EC"><span class="mono" style="font-size: 10.5px; color: #5A605D">03</span><span style="font-size: 14.5px; font-weight: 600">Can it be made?</span><span class="pill" style="align-self: flex-start; background: #FBEFD8; color: #7A4900">Yes, on a lathe</span></div>
+<div class="gcell" style="box-shadow: inset 1px 1px 0 #EEF0EC"><span class="mono" style="font-size: 10.5px; color: #5A605D">04</span><span style="font-size: 14.5px; font-weight: 600">How long?</span><span class="pill" style="align-self: flex-start; background: #E3E6E1">About 4 min each</span></div>
+<div class="gcell" style="grid-column: 1 / -1; box-shadow: inset 0 1px 0 #EEF0EC; flex-direction: row; align-items: center; justify-content: space-between"><span style="display: flex; flex-direction: column; gap: 6px"><span class="mono" style="font-size: 10.5px; color: #5A605D">05</span><span style="font-size: 14.5px; font-weight: 600">What it costs</span></span><span style="display: flex; flex-direction: column; align-items: flex-end; gap: 2px"><span class="display" style="font-size: 26px; font-weight: 500; letter-spacing: -0.03em">$14.14</span><span style="font-size: 12px; color: #5A605D">each · could be $8.49–$19.80</span></span></div>
+</div>
+<div style="padding: 12px 14px; border-top: 1px solid #EEF0EC; font-size: 13.5px; line-height: 1.5; color: #474D4A">Have a part? <label for="m-file" style="color: #0D0F0E; font-weight: 600; text-decoration: underline; text-underline-offset: .2em">Choose its 3D file</label> to check it.<input id="m-file" type="file" accept=".step,.stp,.stl,.iges,.igs" style="position: absolute; width: 1px; height: 1px; opacity: 0"></div>
+</div>
+</section>
+
+<section style="background: #0D0F0E; color: #F4F5F2; padding: 22px 16px; display: flex; flex-direction: column; gap: 8px">
+<span class="display" style="font-size: 19px; font-weight: 500; letter-spacing: -0.02em">Checks 21 ways to make a part</span>
+<span style="font-size: 14px; line-height: 1.55; color: #B9BEBA">Lathes and mills, 11 kinds of 3D printing, molding, casting, sheet metal and forging.</span>
+</section>
+
+<section style="padding: 56px 16px 0; display: flex; flex-direction: column; gap: 18px">
+<h2 class="display" style="margin: 0; font-size: 40px; font-weight: 500; line-height: 1; letter-spacing: -0.04em">What do you need to know?</h2>
+<p style="margin: 0; font-size: 16px; line-height: 1.55; color: #474D4A">Pick a question. The answers come from a real run on the sample part, using an example shop’s prices.</p>
+<div style="display: flex; gap: 8px; overflow: hidden; margin-right: -16px">
+<span class="qtab" style="background: #0D0F0E; color: #F4F5F2; box-shadow: none">Can we make it ourselves?</span>
+<span class="qtab">What’s wrong with the design?</span>
+</div>
+<div style="background: #FFFFFF; border-radius: 22px; box-shadow: 0 0 0 1px #E2E4E0; padding: 22px; display: flex; flex-direction: column; gap: 14px">
+<h3 class="display" style="margin: 0; font-size: 28px; font-weight: 500; line-height: 1.05; letter-spacing: -0.035em; text-wrap: balance">A lathe can make it. Can yours?</h3>
+<p style="margin: 0; font-size: 15.5px; line-height: 1.55; color: #474D4A">The part is round, so the best way to make it is on a lathe. Tell ScaleCAD which machines you have and it checks the part’s size against every one.</p>
+</div>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

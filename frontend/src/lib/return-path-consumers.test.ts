@@ -12,6 +12,7 @@ const src = new URL("../", import.meta.url);
 const read = (p: string) => readFileSync(new URL(p, src), "utf8");
 
 const CONSUMERS = [
+  "components/site/signup-email-form.tsx",
   "app/(auth)/login/login-form.tsx",
   "app/(auth)/signup/signup-form.tsx",
   "app/(auth)/login/two-step/legacy-two-step.tsx",

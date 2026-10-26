@@ -1,34 +1,13 @@
-"""Protected CI accepts only exact, documented optional-test skips."""
+"""Protected CI rejects skips, including previously optional coverage."""
 
 from __future__ import annotations
 
-from tests.ci_skip_policy import is_expected_ci_skip
-
-
-def test_expected_optional_skip_requires_matching_node_and_reason():
-    nodeid = "tests/test_step_ap242_parser.py::test_ap242_document_has_pmi_flag"
-
-    assert is_expected_ci_skip(nodeid, "Skipped: OCP XDE not available")
-    assert not is_expected_ci_skip(nodeid, "Skipped: fixture disappeared")
-    assert not is_expected_ci_skip(
-        "tests/test_other.py::test_ap242_document_has_pmi_flag",
-        "Skipped: OCP XDE not available",
-    )
-
-
-def test_local_corpus_skip_is_narrowly_allowlisted():
-    nodeid = (
-        "tests/test_eval_harness.py::"
-        "test_smoke_seed_is_one_part_per_key_in_real_corpus"
-    )
-
-    assert is_expected_ci_skip(nodeid, "Skipped: real corpus manifest not present")
-    assert not is_expected_ci_skip(nodeid, "Skipped: generated fixtures missing")
+import pytest
 
 
 def _run_policy_case(pytester, monkeypatch, source: str):
     monkeypatch.setenv("CADVERIFY_ENFORCE_SKIP_POLICY", "1")
-    pytester.makeconftest('pytest_plugins = ("tests.ci_skip_policy",)')
+    pytester.makeconftest('pytest_plugins = ("tests.ci_skip_policy", "pytester")')
     pytester.makepyfile(source)
     return pytester.runpytest_inprocess("-q")
 
@@ -62,3 +41,36 @@ def test_collection_skip_fails_protected_ci(pytester, monkeypatch):
 
     assert result.ret != 0
     result.stdout.fnmatch_lines(["*UNEXPECTED SKIPS (protected CI policy)*"])
+
+
+@pytest.mark.parametrize("reason", [
+    "OCP XDE not available",
+    "real corpus manifest not present",
+    "could not import 'OCP'",
+])
+def test_former_optional_skips_fail_protected_ci(pytester, monkeypatch, reason):
+    result = _run_policy_case(
+        pytester, monkeypatch,
+        f"import pytest\ndef test_optional():\n    pytest.skip({reason!r})\n",
+    )
+    assert result.ret != 0
+    result.stdout.fnmatch_lines(["*UNEXPECTED SKIPS (protected CI policy)*"])
+
+
+def test_nested_session_cannot_clear_parent_skips(pytester, monkeypatch):
+    result = _run_policy_case(
+        pytester, monkeypatch,
+        '''
+        import pytest
+
+        def test_first():
+            pytest.skip("must survive the nested session")
+
+        def test_nested(pytester):
+            pytester.makeconftest('pytest_plugins = ("tests.ci_skip_policy", "pytester")')
+            pytester.makepyfile("def test_ok(): pass")
+            assert pytester.runpytest_inprocess("-q").ret == 0
+        ''',
+    )
+    assert result.ret != 0
+    result.stdout.fnmatch_lines(["*must survive the nested session*"])

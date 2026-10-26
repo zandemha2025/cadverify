@@ -348,3 +348,69 @@
 .cv-auth-page input { min-height: 46px; }
 .cv-auth-page .text-sm { font-size: 14px; line-height: 1.6; }
 .cv-auth-page .text-xs { font-size: 12px; }
+
+/* A · Precise: public-site tokens, independent of product feature flags. */
+.cv-site { --site-paper:#f4f5f2; --site-ink:#0d0f0e; --site-body:#474d4a; --site-line:#dde0db; --site-lime:#ff5b1f; --site-soft:#e9ebe7; font-family:var(--font-funnel-sans),sans-serif; --font-archivo:var(--font-funnel-display); --font-geist-mono:var(--font-martian-mono); }
+.cv-site h1,.cv-site h2,.cv-site h3,.cv-brand { font-family:var(--font-funnel-display),sans-serif; }
+.cv-site :focus-visible { outline-color:var(--site-lime); }
+.cv-wrap { width:min(1280px,calc(100% - 80px)); }
+.cv-site-nav { position:sticky;top:0;min-height:72px;width:100%;padding:12px max(40px,calc((100vw - 1280px)/2));gap:36px;background:#f4f5f2f5; }
+.cv-brand { font-size:22px;color:var(--site-ink); }
+.cv-site-links { margin-right:auto;gap:30px;font-size:15px;color:var(--site-body); }
+.cv-nav-actions { display:flex;align-items:center;gap:20px; }
+.cv-login-link { margin:0;white-space:nowrap;font-size:15px; }
+.cv-mobile-login { display:none; }
+.cv-button { border-radius:999px;background:var(--site-lime);color:var(--site-ink);font-size:16px;font-weight:600;gap:10px;box-shadow:inset 0 -2px 0 #0d0f0e24; }
+.cv-button:hover { background:#ff6d36; }
+.cv-button-secondary { background:#fff;border-color:#cbcfca;box-shadow:none; }
+.cv-button-secondary:hover { background:var(--site-soft); }
+.cv-button-ink { background:var(--site-ink);color:var(--site-paper); }
+.cv-button-ink:hover { background:#262a28; }
+.cv-button:disabled { opacity:.55;cursor:not-allowed;transform:none; }
+.cv-button-small { font-size:15px;padding:10px 18px; }
+.cv-checks { font-size:14px;color:var(--site-body);white-space:nowrap; }
+.cv-account { position:relative; }
+.cv-account summary { list-style:none;width:40px;height:40px;border-radius:50%;background:#e3e6e1;display:grid;place-items:center; }
+.cv-account summary::-webkit-details-marker { display:none; }
+.cv-account>div { position:absolute;right:0;top:50px;min-width:230px;max-width:80vw;padding:18px;border:1px solid var(--site-line);background:white;border-radius:16px;box-shadow:0 15px 35px #0002;display:grid;gap:12px;overflow-wrap:anywhere; }
+.cv-account button { text-align:left; }
+.cv-footer-grid { grid-template-columns:1.4fr repeat(4,1fr); }
+.cv-footer-wordmark { font-family:var(--font-funnel-display),sans-serif;font-size:clamp(88px,21vw,312px);font-weight:600;line-height:.74;letter-spacing:-.04em;color:#e9ebe7;text-align:center;padding-top:36px;margin-bottom:-.06em; }
+.cv-site-footer { overflow:hidden; }
+.cv-signup-card { background:#fff;color:var(--site-ink);display:grid;gap:20px;border-radius:20px; }
+.cv-signup-card form { display:grid;gap:14px; }
+.cv-signup-card label { font-size:15px;font-weight:600; }
+.cv-signup-card input { width:100%;height:58px;padding:0 18px;border-radius:14px;border:1px solid #cbcfca;font:inherit;font-size:17px; }
+.cv-signup-card input::placeholder { color:#6e7471; }
+.cv-signup-card .cv-email-tier { padding:13px 15px;border-radius:12px;background:var(--site-paper);font-size:14px;line-height:1.45; }
+.cv-signup-card .cv-email-tier[data-tier="personal"] { background:#fbf6ec;color:#5c3d00; }
+.cv-signup-card .cv-email-tier[data-tier="work"] { background:#e4f1e9;color:#17603d;display:flex;align-items:center;gap:8px; }
+.cv-signup-terms { font-size:13px;color:var(--site-body);text-align:center; }
+.cv-signup-card a:not(.cv-button) { text-decoration:underline;text-underline-offset:3px; }
+.cv-signup-links { display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;padding-top:20px;border-top:1px solid var(--site-line);font-size:14px; }
+.cv-signup-sent { display:grid;gap:16px; }
+.cv-signup-page { max-width:560px;padding-block:70px; }
+.cv-signup-page>p { margin-block:24px; }
+.cv-signup-page .cv-signup-card { padding:26px;box-shadow:0 0 0 1px var(--site-line); }
+@media(max-width:1200px){.cv-site-nav{gap:24px;padding-inline:24px}.cv-site-links{gap:18px}.cv-checks{display:none}}
+@media(max-width:1000px){.cv-menu-toggle{display:grid;place-items:center;width:44px;height:44px;background:transparent;border:0}.cv-site-links{display:none;position:absolute;top:100%;left:0;right:0;background:var(--site-paper);border-bottom:1px solid var(--site-line);padding:20px;margin:0}.cv-site-links[data-open="true"]{display:grid;gap:4px}.cv-site-links a{min-height:44px}.cv-mobile-login{display:block}.cv-login-link{display:none}.cv-footer-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.cv-wrap{width:calc(100% - 32px)}.cv-site-nav{min-height:64px;padding:10px 16px;gap:6px}.cv-brand{font-size:19px;gap:7px}.cv-brand svg{width:22px;height:22px}.cv-nav-actions{gap:4px}.cv-nav-actions .cv-button{font-size:14px;padding:10px 14px}.cv-nav-actions .cv-button svg{display:none}.cv-signup-page{padding-block:40px}}
+.cv-hero-upload { position:relative; }
+.cv-hero-upload[data-dragging="true"] { outline:2px solid var(--site-lime);border-radius:22px; }
+.cv-upload-choice { padding:16px 18px 55px;font-size:14px;color:var(--site-body); }
+.cv-upload-choice label { cursor:pointer; }
+.cv-upload-choice label:focus-within { outline:2px solid var(--site-lime);outline-offset:5px; }
+.cv-upload-choice label>span { font-weight:600;text-decoration:underline;text-underline-offset:3px;color:var(--site-ink); }
+.cv-upload-choice input { position:absolute;width:1px;height:1px;opacity:0; }
+.cv-upload-error { background:#fbf6ec;padding:16px;border-radius:12px;color:#5c3d00;margin-bottom:50px!important; }
+.cv-upload-signup { position:relative;z-index:4;background:white;padding:26px;border-radius:22px;margin-bottom:64px;box-shadow:0 0 0 1px var(--site-line);display:grid;gap:16px; }
+.cv-upload-signup h2 { font-size:28px; }
+.cv-upload-filename { overflow-wrap:anywhere; }
+.cv-drop-hint { position:absolute;inset:0;display:grid;place-items:center;border-radius:22px;background:#f4f5f2ee;pointer-events:none; }
+@media(max-width:360px){.cv-site-nav{padding-inline:12px}.cv-brand{font-size:17px;gap:4px}.cv-nav-actions .cv-button{font-size:12px;padding-inline:10px}.cv-menu-toggle{width:40px}}
+
+/* The overlapping v4 object-system tokens keep the public and product controls aligned. */
+.cv-site { --accent:#FF5B1F; --solid:#FFFFFF; --ease:cubic-bezier(.23,1,.32,1); --site-lime:var(--accent); }
+.cv-button { transition:transform 160ms var(--ease),background-color 150ms ease; }
+.cv-site-footer { background:var(--solid); }
+@media(max-width:360px){.cv-site-nav[data-signed-in="true"] .cv-brand{font-size:0;gap:0}}

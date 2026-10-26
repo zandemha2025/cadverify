@@ -5,6 +5,9 @@ OCP-dependent tests are skipped when XDE modules are not available.
 """
 from __future__ import annotations
 
+import gzip
+from pathlib import Path
+
 import pytest
 
 from src.parsers.step_ap242_parser import (
@@ -92,26 +95,14 @@ def test_parse_ap242_from_bytes_temp_mode(monkeypatch):
 @pytest.mark.skipif(
     not is_ap242_supported(), reason="OCP XDE not available"
 )
-def test_ap242_document_has_pmi_flag(tmp_path):
-    """Parse a minimal STEP file and verify has_pmi is a bool."""
-    # Create a minimal valid STEP file (AP214-like, no PMI)
-    step_content = (
-        "ISO-10303-21;\n"
-        "HEADER;\n"
-        "FILE_DESCRIPTION((''), '2;1');\n"
-        "FILE_NAME('test.step', '2024-01-01', (''), (''), '', '', '');\n"
-        "FILE_SCHEMA(('AUTOMOTIVE_DESIGN'));\n"
-        "ENDSEC;\n"
-        "DATA;\n"
-        "ENDSEC;\n"
-        "END-ISO-10303-21;\n"
-    )
-    step_file = tmp_path / "test.step"
-    step_file.write_text(step_content)
-
-    result = parse_ap242(step_file)
+def test_ap242_document_has_pmi_flag():
+    """The native reader transfers a real solid and exposes its XDE tools."""
+    result = parse_ap242(Path(__file__).parent / "assets" / "cube.step")
     assert isinstance(result, AP242Document)
     assert isinstance(result.has_pmi, bool)
+    assert len(result.shape_labels) == 1
+    assert not result.shape_tool.GetShape_s(result.shape_labels[0]).IsNull()
+    assert result.dim_tol_tool is not None
 
 
 @pytest.mark.skipif(
@@ -135,3 +126,17 @@ def test_ap214_fallback_no_pmi(tmp_path):
 
     result = parse_ap242(step_file)
     assert result.has_pmi is False
+
+
+@pytest.mark.skipif(not is_ap242_supported(), reason="OCP XDE not available")
+def test_ap242_detects_modern_pmi():
+    """NIST's semantic/graphical annotations are outside legacy DimTol labels."""
+    from OCP.TDF import TDF_LabelSequence
+
+    fixture = Path(__file__).parent / "assets" / "nist_ctc_01_asme1_ap242-e1.stp.gz"
+    result = parse_ap242_from_bytes(gzip.decompress(fixture.read_bytes()), "nist.stp")
+    legacy = TDF_LabelSequence()
+    result.dim_tol_tool.GetDimTolLabels(legacy)
+    assert legacy.Length() == 0
+    assert result.has_pmi is True
+    assert result.shape_labels

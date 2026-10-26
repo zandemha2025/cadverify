@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import io
 import json
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -335,12 +336,15 @@ def test_run_real_mode_passes_gate_and_runs_similarity(run_corpus, tmp_path):
 
 
 def test_smoke_seed_is_one_part_per_key_in_real_corpus():
-    """On the REAL corpus the seed has distinct parts (skip if corpus absent)."""
-    manifest = label_store.load_manifest()
-    if not manifest:
-        pytest.skip("real corpus manifest not present")
+    """A public real-corpus excerpt covers every key without private local data."""
+    manifest = label_store.load_manifest(
+        Path(__file__).parent / "assets" / "corpus" / "manifest.jsonl"
+    )
+    assert len(manifest) >= len(LABELS)
     from src.eval.seed import select_smoke_parts
 
     chosen = select_smoke_parts(manifest)
     assert len(set(chosen.values())) == len(chosen)   # all distinct parts
-    assert set(chosen.keys()) <= set(LABELS)
+    assert set(chosen.keys()) == set(LABELS)
+    assert set(chosen.values()) <= set(manifest)
+    assert select_smoke_parts(dict(reversed(list(manifest.items())))) == chosen
