@@ -7,7 +7,7 @@ import { SignupEmailForm } from "./signup-email-form";
 import { useSiteSession } from "./site-shell";
 
 export function HeroUpload({ children }: { children: React.ReactNode }) {
-  const { user } = useSiteSession();
+  const { user, siteKey } = useSiteSession();
   const router = useRouter();
   const [part, setPart] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -32,6 +32,6 @@ export function HeroUpload({ children }: { children: React.ReactNode }) {
     <div className="cv-upload-choice"><label>Have a part? <span>Choose its 3D file</span> to check it.<input type="file" accept={CAD_ACCEPT} disabled={busy} onChange={event => { void choose(event.target.files?.[0]); event.target.value = ""; }} /></label>{busy && <span role="status">Preparing your part…</span>}</div>
     {error && <p className="cv-upload-error" role="alert">{error}</p>}
     {dragging && <div className="cv-drop-hint">Drop to check this part</div>}
-    {part && <div className="cv-upload-signup"><strong className="cv-upload-filename">{part.name}</strong><h2>Your part is ready.</h2><p>Enter your email and we’ll send you a sign-in link. Your part runs as soon as you click it.</p><SignupEmailForm part={part} /><button className="cv-text-link" type="button" onClick={async () => { try { await browserPendingPartStore().clear(); setPart(null); } catch { setError("Could not clear the saved file. Please try again."); } }}>Use a different file</button></div>}
+    {part && <div className="cv-upload-signup"><strong className="cv-upload-filename">{part.name}</strong><h2>Your part is ready.</h2><p>{siteKey ? "Enter your email and we’ll send you a sign-in link. Your part runs as soon as you click it." : "Create your account to check this part. It stays in this browser until you sign up."}</p><SignupEmailForm part={part} /><button className="cv-text-link" type="button" onClick={async () => { try { await browserPendingPartStore().clear(); setPart(null); } catch { setError("Could not clear the saved file. Please try again."); } }}>Use a different file</button></div>}
   </div>;
 }

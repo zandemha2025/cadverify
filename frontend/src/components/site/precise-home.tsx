@@ -383,7 +383,7 @@ return <SiteShell><div className="precise">
 <div className="wrap sec" style={{"position": "relative", "display": "grid", "gridTemplateColumns": "repeat(auto-fit, minmax(min(480px, 100%), 1fr))", "gap": "56px 96px", "alignItems": "center"}}>
 <div style={{"display": "flex", "flexDirection": "column", "gap": "32px"}}>
 <h2 className="display" style={{"margin": 0, "fontWeight": 500, "fontSize": "clamp(56px, 6.6vw, 96px)", "lineHeight": 0.94, "letterSpacing": "-0.04em"}}>{startTitle}</h2>
-<p style={{"margin": 0, "maxWidth": "480px", "fontSize": "20px", "lineHeight": 1.5, "color": "#B9BEBA"}}>Enter your email and we’ll send you a link to sign in. No password needed. Then upload a part and see the answer.</p>
+<p style={{"margin": 0, "maxWidth": "480px", "fontSize": "20px", "lineHeight": 1.5, "color": "#B9BEBA"}}>{session.siteKey ? "Enter your email and we’ll send you a link to sign in. No password needed. Then upload a part and see the answer." : "Create your account, then upload a part and see the answer."}</p>
 <div style={{"display": "flex", "flexDirection": "column", "maxWidth": "520px"}}>
 <div style={{"display": "grid", "gridTemplateColumns": "96px minmax(0, 1fr)", "gap": "22px", "alignItems": "center", "padding": "22px 0", "borderTop": "1px solid #2A2E2C"}}>
 <span className="display num" style={{"fontSize": "60px", "fontWeight": 400, "letterSpacing": "-0.04em", "lineHeight": 1, "color": "#FF5B1F"}}>{workChecks}</span>
