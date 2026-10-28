@@ -9,8 +9,8 @@ import { authErrorMessage } from "@/lib/api-recovery";
 import { ANALYTICS_PREFERENCES_EVENT } from "@/lib/analytics";
 export { SITE_TAGLINE, SITE_NAV, PILOT_HREF, UPLOAD_HREF } from "@/lib/site/navigation";
 
-export type SiteSession = { user: { email: string } | null; usage: { cap: number; remaining: number } | null; siteKey: string; nonce?: string; ssoLoginPath: string; freeChecks: { work: number; personal: number } };
-const SiteSessionContext = createContext<SiteSession>({ user: null, usage: null, siteKey: "", ssoLoginPath: "", freeChecks: { work: 15, personal: 3 } });
+export type SiteSession = { user: { email: string } | null; usage: { cap: number; remaining: number } | null; siteKey: string; passwordSignup: boolean; nonce?: string; ssoLoginPath: string; freeChecks: { work: number; personal: number } };
+const SiteSessionContext = createContext<SiteSession>({ user: null, usage: null, siteKey: "", passwordSignup: false, ssoLoginPath: "", freeChecks: { work: 15, personal: 3 } });
 export const SiteSessionProvider = SiteSessionContext.Provider;
 export const useSiteSession = () => useContext(SiteSessionContext);
 

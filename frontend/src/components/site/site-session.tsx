@@ -1,3 +1,4 @@
+import { publicPasswordSignupEnabled } from "@/lib/public-signup";
 import { getPlans } from "@/lib/plans";
 import { SignedInProvider } from "./signed-in";
 import { headers } from "next/headers";
@@ -19,5 +20,5 @@ export async function SiteSessionBoundary({ children }: { children: React.ReactN
       }
     } catch { /* Usage is optional; never invent an allowance during an outage. */ }
   }
-  return <SiteSessionProvider value={{ freeChecks: { work: free.work_checks, personal: free.personal_checks }, user: user ? { email: user.email } : null, usage, siteKey: process.env.MAGIC_LINK_UI_ENABLED === "1" ? process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || process.env.TURNSTILE_SITE_KEY || "" : "", nonce: (await headers()).get("x-nonce") || undefined, ssoLoginPath: (process.env.SSO_LOGIN_PATH || "").trim() }}><SignedInProvider signedIn={!!user}>{children}</SignedInProvider></SiteSessionProvider>;
+  return <SiteSessionProvider value={{ freeChecks: { work: free.work_checks, personal: free.personal_checks }, user: user ? { email: user.email } : null, usage, passwordSignup: publicPasswordSignupEnabled(process.env.PUBLIC_PASSWORD_SIGNUP_ENABLED, process.env.RELEASE), siteKey: process.env.MAGIC_LINK_UI_ENABLED === "1" ? process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || process.env.TURNSTILE_SITE_KEY || "" : "", nonce: (await headers()).get("x-nonce") || undefined, ssoLoginPath: (process.env.SSO_LOGIN_PATH || "").trim() }}><SignedInProvider signedIn={!!user}>{children}</SignedInProvider></SiteSessionProvider>;
 }
