@@ -9,6 +9,17 @@ anyone) can port it into the real Next.js app. The implementation on this branch
 the designs rendered). The files in `reference/` are exact copies of that canvas's
 artboards.
 
+## Founder feedback to build in (Douglas, 2026-11-02)
+
+From the live site, but 2 of 3 apply to this redesign too. Build the fixes in; the pricing items need a team decision first.
+
+1. **Show the product; don't gate it to sales.** A prospect wants to *see* what they'll get (a screenshot / real sample output) before signing up or recommending it — not a "talk to sales" wall. A·Precise already leans this way (hero sample-results + a "View sample output" CTA). When building, make **"View sample output" actually show a real screenshot / sample result**, never a contact form.
+2. **Cut the regional cost-differential section.** The homepage has a "US Midwest example prices vs Shenzhen example prices" dot chart (point: "ScaleCAD uses your prices, not an average"). Douglas finds it confusing/too-cute for a prospect and wants it removed to simplify. **Cut it** — make the "we use your prices" point in one plain line without the geo chart, or drop it.
+3. **Pricing — show one real, clear price. [NEEDS TEAM DECISION — don't invent numbers]** The redesign's Pricing board has Free $0 / **Pro $[149]/mo** (placeholder) / **Pilot $7,500** / Enterprise Custom. Before building:
+   - Confirm the real **Pro** price (the `$149`/mo and `50 checks` are placeholders).
+   - Decide the **Pilot** ($7,500): either keep it and explain in one line what a "pilot" *is*, or drop it from the public page — Douglas finds it confusing and off-putting ("doesn't sound like Enterprise").
+   - Lead with one clear headline price. Douglas's example: "$800/mo for X designs, introductory until Dec 31." A real number beats "contact sales."
+
 ## Pick: build direction **A · Precise**
 
 The canvas has three homepage directions. **A · Precise is the chosen one** — build it.
