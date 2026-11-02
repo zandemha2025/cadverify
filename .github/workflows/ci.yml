@@ -142,7 +142,7 @@ jobs:
             libxinerama1 \
             libgomp1 \
             poppler-utils \
-            postgresql-client
+            postgresql-client-16
 
       - name: Install dependencies
         run: |
@@ -160,7 +160,12 @@ jobs:
           alembic upgrade head
 
       - name: Postgres restore drill
-        run: ../scripts/ops/postgres-restore-drill.sh
+        run: |
+          # Match the client major to the pinned postgres:16 server; the
+          # runner's default client has drifted to 17, which emits a
+          # transaction_timeout GUC that a 16 server rejects on restore.
+          export PATH="/usr/lib/postgresql/16/bin:$PATH"
+          ../scripts/ops/postgres-restore-drill.sh
 
       - name: Run tests
         run: pytest -v
