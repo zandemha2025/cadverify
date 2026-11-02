@@ -385,6 +385,19 @@ jobs:
               sudo mv "$source" "$source.disabled"
             fi
           done
+          # Match the restore-drill client to the postgres:16 service:
+          # test:e2e:ops-restore runs scripts/ops/postgres-restore-drill.sh, and a
+          # newer pg_dump writes a transaction_timeout GUC a 16 server rejects on
+          # restore. ubuntu-latest's default client has moved past 16 and its apt
+          # repos no longer carry postgresql-client-16, so pull it from the
+          # PostgreSQL project's APT repo (PGDG) and put its binaries first on PATH
+          # for the later journey steps (via GITHUB_PATH).
+          . /etc/os-release
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update -o Acquire::Retries=3
           sudo apt-get install -y --no-install-recommends \
             libgl1 \
@@ -395,7 +408,8 @@ jobs:
             libxinerama1 \
             libgomp1 \
             poppler-utils \
-            postgresql-client
+            postgresql-client-16
+          echo "/usr/lib/postgresql/16/bin" >> "$GITHUB_PATH"
           python -m venv backend/.venv
           backend/.venv/bin/python -m pip install --upgrade pip
           backend/.venv/bin/python -m pip install --require-hashes -r backend/requirements-prod.lock
