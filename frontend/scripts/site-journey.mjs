@@ -41,8 +41,6 @@ try {
   await page.getByRole('heading', { name: 'Two problems. Neither one stops a lathe.' }).waitFor();
   await page.getByRole('button', { name: 'What will it cost?', exact: true }).click();
   await page.getByRole('heading', { name: '$14.14 a part. Here’s where it goes.' }).waitFor();
-  await page.getByRole('button', { name: 'Shenzhen example prices', exact: true }).click();
-  await page.getByText('$2.68', { exact: true }).waitFor();
   await page.getByRole('button', { name: /Hourly machine rate/ }).click();
   await page.getByText('What the example shop charges per hour for this printer. On your account, it’s your own rate.').waitFor();
   await page.getByRole('link', { name: 'Sample part', exact: true }).click();
@@ -88,7 +86,8 @@ try {
   assert((await page.locator('h1').boundingBox()).y < 500, 'Pricing headline stays above the fold');
   await page.getByText('One factory, up to 500 parts, 4–6 weeks. Counts toward your first year.').waitFor();
   await page.getByText('Send us 25 typical parts and we’ll tell you, free.').waitFor();
-  assert.match(await page.locator('main').innerText(), /Contact us/);
+  assert.match(await page.locator('main').innerText(), /Use ScaleCAD/);
+  assert.doesNotMatch(await page.locator('main').innerText(), /Contact us/);
   assert.doesNotMatch(await page.locator('main').innerText(), /\[149\]|\[50\]/);
   await page.screenshot({ path: output + 'pricing-desktop.png', fullPage: true });
   await visit('/contact');

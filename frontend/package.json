@@ -77,6 +77,8 @@
     "@next/eslint-plugin-next": {
       "fast-glob": "npm:tinyglobby@0.2.15"
     },
-    "zod": "^4.6.7"
+    "zod": "^4.6.7",
+    "minimatch": "^11.0.4",
+    "glob": "^14.0.3"
   }
 }

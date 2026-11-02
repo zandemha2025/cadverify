@@ -9,7 +9,7 @@ import { SignupEmailForm } from "./signup-email-form";
 // Content and illustrative values ported from Main.dc.html, direction A · Precise.
 export function PreciseHome() {
  const session = useSiteSession();
- const [s, update] = useState({tab: "inhouse", shop: "a", term: 0, phase: 6});
+ const [s, update] = useState({tab: "inhouse", term: 0, phase: 6});
  const setState = (patch: Partial<typeof s>) => update(value => ({...value, ...patch}));
  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
  useEffect(() => () => timers.current.forEach(clearTimeout), []);
@@ -38,30 +38,6 @@ export function PreciseHome() {
       pick: () => setState({ tab: t.id })
     }));
 
-    const shop = s.shop || 'a';
-    const scale = 75;
-    const data = [
-      { blocked: false, name: '3D printing (MJF)', note: 'Could be 40% higher or lower', a: 10.45, b: 2.68, h: 0.4 },
-      { blocked: false, name: '3D printing (SLS)', note: 'Could be 40% higher or lower', a: 10.64, b: 2.86, h: 0.4 },
-      { blocked: false, name: 'Lathe (CNC turning)', note: 'Best fit for the shape', a: 26.92, b: 5.96, h: 0.5 },
-      { blocked: false, name: '5-axis milling', note: 'Could be 50% higher or lower', a: 47.36, b: 10.95, h: 0.5 },
-      { name: 'Injection molding', note: 'Needs a design fix first', a: 14.25, b: 4.65, h: 0.6, blocked: true }
-    ];
-    const rows = data.map((d, i) => {
-      const v = shop === 'a' ? d.a : d.b;
-      const low = v * (1 - d.h);
-      const high = v * (1 + d.h);
-      return {
-        name: d.name,
-        note: d.note,
-        price: '$' + v.toFixed(2),
-        pointPct: (v / scale * 100).toFixed(2),
-        lowPct: (low / scale * 100).toFixed(2),
-        bandPct: ((high - low) / scale * 100).toFixed(2),
-        cls: d.blocked ? 'is-blocked' : (i === 0 ? 'is-best' : '')
-      };
-    });
-
     const termDefs = [
       { v: '0.0682 hr', tag: 'Default', chip: 'c-default', label: 'Machine time per part', source: 'One full print run takes 15.2 hours and fits 223 parts, so each part gets about 4 minutes. The 223 is our standard guess at how many fit, so it stays marked as a guess until you give us real numbers.' },
       { v: '× $30/hr', tag: 'Shop', chip: 'c-shop', label: 'Hourly machine rate', source: 'What the example shop charges per hour for this printer. On your account, it’s your own rate.' },
@@ -81,10 +57,6 @@ export function PreciseHome() {
 
 
  const isInhouse=tab === "inhouse", isDesign=tab === "design", isCost=tab === "cost";
- const segPos=shop === "b" ? "is-b" : "";
- const shopAOn=shop === "a" ? "is-on" : "", shopBOn=shop === "b" ? "is-on" : "";
- const shopAPressed=shop === "a", shopBPressed=shop === "b";
- const pickA=()=>setState({shop:"a"}), pickB=()=>setState({shop:"b"});
 
 return <SiteShell><div className="precise">
 <section className="studio" style={{"overflow": "hidden"}}>
@@ -175,7 +147,7 @@ return <SiteShell><div className="precise">
 <div className="wrap">
 <div style={{"display": "grid", "gridTemplateColumns": "repeat(auto-fit, minmax(min(460px, 100%), 1fr))", "gap": "28px 80px", "alignItems": "end"}}>
 <h2 className="h2">What do you need to know?</h2>
-<p className="lede" style={{"maxWidth": "520px"}}>Pick a question. The answers come from a real run on the sample part, using an example shop’s prices.</p>
+<p className="lede" style={{"maxWidth": "520px"}}>This is the actual output you get — a real run on the sample part, using an example shop’s prices. Pick a question to see it.</p>
 </div>
 <div className="inview" role="group" aria-label="Choose a question" style={{"display": "flex", "flexWrap": "wrap", "gap": "10px", "marginTop": "56px"}}>
 {tabs.map((tab, index) => <Fragment key={index}>
@@ -247,37 +219,7 @@ return <SiteShell><div className="precise">
 </div>
 </> }
 </div>
-</div>
-</section>
-
-<section style={{"background": "#FFFFFF", "borderTop": "1px solid #E6E8E4", "borderBottom": "1px solid #E6E8E4"}}>
-<div className="wrap sec">
-<div style={{"display": "flex", "flexDirection": "column", "gap": "28px"}}>
-<h2 className="h2">Same part. Two shops.<br />Up to 4.5 times the price.</h2>
-<p className="lede" style={{"maxWidth": "640px"}}>The shape decides how a part can be made. Who makes it decides the price. Flip between two example price lists, both for an order of 1,000. That’s why ScaleCAD uses your prices, not an average.</p>
-</div>
-<div className="inview" style={{"marginTop": "56px", "display": "flex", "flexDirection": "column", "gap": "32px"}}>
-<div className="seg" role="group" aria-label="Price list">
-<span className={`seg-ind ${segPos}`} aria-hidden="true"></span>
-<button type="button" className={shopAOn} aria-pressed={shopAPressed} onClick={pickA}>US Midwest example prices</button>
-<button type="button" className={shopBOn} aria-pressed={shopBPressed} onClick={pickB}>Shenzhen example prices</button>
-</div>
-<div>
-{rows.map((r, index) => <Fragment key={index}>
-<div className={`rp-row ${r.cls}`}>
-<span style={{"display": "flex", "flexDirection": "column", "gap": "4px"}}><span style={{"fontWeight": 600, "fontSize": "16px"}}>{r.name}</span><span style={{"fontSize": "13.5px", "color": "#5A605D"}}>{r.note}</span></span>
-<span className="rp-track" aria-hidden="true"><span className="rp-axis"></span><span className="rp-band" style={{"left": `${r.lowPct}%`, "width": `${r.bandPct}%`}}></span><span className="rp-dot" style={{"left": `${r.pointPct}%`}}></span></span>
-<span className="display num" style={{"fontSize": "26px", "fontWeight": 500, "letterSpacing": "-0.02em", "textAlign": "right"}}>{r.price}</span>
-</div>
-</Fragment>)}
-<div style={{"display": "grid", "gridTemplateColumns": "200px minmax(0, 1fr) 96px", "gap": "28px", "borderTop": "1px solid #E6E8E4", "paddingTop": "10px"}} aria-hidden="true" className="hide-sm">
-<span></span>
-<span className="mono num" style={{"display": "flex", "justifyContent": "space-between", "fontSize": "11px", "color": "#5A605D"}}><span>$0</span><span>$25</span><span>$50</span><span>$75</span></span>
-<span></span>
-</div>
-</div>
-<p style={{"margin": 0, "fontSize": "14.5px", "lineHeight": 1.55, "color": "#5A605D", "maxWidth": "760px"}}>Each dot is the best estimate for one part. The bar shows how far off it could be until real jobs confirm it. Orange marks the cheapest option that works today.</p>
-</div>
+<p style={{"marginTop": "24px", "fontSize": "15px"}}><a className="tlink" href="/sample">See the full sample — geometry, assumptions and all <svg className="arr" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"></path></svg></a></p>
 </div>
 </section>
 
@@ -363,7 +305,7 @@ return <SiteShell><div className="precise">
 </div>
 <div style={{"padding": "40px", "display": "flex", "flexDirection": "column", "gap": "12px", "boxShadow": "inset 1px 0 0 #E6E8E4"}}>
 <span style={{"display": "flex", "alignItems": "center", "gap": "10px", "fontWeight": 600, "fontSize": "17px"}}>Pro </span>
-<span className="display num" style={{"fontSize": "56px", "fontWeight": 500, "letterSpacing": "-0.04em", "lineHeight": 1}}>Contact us</span>
+<span className="display num" style={{"fontSize": "56px", "fontWeight": 500, "letterSpacing": "-0.04em", "lineHeight": 1}}>Pay monthly</span>
 <span style={{"fontSize": "15px", "lineHeight": 1.55, "color": "#474D4A"}}>Uses your own machines and prices.</span>
 </div>
 <div style={{"padding": "40px", "display": "flex", "flexDirection": "column", "gap": "12px", "boxShadow": "inset 1px 0 0 #E6E8E4"}}>
