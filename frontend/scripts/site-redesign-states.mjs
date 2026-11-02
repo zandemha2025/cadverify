@@ -85,7 +85,10 @@ try {
   await email.fill('person@gmail.com');
   await page.getByRole('button',{name:'Try ScaleCAD free',exact:true}).click();
   await page.getByRole('status').filter({hasText:'with 3 free checks'}).waitFor();
-  await page.goto(base, {waitUntil:'networkidle'});
+  // Wait for 'load', not 'networkidle': the marketing page keeps a long-lived
+  // connection open (Turnstile), so networkidle can never settle and times out
+  // intermittently in CI. The actions below auto-wait for their own elements.
+  await page.goto(base, {waitUntil:'load'});
   await page.locator('.cv-upload-choice input').setInputFiles({name:'part.txt',mimeType:'text/plain',buffer:Buffer.from('invalid')});
   await page.getByRole('alert').filter({hasText:'STEP, STL and IGES'}).waitFor();
   await page.locator('.cv-upload-choice input').setInputFiles({name:'part.step',mimeType:'application/octet-stream',buffer:Buffer.from('ISO-10303-21;')});
@@ -109,7 +112,7 @@ try {
   assert(await authed.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1), 'Signed-in header fits 320px');
   await signed.close();
   await context.addCookies([{name:'dash_session',value:'site-test',url:base}]);
-  await page.goto(base, {waitUntil:'networkidle'});
+  await page.goto(base, {waitUntil:'load'});
   await page.getByLabel('Account', {exact:true}).click();
   const [logoutFailure]=await Promise.all([
     page.waitForResponse(r=>r.url()===base+'/api/auth/logout' && r.request().method()==='POST'),
@@ -120,7 +123,7 @@ try {
   assert.equal((await context.cookies()).filter(c=>c.name==='dash_session').length,0);
   logoutStatus=200;
   await context.addCookies([{name:'dash_session',value:'site-test',url:base}]);
-  await page.goto(base, {waitUntil:'networkidle'});
+  await page.goto(base, {waitUntil:'load'});
   await page.getByLabel('Account', {exact:true}).click();
   await page.getByRole('button', {name:'Log out',exact:true}).click();
   await page.locator('header[data-signed-in="false"]').waitFor();

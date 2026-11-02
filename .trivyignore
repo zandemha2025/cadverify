@@ -66,3 +66,35 @@ CVE-2026-86144
 CVE-2026-53612
 CVE-2026-53613
 CVE-2026-53614
+
+# Round 4 (reviewed 2026-11-02; PR #137 gate run 41505761290, Trivy DB pin
+# trivy-db-pin-2026-11-02). libsqlite3-0 3.46.1-7+deb13u2 (status: affected, no
+# fixed version published in trixie): DoS via heap-based buffer overflow in the
+# FTS5 full-text-search extension (CVE-2026-119373). Not reachable: the backend's
+# database is Postgres; nothing under backend/src imports sqlite3 or creates FTS5
+# tables, so no untrusted input ever reaches SQLite. The library is present only
+# as a Python stdlib/runtime dependency. Remove this pin when Debian publishes a fix
+# (the Dockerfile's security-upgrade layer will then pull it in).
+CVE-2026-119373
+
+# Round 5 (reviewed 2026-11-02; post-merge main gate run 41521081608, Trivy DB
+# pin trivy-db-pin-2026-11-02 refreshed ~21:11Z). libexpat1 2.9.0-1+cadverify1
+# (our native-security rebuild of Debian's 2.9.0-1; Debian status: affected in
+# every release incl. sid, no fixed version; upstream fixes are open as
+# libexpat PRs #1444 and #1450, not yet released):
+#   CVE-2026-117610: NULL dereference in externalEntityInitProcessor2() when an
+#     attacker controls stream chunking of an external-entity subparser. Not
+#     reachable: every expat parse here (src/services/xml_guard.py
+#     declares_dtd, and ElementTree in src/services/actuals_service.py) is a
+#     single final Parse of in-memory bytes, and any DOCTYPE, entity, notation
+#     or external entity reference is refused before parsing, so no external
+#     entity subparser is ever created.
+#   CVE-2026-118370: signed overflow in storeAtts() needing a start tag with
+#     more than 2^30 attributes (a multi-gigabyte document). Not reachable:
+#     XLSX XML parts are capped at 40 MiB before parsing, 3MF model XML is
+#     parsed by lxml/libxml2 (expat only runs the DTD pre-check), and uploads
+#     are bounded far below the size such a tag needs; all paths are behind an
+#     authenticated session. Remove when Debian ships the upstream fixes or the
+#     native-security stage backports PRs #1444/#1450.
+CVE-2026-117610
+CVE-2026-118370
