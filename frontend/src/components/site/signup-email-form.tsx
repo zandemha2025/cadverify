@@ -7,12 +7,14 @@ import { TurnstileWidget } from "@/components/auth/turnstile-widget";
 import { authErrorMessage } from "@/lib/api-recovery";
 import { emailTier } from "@/components/v4/moments/email-tier";
 import { browserPendingPartStore, holdPendingPart } from "@/lib/pending-part";
+import { siteSignupMethod } from "@/lib/public-signup";
+import { setPendingFile } from "@/components/v4/pending-file";
 import { safeLocalPath } from "@/lib/safe-return-path";
 import { SignupDataNote } from "./signup-data-note";
 import { SiteCta, useSiteSession } from "./site-shell";
 
 export function SignupEmailForm({ part }: { part?: File }) {
-  const { user, siteKey, nonce, ssoLoginPath, freeChecks } = useSiteSession();
+  const { user, siteKey, passwordSignup, nonce, ssoLoginPath, freeChecks } = useSiteSession();
   const id = useId();
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
@@ -37,6 +39,14 @@ export function SignupEmailForm({ part }: { part?: File }) {
     finally { setBusy(false); }
   }
   if (user) return <div className="cv-signup-card"><SiteCta /><Link href="/history">View your saved checks</Link></div>;
+  if (siteSignupMethod(siteKey, passwordSignup) !== "magic") return <div className="cv-signup-card">
+    {passwordSignup ? <>
+      <p>Create your account with an email and password. {freeChecks.work} free checks with a work email, {freeChecks.personal} with a personal email.</p>
+      <Link className="cv-button" href="/signup" onNavigate={() => { if (part) setPendingFile(part); }}>Try ScaleCAD free<ArrowRight size={16} aria-hidden="true" /></Link>
+      <p className="cv-signup-terms">No credit card. <SignupDataNote /></p>
+    </> : <p>Contact your organization administrator to create an account.</p>}
+    <div className="cv-signup-links"><span>Have an account? <Link href="/login">Log in</Link></span>{ssoLoginPath && <a href={ssoLoginPath}>Sign in with your company account</a>}</div>
+  </div>;
   return <div className="cv-signup-card">
     {sent ? <div role="status" className="cv-signup-sent"><Mail size={44} aria-hidden="true" /><h2>Check your inbox.</h2><p>We sent a sign-in link to <strong>{email.trim()}</strong>. Click it to open ScaleCAD with {tier === "personal" ? freeChecks.personal : freeChecks.work} free checks. Not there? Check your spam folder or try another address.</p><button className="cv-button cv-button-secondary" type="button" onClick={async () => { if (part) await browserPendingPartStore().clear().catch(() => {}); setSent(false); setEmail(""); setToken(null); }}>Use a different email</button></div> : <>
       <form onSubmit={submit}>

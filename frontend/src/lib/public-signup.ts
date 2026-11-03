@@ -12,3 +12,8 @@ export function publicPasswordSignupEnabled(
   if (!override) return !released;
   return TRUTHY.has(override);
 }
+
+/** The marketing form must offer the authentication method this server enables. */
+export function siteSignupMethod(siteKey: string, passwordSignup: boolean): "magic" | "password" | "managed" {
+  return siteKey ? "magic" : passwordSignup ? "password" : "managed";
+}
