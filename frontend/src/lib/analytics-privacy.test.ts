@@ -2,6 +2,17 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { cleanAnalyticsEvent, routeLabel, publicReplayAllowed } from "./analytics-privacy.ts";
 
+test("editorial URLs are measurable without exposing arbitrary slugs or calculator inputs", () => {
+  assert.equal(routeLabel("/guides/cnc-dfm-checklist?private=secret"), "/guides/cnc-dfm-checklist");
+  assert.equal(routeLabel("/guides/private-customer-part"), "/:id/:id");
+  assert.equal(publicReplayAllowed("/tools/make-vs-buy-calculator", "", ""), false);
+  const event = cleanAnalyticsEvent({ event: "calculator_started", properties: {
+    tool: "make-vs-buy", quantity: 500, makeFixed: 2000,
+    $pathname: "/tools/make-vs-buy-calculator", filename: "private.step",
+  } });
+  assert.deepEqual(event?.properties, { tool: "make-vs-buy", $pathname: "/tools/make-vs-buy-calculator" });
+});
+
 test("analytics excludes credentials, CAD identifiers, URL queries and free text", () => {
   const event = cleanAnalyticsEvent({ event: "$pageview", properties: {
     $current_url: "https://scalecad.ai/reset-password#token=secret",
