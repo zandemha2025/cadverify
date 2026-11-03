@@ -1,0 +1,58 @@
+import { chromium } from 'playwright-core';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+const output = process.env.GROWTH_EVIDENCE_DIR || '/tmp/scalecad-growth-evidence';
+const base = process.env.GROWTH_BASE_URL || 'http://127.0.0.1:3107';
+await fs.mkdir(output, { recursive: true });
+const browser=await chromium.launch({channel:'chrome',headless:true});
+const page=await browser.newPage({viewport:{width:1440,height:1000}});
+const errors=[];
+page.on('pageerror',e=>errors.push(e.message));
+const paths=['/resources','/solutions/dfm-software','/guides/step-file-manufacturability-check','/guides/cnc-dfm-checklist','/guides/make-vs-buy-analysis','/compare/scalecad-vs-apriori','/tools/make-vs-buy-calculator','/pricing'];
+const results=[];
+for(const path of paths){
+ const res=await page.goto(base+path,{waitUntil:'networkidle'});
+ assert.equal(res.status(),200,path);
+ assert.equal(await page.locator('h1').count(),1,path);
+ assert.equal(await page.locator('link[rel=canonical]').getAttribute('href'),'https://scalecad.ai'+path,path);
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,path+' desktop overflow');
+ if(path!='/pricing') assert.equal(await page.locator('meta[property="og:url"]').getAttribute('content'),'https://scalecad.ai'+path);
+ const schemas=await page.locator('script[type="application/ld+json"]').allTextContents();
+ for(const raw of schemas) JSON.parse(raw);
+ results.push({path,status:res.status(),title:await page.title(),schemaCount:schemas.length});
+}
+await page.goto(base+'/tools/make-vs-buy-calculator',{waitUntil:'networkidle'});
+assert.match(await page.locator('.growth-results').innerText(),/\$8,000\.00/);
+await page.locator('#quantity').fill('100');
+assert.match(await page.locator('.growth-results').innerText(),/Buying has/);
+await page.locator('#quantity').fill('300');
+assert.match(await page.locator('.growth-results').innerText(),/costs are equal/);
+await page.locator('#quantity').fill('');
+assert.match(await page.locator('.growth-results').innerText(),/Fill in every field/);
+await page.getByRole('button',{name:'Reset example'}).click();
+if(await page.getByRole('button',{name:'Decline all'}).isVisible()) await page.getByRole('button',{name:'Decline all'}).click();
+await page.evaluate(()=>{document.activeElement?.blur();window.scrollTo(0,0);});
+await page.screenshot({path:output+'/calculator-desktop.png',fullPage:true});
+await page.setViewportSize({width:390,height:844});
+for(const path of paths){
+ await page.goto(base+path,{waitUntil:'networkidle'});
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,path+' mobile overflow');
+}
+await page.goto(base+'/guides/cnc-dfm-checklist',{waitUntil:'networkidle'});
+if(await page.getByRole('button',{name:'Decline all'}).isVisible()) await page.getByRole('button',{name:'Decline all'}).click();
+await page.evaluate(()=>window.scrollTo(0,0));
+await page.screenshot({path:output+'/guide-mobile.png',fullPage:true});
+await page.getByRole('button',{name:'Open navigation'}).click();
+assert.equal(await page.getByRole('button',{name:'Close navigation'}).getAttribute('aria-expanded'),'true');
+await page.getByRole('button',{name:'Close navigation'}).click();
+const sitemap=await (await page.request.get(base+'/sitemap.xml')).text();
+for(const path of paths) assert(sitemap.includes('https://scalecad.ai'+path),path+' sitemap missing');
+const llms=await page.request.get(base+'/llms.txt');
+assert.equal(llms.status(),200);
+assert((await llms.text()).includes('/tools/make-vs-buy-calculator'));
+await page.goto(base+'/guides/nonexistent',{waitUntil:'networkidle'});
+assert(await page.locator('meta[name="robots"][content*="noindex"]').count()>0);
+assert.deepEqual(errors,[]);
+await fs.writeFile(output+'/browser-checks.json',JSON.stringify({date:new Date().toISOString(),pages:results,calculator:'example, buy, equal, empty, reset passed',responsive:'1440px and 390px; no document overflow',mobileNavigation:'passed',unknownGuide:'noindex',errors},null,2));
+console.log('PASS: 8 pages, canonical/OG metadata, schema JSON, calculator interactions, mobile navigation, sitemap, llms.txt and unknown-guide noindex.');
+await browser.close();

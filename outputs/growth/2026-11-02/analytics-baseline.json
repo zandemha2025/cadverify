@@ -1,0 +1,62 @@
+{
+  "_posthogUrl": "https://us.posthog.com/project/654164/insights/new#q=%7B%22kind%22%3A%22InsightVizNode%22%2C%22source%22%3A%7B%22dateRange%22%3A%7B%22date_from%22%3A%222026-10-05%22%2C%22date_to%22%3A%222026-11-01%22%7D%2C%22doPathCleaning%22%3Afalse%2C%22filterTestAccounts%22%3Atrue%2C%22kind%22%3A%22WebOverviewQuery%22%2C%22properties%22%3A%5B%7B%22key%22%3A%22%24current_url%22%2C%22operator%22%3A%22starts_with%22%2C%22type%22%3A%22event%22%2C%22value%22%3A%22https%3A%2F%2Fscalecad.ai%2F%22%7D%5D%7D%7D",
+  "query": {
+    "dateRange": {
+      "date_from": "2026-10-05",
+      "date_to": "2026-11-01"
+    },
+    "doPathCleaning": false,
+    "filterTestAccounts": true,
+    "kind": "WebOverviewQuery",
+    "properties": [
+      {
+        "key": "$current_url",
+        "operator": "starts_with",
+        "type": "event",
+        "value": "https://scalecad.ai/"
+      }
+    ]
+  },
+  "results": [
+    {
+      "changeFromPreviousPct": null,
+      "isIncreaseBad": null,
+      "key": "visitors",
+      "kind": "unit",
+      "previous": null,
+      "value": 12
+    },
+    {
+      "changeFromPreviousPct": null,
+      "isIncreaseBad": null,
+      "key": "views",
+      "kind": "unit",
+      "previous": null,
+      "value": 226
+    },
+    {
+      "changeFromPreviousPct": null,
+      "isIncreaseBad": null,
+      "key": "sessions",
+      "kind": "unit",
+      "previous": null,
+      "value": 28
+    },
+    {
+      "changeFromPreviousPct": null,
+      "isIncreaseBad": null,
+      "key": "session duration",
+      "kind": "duration_s",
+      "previous": null,
+      "value": 495.07142857142856
+    },
+    {
+      "changeFromPreviousPct": null,
+      "isIncreaseBad": true,
+      "key": "bounce rate",
+      "kind": "percentage",
+      "previous": null,
+      "value": 32.142857142857146
+    }
+  ]
+}

@@ -1,9 +1,12 @@
 "use client";
 
 import { SiteShell, SiteCta, useSiteSession } from "./site-shell";
+import { formatProPrice, type Plans } from "@/lib/billing";
+import { UpgradeButton } from "@/components/billing/upgrade-button";
 
-export function PrecisePricing() {
- const { freeChecks } = useSiteSession(); return <SiteShell><div className="precise precise-pricing">
+export function PrecisePricing({ pro }: { pro: Plans["pro"] }) {
+ const { freeChecks } = useSiteSession();
+ const proPrice = formatProPrice(pro.price); return <SiteShell><div className="precise precise-pricing">
 <section className="s-dark" style={{"position": "relative", "overflow": "hidden"}}>
 <div className="horizon" aria-hidden="true" style={{"height": "600px"}}><div className="hz-glow" style={{"bottom": "-640px"}}></div><div className="hz-arc" style={{"top": "calc(100% - 110px)"}}></div></div>
 <div className="wrap" style={{"position": "relative", "zIndex": 2, "paddingTop": "110px", "paddingBottom": "190px", "display": "flex", "flexDirection": "column", "alignItems": "center", "textAlign": "center", "gap": "22px"}}>
@@ -20,8 +23,8 @@ export function PrecisePricing() {
 <ul className="inc" style={{"position": "relative"}}><li><i></i><span>The full answer on every part</span></li><li><i></i><span>Checks 21 ways to make it</span></li><li><i></i><span>Uses your own machines and prices</span></li><li><i></i><span>Shows where every number came from</span></li></ul>
 </div>
 <div className="tier s-dark" style={{"position": "relative", "overflow": "hidden"}}><span aria-hidden="true" style={{"position": "absolute", "left": "-30%", "right": "-30%", "bottom": "-70%", "height": "110%", "borderRadius": "50%", "background": "radial-gradient(ellipse 50% 50% at 50% 50%, var(--a2), var(--a1) 25%, transparent 64%)", "opacity": 0.4, "filter": "blur(16px)"}}></span>
-<div style={{"display": "flex", "flexDirection": "column", "gap": "10px", "position": "relative"}}><span className="lbl" style={{"color": "var(--fg)"}}>Pro</span><span className="disp" style={{"fontSize": "60px", "fontWeight": 200}}>Pay monthly</span><span style={{"fontSize": "15.5px", "lineHeight": 1.5, "color": "var(--fg2)", "minHeight": "70px"}}>Uses your own machines and prices.</span></div>
-<SiteCta className="btn btn-cta">Use ScaleCAD</SiteCta>
+<div style={{"display": "flex", "flexDirection": "column", "gap": "10px", "position": "relative"}}><span className="lbl" style={{"color": "var(--fg)"}}>Pro</span><span className="disp" style={{"fontSize": "60px", "fontWeight": 200}}>{proPrice || "Contact us"}</span><span style={{"fontSize": "15.5px", "lineHeight": 1.5, "color": "var(--fg2)", "minHeight": "70px"}}>{pro.monthly_checks} checks per month. Uses your own machines and prices.</span></div>
+{pro.checkout_available ? <UpgradeButton className="btn btn-cta" checkoutAvailable={true} /> : <a className="btn btn-cta" href="/contact">Discuss Pro</a>}
 <ul className="inc" style={{"position": "relative"}}><li><i></i><span>Everything in Free</span></li><li><i></i><span>Parts made of several pieces</span></li><li><i></i><span>Fixes broken 3D files</span></li><li><i></i><span>Learns from your real costs</span></li></ul>
 </div>
 <div className="tier " style={{}}>
@@ -43,7 +46,7 @@ export function PrecisePricing() {
 <div style={{"marginTop": "32px", "overflowX": "auto", "borderRadius": "24px", "background": "var(--card)", "padding": "22px 16px 6px"}}>
 <table className="cmp">
 <thead><tr><th scope="col" style={{"fontFamily": "'Instrument Sans', system-ui, sans-serif", "fontSize": "14px", "fontWeight": 600, "color": "var(--fg2)"}}>What you get</th><th scope="col">Free</th><th scope="col">Pro</th><th scope="col">Pilot</th><th scope="col">Enterprise</th></tr></thead>
-<tbody><tr><th scope="row">Checks</th><td>{freeChecks.work} work · {freeChecks.personal} personal</td><td>Keeps going</td><td>Up to 500 parts</td><td>Sized to you</td></tr><tr><th scope="row">The full answer, 21 ways to make it</th><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td></tr><tr><th scope="row">Your own machines and prices</th><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td></tr><tr><th scope="row">Checks materials hold up where it’s used</th><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td></tr><tr><th scope="row">API access</th><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td></tr><tr><th scope="row">Multi-piece parts and broken-file repair</th><td className="no">—</td><td>Yes</td><td>Yes</td><td>Yes</td></tr><tr><th scope="row">Learns from your real costs</th><td className="no">—</td><td>Yes</td><td>Yes</td><td>Yes</td></tr><tr><th scope="row">Sort a whole parts list at once</th><td className="no">—</td><td className="no">—</td><td>Yes</td><td>Up to 10,000</td></tr><tr><th scope="row">Company login and automatic user setup</th><td className="no">—</td><td className="no">—</td><td className="no">—</td><td>Yes</td></tr><tr><th scope="row">Runs on your own servers</th><td className="no">—</td><td className="no">—</td><td>Set up with you</td><td>Yes</td></tr></tbody>
+<tbody><tr><th scope="row">Checks</th><td>{freeChecks.work} work · {freeChecks.personal} personal</td><td>{pro.monthly_checks} checks/month</td><td>Up to 500 parts</td><td>Sized to you</td></tr><tr><th scope="row">The full answer, 21 ways to make it</th><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td></tr><tr><th scope="row">Your own machines and prices</th><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td></tr><tr><th scope="row">Checks materials hold up where it’s used</th><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td></tr><tr><th scope="row">API access</th><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td></tr><tr><th scope="row">Multi-piece parts and broken-file repair</th><td className="no">—</td><td>Yes</td><td>Yes</td><td>Yes</td></tr><tr><th scope="row">Learns from your real costs</th><td className="no">—</td><td>Yes</td><td>Yes</td><td>Yes</td></tr><tr><th scope="row">Sort a whole parts list at once</th><td className="no">—</td><td className="no">—</td><td>Yes</td><td>Up to 10,000</td></tr><tr><th scope="row">Company login and automatic user setup</th><td className="no">—</td><td className="no">—</td><td className="no">—</td><td>Yes</td></tr><tr><th scope="row">Runs on your own servers</th><td className="no">—</td><td className="no">—</td><td>Set up with you</td><td>Yes</td></tr></tbody>
 </table>
 </div>
 </div>
