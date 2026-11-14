@@ -3,7 +3,7 @@ import ctypes
 import subprocess
 
 VERSIONS = {
-    "libexpat1": "2.9.0-1+cadverify1",
+    "libexpat1": "2.10.0-1+cadverify1",
     "libx11-6": "2:1.8.12-1+cadverify1",
     "libx11-data": "2:1.8.12-1+cadverify1",
     "libx11-xcb1": "2:1.8.12-1+cadverify1",
