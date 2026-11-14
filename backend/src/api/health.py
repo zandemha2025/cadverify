@@ -31,6 +31,30 @@ def _flag(name: str, default: str) -> bool:
     return os.getenv(name, default).strip().lower() in _TRUTHY
 
 
+def _release_label() -> str:
+    """Deploy identity for the ``version`` field.
+
+    ``build_id`` (the exact deployed commit) is the truth; the static
+    ``RELEASE`` env var is only a fallback for environments that never set a
+    commit SHA. Before this helper the field echoed ``RELEASE``, which could go
+    stale for weeks when deploys shipped without touching the env var.
+    """
+    build_id = _build_id()
+    if build_id != "unknown":
+        return build_id
+    return os.getenv("RELEASE", "dev")
+
+
+def _build_id() -> str:
+    return (
+        os.getenv("PROOFSHAPE_BUILD_ID")
+        or os.getenv("RENDER_GIT_COMMIT")
+        or os.getenv("GITHUB_SHA")
+        or os.getenv("CI_COMMIT_SHA")
+        or "unknown"
+    )
+
+
 @router.get("/health")
 async def health_check():
     """Return 200 when healthy, 503 when degraded.
@@ -50,14 +74,8 @@ async def health_check():
           "reconstruction": {...}
         }
     """
-    version = os.getenv("RELEASE", "dev")
-    build_id = (
-        os.getenv("PROOFSHAPE_BUILD_ID")
-        or os.getenv("RENDER_GIT_COMMIT")
-        or os.getenv("GITHUB_SHA")
-        or os.getenv("CI_COMMIT_SHA")
-        or "unknown"
-    )
+    version = _release_label()
+    build_id = _build_id()
     strict = _flag("ASYNC_STRICT_HEALTH", "1")
     worker_strict = _flag("WORKER_STRICT_HEALTH", "0")
 
@@ -208,7 +226,7 @@ async def health_deep(request: Request):
         read_heartbeat_age,
     )
 
-    version = os.getenv("RELEASE", "dev")
+    version = _release_label()
     strict = _flag("ASYNC_STRICT_HEALTH", "1")
     worker_strict = _flag("WORKER_STRICT_HEALTH", "0")
 

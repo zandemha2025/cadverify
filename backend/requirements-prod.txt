@@ -46,3 +46,7 @@ python3-saml>=1.16.0
 -r requirements-otel.txt
 # Exact two-part collision booleans for the context-of-use fit endpoint.
 manifold3d>=3.5.3
+# AP242 XDE/PMI tolerance extraction: OCP bindings (hard-linked against vtk;
+# matplotlib is vtk's declared runtime dep). Activate step_ap242_parser +
+# gdt_extractor in production; ~300MB RSS at import on a 2GB instance.
+cadquery-ocp==7.9.3.1.1
