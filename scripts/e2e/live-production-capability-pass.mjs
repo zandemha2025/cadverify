@@ -40,6 +40,8 @@ const pw = require("playwright-core");
 const BASE = process.env.BASE || "https://scalecad.ai";
 const API = process.env.API_BASE || "https://cadverify-api.onrender.com";
 const EXPECT_TOLERANCES = process.env.EXPECT_TOLERANCES === "1";
+// ONLY=id,id runs just those checks (a login check must be among them).
+const ONLY = process.env.ONLY ? process.env.ONLY.split(",").map(s => s.trim()).filter(Boolean) : null;
 const CREDS = {
   pilot: { email: process.env.PILOT_EMAIL || "nazeem.acceptance.20261114@scalecad.ai", pass: process.env.PILOT_PASS || "AcceptancePass2026" },
   personal: { email: process.env.PERSONAL_EMAIL || "nazeem.acceptance.20261114@gmail.com", pass: process.env.PERSONAL_PASS || "AcceptancePass2026" },
@@ -54,6 +56,10 @@ const badResponses = [];            // {status,url}
 let page, ctx, browser;
 
 async function check(id, description, fn, { timeoutMs = 300_000, expect4xx = false } = {}) {
+  if (ONLY && !ONLY.includes(id)) {
+    receipt.push({ id, description, status: "SKIP", ms: 0 });
+    return;
+  }
   const t0 = Date.now();
   const cMark = consoleErrors.length, rMark = badResponses.length;
   try {
@@ -594,7 +600,7 @@ async function main() {
   const summary = {
     base: BASE, at: new Date().toISOString(), artifacts: ART, expect_tolerances: EXPECT_TOLERANCES,
     nist_tolerances_seen: nist.tolerancesSeen, nist_pmi_block: nist.pmiBlockText, exported, share,
-    total: receipt.length, pass: receipt.filter(r => r.status === "PASS").length, warn: warned.length, fail: failed.length,
+    total: receipt.length, pass: receipt.filter(r => r.status === "PASS").length, warn: warned.length, fail: failed.length, skipped: receipt.filter(r => r.status === "SKIP").length,
     rows: receipt,
   };
   await writeFile("/tmp/scalecad_live_receipt.json", JSON.stringify(summary, null, 1));
