@@ -2,8 +2,8 @@
   "@context": "https://openvex.dev/ns/v0.2.0",
   "@id": "https://github.com/zandemha2025/cadverify/blob/main/backend/security/native-fixes.vex.json",
   "author": "ScaleCad",
-  "timestamp": "2026-11-14T05:30:00Z",
-  "version": 5,
+  "timestamp": "2026-11-14T08:00:00Z",
+  "version": 6,
   "statements": [
     {
       "vulnerability": {
@@ -95,6 +95,31 @@
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
       "status_notes": "Arbitrary code execution via corrupted FTS5 virtual table. libsqlite3-0 ships only as a python:3.12-slim base dependency (the _sqlite3 stdlib module); the application uses PostgreSQL exclusively and never loads or queries the FTS5 module, so the vulnerable code path never executes. Debian tracks this as a minor issue with no DSA for trixie (fixed only in sid 3.54.1), so the statement is version-less: it applies to whatever unfixed trixie build the base carries. Revisit when a trixie-security fixed version is published. Debian tracker: https://security-tracker.debian.org/tracker/CVE-2026-119374."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-115506"
+      },
+      "products": [
+        {
+          "@id": "pkg:deb/debian/libexpat1@2.10.0-1%2Bcadverify1"
+        }
+      ],
+      "status": "fixed",
+      "status_notes": "expat DoS via delayed entity expansion is fixed upstream in expat 2.10.0 (libexpat PR #1433), which Debian ships as sid source 2.10.0-1 -- exactly the source the native-security stage rebuilds with the +cadverify1 local revision. Trivy's Debian data marks trixie (2.9.0-1~deb13u1) vulnerable and does not recognize the locally revised build as the fixed source. Debian tracker: https://security-tracker.debian.org/tracker/CVE-2026-115506."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-119379"
+      },
+      "products": [
+        {
+          "@id": "pkg:deb/debian/libsqlite3-0"
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "status_notes": "Heap buffer overflow in sqlite3changeset_apply(), the session extension (replication changesets). libsqlite3-0 ships only as a python:3.12-slim base dependency (the _sqlite3 stdlib module); the application uses PostgreSQL exclusively and never opens a session, builds a changeset or calls changeset_apply, so the vulnerable code path never executes. Debian tracks this as a minor issue with no DSA for trixie (fixed only in sid 3.54.1-2); like the CVE-2026-119374 statement, version-less so it applies to whatever unfixed trixie build the base carries. Debian tracker: https://security-tracker.debian.org/tracker/CVE-2026-119379."
     }
   ]
 }
