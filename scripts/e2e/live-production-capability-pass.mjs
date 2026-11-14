@@ -40,6 +40,8 @@ const pw = require("playwright-core");
 const BASE = process.env.BASE || "https://scalecad.ai";
 const API = process.env.API_BASE || "https://cadverify-api.onrender.com";
 const EXPECT_TOLERANCES = process.env.EXPECT_TOLERANCES === "1";
+// ONLY=id,id runs just those checks (a login check must be among them).
+const ONLY = process.env.ONLY ? process.env.ONLY.split(",").map(s => s.trim()).filter(Boolean) : null;
 const CREDS = {
   pilot: { email: process.env.PILOT_EMAIL || "nazeem.acceptance.20261114@scalecad.ai", pass: process.env.PILOT_PASS || "AcceptancePass2026" },
   personal: { email: process.env.PERSONAL_EMAIL || "nazeem.acceptance.20261114@gmail.com", pass: process.env.PERSONAL_PASS || "AcceptancePass2026" },
@@ -54,6 +56,10 @@ const badResponses = [];            // {status,url}
 let page, ctx, browser;
 
 async function check(id, description, fn, { timeoutMs = 300_000, expect4xx = false } = {}) {
+  if (ONLY && !ONLY.includes(id)) {
+    receipt.push({ id, description, status: "SKIP", ms: 0 });
+    return;
+  }
   const t0 = Date.now();
   const cMark = consoleErrors.length, rMark = badResponses.length;
   try {
@@ -400,12 +406,23 @@ async function main() {
 
   let nist = { tolerancesSeen: false, pmiBlockText: null };
   await check("upload-pilot-nist-pmi", "NIST AP242 (CTC-01) end-to-end under pilot", async () => {
+    // Cached analyses are deterministic ("same file, same result, every
+    // time"), so a file checked before an engine upgrade answers with the
+    // pre-upgrade response. The run's copy bumps the STEP FILE_NAME
+    // timestamp — bytes unique to this run, geometry and PMI identical — so
+    // the check exercises today's engine, not a cached yesterday.
+    const nistRun = `${ART}/nist_ctc_01.stp`;
+    await writeFile(nistRun, (await readFile("/tmp/nist_ctc_01.stp"))
+      .toString("utf8")
+      .replace("'2021-12-21T09:14:03'", `'${new Date().toISOString()}'`));
     await gotoAppAndSettle();
-    const r = await uploadAndAwaitVerdict("/tmp/nist_ctc_01.stp", { timeout: 600_000 });
+    const r = await uploadAndAwaitVerdict(nistRun, { timeout: 600_000 });
     if (!PRICED.has(r.outcome)) throw new Error(`expected priced, got ${JSON.stringify(r)}`);
     const t = await bodyText();
-    const specs = await page.locator('button, [role="tab"], a').filter({ hasText: /^Specs$/ }).first();
-    if (await specs.isVisible().catch(() => false)) { await specs.click(); await page.waitForTimeout(1500); }
+    // The lens dial buttons carry a label plus a small sub-line ("SpecsUse it"),
+    // so anchor only on the start of the button's text.
+    const specs = page.locator('nav.dial button').filter({ hasText: /^Specs/ }).first();
+    if (await specs.isVisible().catch(() => false)) { await specs.click(); await page.waitForTimeout(1800); }
     const t2 = await bodyText();
     // The Specs tab's PMI block ("Read from this file · N tolerances") is the
     // UI surface for the engine's AP242 reading; without the OCP deploy there
@@ -594,7 +611,7 @@ async function main() {
   const summary = {
     base: BASE, at: new Date().toISOString(), artifacts: ART, expect_tolerances: EXPECT_TOLERANCES,
     nist_tolerances_seen: nist.tolerancesSeen, nist_pmi_block: nist.pmiBlockText, exported, share,
-    total: receipt.length, pass: receipt.filter(r => r.status === "PASS").length, warn: warned.length, fail: failed.length,
+    total: receipt.length, pass: receipt.filter(r => r.status === "PASS").length, warn: warned.length, fail: failed.length, skipped: receipt.filter(r => r.status === "SKIP").length,
     rows: receipt,
   };
   await writeFile("/tmp/scalecad_live_receipt.json", JSON.stringify(summary, null, 1));
