@@ -242,16 +242,26 @@ function parseCsv(text) {
   return rows.filter(r => r.length > 1);
 }
 
-/** Collect every JSON number under cost-ish keys, as formatted money strings. */
+/** Every finite number in the JSON export, as a formatted money string. The
+ * export keys its cost lines by line name ("Machine", "Setup"), so no key
+ * pattern can find them all; a sheet figure must simply appear in the export. */
 function jsonMoneySet(obj, out = new Set()) {
   if (Array.isArray(obj)) { obj.forEach(v => jsonMoneySet(v, out)); return out; }
-  if (obj && typeof obj === "object") {
-    for (const [k, v] of Object.entries(obj)) {
-      if (typeof v === "number" && /total|cost|price|unit|amount|estimate|rate|each|per_/i.test(k)) out.add(fmtMoney(v));
-      else if (v && typeof v === "object") jsonMoneySet(v, out);
-    }
-  }
+  if (obj && typeof obj === "object") { Object.values(obj).forEach(v => jsonMoneySet(v, out)); return out; }
+  if (typeof obj === "number" && Number.isFinite(obj)) out.add(fmtMoney(obj));
   return out;
+}
+
+/** Switch off the public link on the open record sheet, if it has one. */
+async function switchOffOpenRecordLink() {
+  const off = page.getByRole("button", { name: "Switch off", exact: true }).first();
+  if (!(await off.isVisible().catch(() => false))) return false;
+  await off.click();
+  // The row is replaced by a Confirm whose action is also "Switch off".
+  await page.waitForTimeout(400);
+  await page.getByRole("button", { name: "Switch off", exact: true }).first().click();
+  await page.getByRole("button", { name: "Share", exact: true }).first().waitFor({ state: "visible", timeout: 20_000 });
+  return true;
 }
 
 async function main() {
@@ -494,34 +504,64 @@ async function main() {
       throw new Error(`sheet figures missing from JSON export: ${JSON.stringify({ ui: uiFigures.slice(0, 10), json: jsonFigures.slice(0, 10) })}`);
   }, { timeoutMs: 300_000 });
 
-  await check("share-link-lifecycle", "share link: create via Share dialog, opens logged-out, then off", async () => {
+  let share = {};
+  await check("share-link-lifecycle", "share link: create in the Share dialog, opens logged-out, switch off ends it", async () => {
+    const anonOpen = async (url, shot) => {
+      const anon = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+      const ap = await anon.newPage();
+      const resp = await ap.goto(url, { waitUntil: "load" });
+      await ap.waitForTimeout(1200);
+      const text = await ap.evaluate(() => document.body.innerText || "");
+      await ap.screenshot({ path: `${ART}/${shot}.png` }).catch(() => {});
+      await anon.close();
+      return { status: resp ? resp.status() : 0, text };
+    };
+
     await openFirstRecord();
-    const shareBtn = page.getByRole("button", { name: "Share", exact: true }).first();
-    if (!(await shareBtn.count())) throw new Error("no Share control on the record sheet");
-    await shareBtn.click();
+    // A link left on by an earlier run is switched off first: start from "Off".
+    share.precleaned = await switchOffOpenRecordLink();
+    await page.getByRole("button", { name: "Share", exact: true }).first().click();
     await page.locator('[role="dialog"]').first().waitFor({ state: "visible", timeout: 15_000 });
-    const create = page.getByRole("button", { name: /Create and copy|Create/i }).first();
-    await create.waitFor({ state: "visible", timeout: 15_000 });
+    const create = page.getByRole("button", { name: "Create and copy", exact: true }).first();
+    await create.waitFor({ state: "visible", timeout: 30_000 });
     await create.click();
     const linkInput = page.locator('[role="dialog"] input[readonly]').first();
     await linkInput.waitFor({ state: "visible", timeout: 30_000 });
     const link = await linkInput.inputValue();
     if (!/^https?:\/\//.test(link)) throw new Error(`share link not a URL: ${link}`);
-    // Open it logged-out in a second, cookie-less context.
-    const anon = await browser.newContext({ viewport: { width: 1280, height: 800 } });
-    const ap = await anon.newPage();
-    const resp = await ap.goto(link, { waitUntil: "load" });
-    const anonText = await ap.evaluate(() => document.body.innerText || "");
-    await ap.screenshot({ path: `${ART}/share-link-anon.png` }).catch(() => {});
-    await anon.close();
-    if (!resp || resp.status() >= 400) throw new Error(`share link HTTP ${resp && resp.status()}`);
-    if (!/scalecad|spec|part|price|\$/i.test(anonText)) throw new Error("share page rendered empty");
-    // Switch it off from the Share links screen.
-    await page.goto(`${BASE}/app/account/links`, { waitUntil: "load" });
-    await page.waitForTimeout(1000);
-    const off = page.getByRole("button", { name: /off|revoke|withdraw/i }).first();
-    if (await off.isVisible().catch(() => false)) { await off.click().catch(() => {}); await page.waitForTimeout(800); }
-  }, { timeoutMs: 240_000 });
+    share.link = link.replace(/[A-Za-z0-9_-]{12,}$/, "<token>");
+
+    const live = await anonOpen(link, "share-link-anon-live");
+    if (live.status >= 400) throw new Error(`share link HTTP ${live.status} while on`);
+    if (!/nist|plate|\.st[ep]{1,2}|spec|quantity/i.test(live.text)) throw new Error(`shared page shows no part: ${live.text.slice(0, 160)}`);
+    share.live = { status: live.status, shows: live.text.replace(/\s+/g, " ").slice(0, 140) };
+
+    // Back on the sheet: switch it off, and the same URL must say so.
+    await page.keyboard.press("Escape");
+    await page.reload({ waitUntil: "load" });
+    await page.waitForSelector("text=Export", { timeout: 30_000 });
+    if (!(await switchOffOpenRecordLink())) throw new Error("the sheet shows no live link to switch off after creating one");
+    const ended = await anonOpen(link, "share-link-anon-off");
+    share.ended = { status: ended.status, shows: ended.text.replace(/\s+/g, " ").slice(0, 140) };
+    if (ended.status < 400 && !/switched off|no longer|ended|not available|turned off/i.test(ended.text))
+      throw new Error(`link still serves the part after switch-off: ${share.ended.shows}`);
+
+    // Leave no public links behind on the smoke account (earlier runs did).
+    share.cleaned = 0;
+    for (let i = 0; i < 6; i++) {
+      await gotoAppAndSettle("/app/parts/records");
+      const shared = page.locator("button.lrow", { hasText: "Shared" }).first();
+      if (!(await shared.isVisible().catch(() => false))) break;
+      await shared.click();
+      await page.waitForURL(u => /\/app\/parts\/records\/.+/.test(u.pathname), { timeout: 30_000 });
+      await page.waitForSelector("text=Export", { timeout: 30_000 });
+      if (!(await switchOffOpenRecordLink())) break;
+      share.cleaned++;
+    }
+    await gotoAppAndSettle("/app/parts/records");
+    if (await page.locator("button.lrow", { hasText: "Shared" }).first().isVisible().catch(() => false))
+      throw new Error("a record is still publicly shared after cleanup");
+  }, { timeoutMs: 300_000 });
 
   await check("logout-control-ux", "Security screen sign-out (with confirm) revokes the session", async () => {
     await gotoAppAndSettle("/app/account/security");
@@ -553,7 +593,7 @@ async function main() {
   const warned = receipt.filter(r => r.status === "WARN");
   const summary = {
     base: BASE, at: new Date().toISOString(), artifacts: ART, expect_tolerances: EXPECT_TOLERANCES,
-    nist_tolerances_seen: nist.tolerancesSeen, exported,
+    nist_tolerances_seen: nist.tolerancesSeen, nist_pmi_block: nist.pmiBlockText, exported, share,
     total: receipt.length, pass: receipt.filter(r => r.status === "PASS").length, warn: warned.length, fail: failed.length,
     rows: receipt,
   };
