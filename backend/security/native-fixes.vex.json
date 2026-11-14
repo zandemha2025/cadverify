@@ -89,12 +89,12 @@
       },
       "products": [
         {
-          "@id": "pkg:deb/debian/libsqlite3-0@3.46.1-7%2Bdeb13u2"
+          "@id": "pkg:deb/debian/libsqlite3-0"
         }
       ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "status_notes": "Arbitrary code execution via corrupted FTS5 virtual table. libsqlite3-0 ships only as a python:3.12-slim base dependency (the _sqlite3 stdlib module); the application uses PostgreSQL exclusively and never loads or queries the FTS5 module, so the vulnerable code path never executes. Debian tracks this as a minor issue with no DSA for trixie (fixed only in sid 3.54.1). Revisit if a trixie-security fixed version is published. Debian tracker: https://security-tracker.debian.org/tracker/CVE-2026-119374."
+      "status_notes": "Arbitrary code execution via corrupted FTS5 virtual table. libsqlite3-0 ships only as a python:3.12-slim base dependency (the _sqlite3 stdlib module); the application uses PostgreSQL exclusively and never loads or queries the FTS5 module, so the vulnerable code path never executes. Debian tracks this as a minor issue with no DSA for trixie (fixed only in sid 3.54.1), so the statement is version-less: it applies to whatever unfixed trixie build the base carries. Revisit when a trixie-security fixed version is published. Debian tracker: https://security-tracker.debian.org/tracker/CVE-2026-119374."
     }
   ]
 }
