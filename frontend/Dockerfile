@@ -1,4 +1,4 @@
-FROM node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2 AS builder
+FROM node:22-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a AS builder
 
 WORKDIR /app
 
@@ -27,7 +27,7 @@ ENV NEXT_PUBLIC_UI_V4=$NEXT_PUBLIC_UI_V4
 RUN npm run build
 RUN npm prune --omit=dev
 
-FROM node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2 AS runner
+FROM node:22-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a AS runner
 
 WORKDIR /app
 
@@ -44,7 +44,10 @@ RUN mkdir -p /app/.next/cache && chown -R node:node /app
 
 # Package installation belongs in the builder. Start Next directly so the
 # runtime does not retain npm's separately vulnerable dependency tree.
-RUN apk upgrade --no-cache libcrypto3 libssl3 \
+# 2026-11-14: musl 1.2.6-r3 (CVE-2026-107891) and zlib 1.3.2-r1
+# (CVE-2026-85091) added; the base digest was refreshed the same day, so
+# these upgrades are belt-and-braces against a stale mirror.
+RUN apk upgrade --no-cache libcrypto3 libssl3 musl zlib \
  && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx /root/.npm
 
 USER node

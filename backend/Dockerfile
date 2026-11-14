@@ -2,7 +2,7 @@
 # =============================================================================
 # Stage 1 - builder: install build tools + compile C extensions into a venv
 # =============================================================================
-FROM python:3.12-slim@sha256:423ed6ab25b1921a477529254bfeeabf5855151dc2c3141699a1bfc852199fbf AS builder
+FROM python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS builder
 
 WORKDIR /build
 
@@ -41,14 +41,14 @@ ADD --checksum=sha256:6d1aa6f30de5c92224f8172114de081d104bbd23dd9dc5c58996f0cad5
 # Backport upstream fixes while Debian trixie packages are still affected.
 # Only source packages come from sid; all compilation and binary dependencies
 # remain trixie. Build real .debs so inventory/SBOM versions stay truthful.
-FROM python:3.12-slim@sha256:423ed6ab25b1921a477529254bfeeabf5855151dc2c3141699a1bfc852199fbf AS native-security
+FROM python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS native-security
 WORKDIR /build
 RUN sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/debian.sources \
     && printf '%s\n' 'deb-src http://deb.debian.org/debian sid main' > /etc/apt/sources.list.d/security-source.list \
     && apt-get update \
     && apt-get install -y --no-install-recommends build-essential dpkg-dev fakeroot \
     && apt-get build-dep -y --no-install-recommends \
-       expat=2.9.0-1 libx11=2:1.8.12-1 libxrender=1:0.9.12-1
+       expat=2.10.0-1 libx11=2:1.8.12-1 libxrender=1:0.9.12-1
 ADD --checksum=sha256:dd9ecf20d2ca40c7ec3d8cdf3727c729f9fae3b6cc010e9436f152ae7cd6da31 \
     https://gitlab.freedesktop.org/xorg/lib/libx11/-/merge_requests/309.patch /patches/x11.patch
 ADD --checksum=sha256:565e816e88ca223cebc6f833cfcfa63d20aaa22c8293d878bdd059910c4a66fc \
@@ -59,7 +59,7 @@ RUN sh /build-patched-debs.sh
 # =============================================================================
 # Runtime: slim image with only runtime deps + venv + app code
 # =============================================================================
-FROM python:3.12-slim@sha256:423ed6ab25b1921a477529254bfeeabf5855151dc2c3141699a1bfc852199fbf
+FROM python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
 
 WORKDIR /app
 
@@ -107,6 +107,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # upgraded here -- no source rebuild (the native-security stage builds only the
 # packages Debian still leaves unfixed). The guard rejects a mirror still serving
 # the vulnerable build.
+# Round 5 (2026-11-14, gate run 43543866894, fresh Trivy DB): the base digest was
+# refreshed and apt -> 3.0.4 (CVE-2026-109518) and zlib1g -> deb13u1
+# (CVE-2026-76844) are upgraded here with guards, in case the rebuilt base
+# predates them. expat is rebuilt from sid source 2.10.0-1 in the
+# native-security stage (CVE-2026-113351; trixie is unfixed). Debian has no
+# trixie fix for libsqlite3-0 CVE-2026-119374 (minor, <no-dsa>): it is a VEX
+# not_affected statement in security/native-fixes.vex.json, because FTS5 never
+# executes in this image.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     openssl \
     libssl3t64 \
@@ -124,10 +132,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsqlite3-0 \
     openssl-provider-legacy \
     libbrotli1 \
+    apt \
+    zlib1g \
     && for package in openssl libssl3t64 openssl-provider-legacy; do \
          dpkg --compare-versions "$(dpkg-query -W -f='${Version}' "$package")" ge '3.5.7-1~deb13u3' || exit 1; \
        done \
     && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libbrotli1)" ge '1.1.0-2+deb13u1' || exit 1 \
+    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' apt)" ge '3.0.4' || exit 1 \
+    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' zlib1g)" ge '1:1.3.dfsg+really1.3.1-1+deb13u1' || exit 1 \
     && rm -rf /var/lib/apt/lists/*
 
 # STEP ingestion (B4): the gmsh manylinux wheel (libgmsh.so, embedded

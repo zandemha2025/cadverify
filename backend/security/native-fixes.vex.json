@@ -2,8 +2,8 @@
   "@context": "https://openvex.dev/ns/v0.2.0",
   "@id": "https://github.com/zandemha2025/cadverify/blob/main/backend/security/native-fixes.vex.json",
   "author": "ScaleCad",
-  "timestamp": "2026-10-23T22:30:00Z",
-  "version": 4,
+  "timestamp": "2026-11-14T05:30:00Z",
+  "version": 5,
   "statements": [
     {
       "vulnerability": {
@@ -11,11 +11,11 @@
       },
       "products": [
         {
-          "@id": "pkg:deb/debian/libexpat1@2.9.0-1%2Bcadverify1"
+          "@id": "pkg:deb/debian/libexpat1@2.10.0-1%2Bcadverify1"
         }
       ],
       "status": "fixed",
-      "status_notes": "Built from Debian expat 2.9.0-1 source on trixie, containing upstream UTF-16 validation fix 0cfd15bdf4b2c22d6b0df73610709dfb60921091 and regression tests 28fcfba540f6933aa8904a1514c4811713d2ab72. Runtime installed-library regression check is mandatory."
+      "status_notes": "Built from Debian expat 2.10.0-1 source on trixie, containing upstream UTF-16 validation fix 0cfd15bdf4b2c22d6b0df73610709dfb60921091 and regression tests 28fcfba540f6933aa8904a1514c4811713d2ab72. Runtime installed-library regression check is mandatory."
     },
     {
       "vulnerability": {
@@ -23,11 +23,11 @@
       },
       "products": [
         {
-          "@id": "pkg:deb/debian/libexpat1@2.9.0-1%2Bcadverify1"
+          "@id": "pkg:deb/debian/libexpat1@2.10.0-1%2Bcadverify1"
         }
       ],
       "status": "fixed",
-      "status_notes": "Built from Debian expat 2.9.0-1 source on trixie, containing upstream buffer-length validation fix 4d9b1c499ecb66323260a7274edcf86c5eab0517. The image build exercises the installed libexpat.so.1 and requires XML_ParseBuffer to reject oversized lengths before and after a valid parse chunk. Debian tracker: https://security-tracker.debian.org/tracker/CVE-2026-77214."
+      "status_notes": "Built from Debian expat 2.10.0-1 source on trixie, containing upstream buffer-length validation fix 4d9b1c499ecb66323260a7274edcf86c5eab0517. The image build exercises the installed libexpat.so.1 and requires XML_ParseBuffer to reject oversized lengths before and after a valid parse chunk. Debian tracker: https://security-tracker.debian.org/tracker/CVE-2026-77214."
     },
     {
       "vulnerability": {
@@ -70,6 +70,31 @@
       ],
       "status": "fixed",
       "status_notes": "The runtime image installs Debian's security update libbrotli1 1.1.0-2+deb13u1 (trixie-security), whose quilt series applies the upstream decoder fix da980636 (Detect-and-report-invalid-stream-earlier.patch). The installed libbrotlidec.so carries the new _ERROR_FORMAT_BLOCK_SWITCH error code, i.e. the fix is present. Trivy still reports CVE-2026-111497 as affected with no fixed version because its vulnerability DB has not yet recorded the Debian fix for this freshly published CVE; this statement asserts the installed version is fixed. Remove once Trivy's Debian data lists the fixed version. Debian tracker: https://security-tracker.debian.org/tracker/CVE-2026-111497."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-113351"
+      },
+      "products": [
+        {
+          "@id": "pkg:deb/debian/libexpat1@2.10.0-1%2Bcadverify1"
+        }
+      ],
+      "status": "fixed",
+      "status_notes": "expat DoS via improper memory tracking (CVE-2026-113351) is fixed upstream in the release line shipped as Debian sid source 2.10.0-1; trixie remains vulnerable (Debian marks it <no-dsa>, minor issue), so the native-security stage now builds expat from sid source 2.10.0-1 (up from 2.9.0-1) with the +cadverify1 local revision. The image build's installed-library regression checks still exercise libexpat.so.1. Debian tracker: https://security-tracker.debian.org/tracker/CVE-2026-113351."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-119374"
+      },
+      "products": [
+        {
+          "@id": "pkg:deb/debian/libsqlite3-0@3.46.1-7%2Bdeb13u2"
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "status_notes": "Arbitrary code execution via corrupted FTS5 virtual table. libsqlite3-0 ships only as a python:3.12-slim base dependency (the _sqlite3 stdlib module); the application uses PostgreSQL exclusively and never loads or queries the FTS5 module, so the vulnerable code path never executes. Debian tracks this as a minor issue with no DSA for trixie (fixed only in sid 3.54.1). Revisit if a trixie-security fixed version is published. Debian tracker: https://security-tracker.debian.org/tracker/CVE-2026-119374."
     }
   ]
 }
