@@ -42,6 +42,10 @@ const API = process.env.API_BASE || "https://cadverify-api.onrender.com";
 const EXPECT_TOLERANCES = process.env.EXPECT_TOLERANCES === "1";
 // ONLY=id,id runs just those checks (a login check must be among them).
 const ONLY = process.env.ONLY ? process.env.ONLY.split(",").map(s => s.trim()).filter(Boolean) : null;
+// EXTRA_PARTS=/path/part.stp:/path/other.stp adds pilot-tier priced checks
+// (upload-extra-1…) for fixture shapes the mandate lists but the core pass
+// does not carry (sheet-metal bends, turned shafts).
+const EXTRA_PARTS = process.env.EXTRA_PARTS ? process.env.EXTRA_PARTS.split(":").map(s => s.trim()).filter(Boolean) : [];
 const CREDS = {
   pilot: { email: process.env.PILOT_EMAIL || "nazeem.acceptance.20261114@scalecad.ai", pass: process.env.PILOT_PASS || "AcceptancePass2026" },
   personal: { email: process.env.PERSONAL_EMAIL || "nazeem.acceptance.20261114@gmail.com", pass: process.env.PERSONAL_PASS || "AcceptancePass2026" },
@@ -433,6 +437,16 @@ async function main() {
     if (EXPECT_TOLERANCES && !nist.tolerancesSeen) throw new Error(`PMI block missing or empty on the NIST part's Specs tab (${nist.pmiBlockText})`);
     if (!EXPECT_TOLERANCES) console.log(`  note: PMI block = ${JSON.stringify(nist.pmiBlockText)} (EXPECTED only after the OCP deploy)`);
   }, { timeoutMs: 660_000 });
+
+  for (let i = 0; i < EXTRA_PARTS.length; i++) {
+    await check(`upload-extra-${i + 1}`, `pilot: ${path.basename(EXTRA_PARTS[i])} prices with a verdict`, async () => {
+      await gotoAppAndSettle();
+      const r = await uploadAndAwaitVerdict(EXTRA_PARTS[i], { timeout: 420_000 });
+      if (!PRICED.has(r.outcome)) throw new Error(`expected priced, got ${JSON.stringify(r)}`);
+      const t = await bodyText();
+      if (!/\$\s?[\d,]+\.\d\d/.test(t)) throw new Error("no cost figure on the part page");
+    }, { timeoutMs: 480_000 });
+  }
 
   await check("webgl-viewer-orbit", "3D viewer: canvas + orbit with no WebGL/console errors", async () => {
     await gotoAppAndSettle();
