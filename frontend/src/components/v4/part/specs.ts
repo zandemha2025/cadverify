@@ -328,3 +328,69 @@ export function specsChangedSinceRun(cost: { specs?: { declared?: unknown } | nu
   if (!cost) return false;
   return !sameSpecs(pricedSpecs(runSpecs(cost)), pricedSpecs(stored));
 }
+
+/* ── PMI read from the file (AP242 GD&T) ──────────────────────────── */
+
+/** The tolerance report the engine attaches to a validation
+ * (backend tolerance_service.tolerance_report_to_dict). Local and structural:
+ * this module is pure and runs under node --test, where path aliases do not. */
+export interface PmiEntry {
+  tolerance_id: string;
+  /** ISO 1101 category, e.g. "position", "flatness". */
+  tolerance_type: string;
+  value_mm: number;
+  datum_refs?: string[];
+  feature_description?: string;
+  surface_finish_ra_um?: number;
+  upper_deviation?: number;
+  lower_deviation?: number;
+  process_verdicts?: { process: string; verdict: "achievable" | "marginal" | "not_achievable"; process_capability_mm: number; margin_mm: number }[];
+  /** "deg" for an angular size's deviations; absent (millimetres) for everything else. */
+  unit?: string;
+}
+
+export interface PmiReport {
+  has_pmi: boolean;
+  summary_score?: number;
+  /** Why there is no PMI, or which annotations could not be read. */
+  pmi_note?: string;
+  entries?: PmiEntry[];
+}
+
+/** One tolerance as a line: the callout first, then what it applies to. */
+export function pmiLine(entry: PmiEntry): string {
+  // An angular size's deviations are in degrees; everything else is millimetres.
+  const unit = entry.unit === "deg" ? "°" : " mm";
+  const parts: string[] = [];
+  if (entry.upper_deviation != null || entry.lower_deviation != null) {
+    const up = entry.upper_deviation != null ? `+${Number(entry.upper_deviation.toFixed(4))}` : null;
+    const low = entry.lower_deviation != null ? `−${Number(Math.abs(entry.lower_deviation).toFixed(4))}` : null;
+    parts.push(`${entry.tolerance_type} ${[up, low].filter(Boolean).join(" / ")}${unit}`);
+  } else {
+    parts.push(`${entry.tolerance_type} ${Number(entry.value_mm.toFixed(4))}${unit}`);
+  }
+  if (entry.datum_refs?.length) parts.push(entry.datum_refs.join("|"));
+  if (entry.surface_finish_ra_um != null) parts.push(`Ra ${Number(entry.surface_finish_ra_um.toFixed(2))} µm`);
+  const what = [parts.join(" · ")];
+  if (entry.feature_description) what.push(entry.feature_description);
+  return what.join(" — ");
+}
+
+/** How many priced routes can hold each tolerance ("2 of 5 routes hold it"). */
+export function pmiHeld(entry: PmiEntry): string | null {
+  const v = entry.process_verdicts;
+  if (!v?.length) return null;
+  const hold = v.filter((x) => x.verdict === "achievable").length;
+  return `${hold} of ${v.length} routes hold it`;
+}
+
+/** The Specs' PMI block, or null when the check carried no tolerance report at all. */
+export function pmiBlock(report: PmiReport | null | undefined): { lines: string[]; held: (string | null)[]; note: string | null } | null {
+  if (!report) return null;
+  const entries = report.entries ?? [];
+  return {
+    lines: entries.map(pmiLine),
+    held: entries.map(pmiHeld),
+    note: report.pmi_note ?? null,
+  };
+}
