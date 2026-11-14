@@ -68,7 +68,7 @@ def analyze_tolerances(
         logger.warning("GD&T extraction yielded no tolerances with %d warnings", len(warnings))
         return ToleranceReport(
             has_pmi=True,
-            pmi_note=f"{len(warnings)} annotation(s) could not be extracted: {'; '.join(warnings)}",
+            pmi_note="; ".join(warnings),
         )
 
     # Merge surface finish annotations into matching ToleranceEntry objects
@@ -83,10 +83,14 @@ def analyze_tolerances(
             verdict_str, cap_min, margin = validate_tolerance(
                 tol.value_mm, proc, tol.tolerance_type.value
             )
+            if verdict_str == "unknown":
+                # No capability row for this tolerance type (the dimensional
+                # types): the tolerance is reported, but never guessed at or
+                # scored as unachievable.
+                continue
             try:
                 verdict = AchievabilityVerdict(verdict_str)
             except ValueError:
-                # "unknown" is not in the enum — treat as not_achievable for scoring
                 verdict = AchievabilityVerdict.NOT_ACHIEVABLE
 
             achievability.append(
@@ -105,7 +109,8 @@ def analyze_tolerances(
     # Build pmi_note from warnings
     pmi_note: str | None = None
     if warnings:
-        pmi_note = f"{len(warnings)} annotation(s) could not be extracted: {'; '.join(warnings)}"
+        # The extractor's warnings are whole sentences (which annotation, why).
+        pmi_note = "; ".join(warnings)
 
     logger.info(
         "Tolerance analysis for %s: %d tolerances, %d processes, score=%.1f",
@@ -146,12 +151,15 @@ def _calculate_summary_score(
     """Calculate summary score as % of tolerances achievable by best process.
 
     For each process, count how many tolerances have "achievable" verdict.
-    Return the best process's score as a percentage (0-100).
+    Return the best process's score as a percentage (0-100). Tolerances with no
+    capability row (the dimensional types) are not in ``achievability`` and so
+    do not dilute the score; with nothing scoreable the score is 0.
     """
-    if not tolerances:
+    scored = {a.tolerance_id for a in achievability}
+    if not scored:
         return 0.0
 
-    total = len(tolerances)
+    total = len(scored)
     best_score = 0.0
 
     for proc in target_processes:
@@ -218,6 +226,8 @@ def tolerance_report_to_dict(report: ToleranceReport) -> dict[str, Any]:
             entry["upper_deviation"] = tol.upper_deviation
         if tol.lower_deviation is not None:
             entry["lower_deviation"] = tol.lower_deviation
+        if tol.unit != "mm":
+            entry["unit"] = tol.unit
 
         entries.append(entry)
 

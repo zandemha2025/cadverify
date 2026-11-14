@@ -41,6 +41,14 @@ class ToleranceType(str, Enum):
     CIRCULAR_RUNOUT = "circular_runout"
     TOTAL_RUNOUT = "total_runout"
 
+    # Dimensional tolerances read from AP242 dimension annotations (ISO 14405
+    # size and location dimensions). They are reported with their deviations but
+    # carry no ISO 1101 capability row, so they are never scored — see
+    # tolerance_service.analyze_tolerances.
+    DIAMETER = "diameter"
+    LINEAR_SIZE = "linear_size"
+    ANGULAR_SIZE = "angular_size"
+
 
 class AchievabilityVerdict(str, Enum):
     """Whether a tolerance can be achieved by a given manufacturing process."""
@@ -73,6 +81,9 @@ class ToleranceEntry:
     datum_refs: list[str] = field(default_factory=list)
     feature_description: str = ""
     surface_finish_ra_um: float | None = None
+    # "mm" for ISO 1101 zones and linear/diameter deviations, "deg" for an
+    # angular size's deviations; serialized only when not "mm".
+    unit: str = "mm"
 
 
 @dataclass

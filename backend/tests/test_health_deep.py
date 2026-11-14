@@ -230,3 +230,35 @@ async def test_deep_production_storage_passes_when_bucket_is_reachable(monkeypat
     assert resp.status_code == 200
     assert resp.json()["checks"]["object_store"]["ok"] is True
     store.healthcheck.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+async def test_health_version_tracks_build_id_not_stale_release(monkeypatch):
+    """The version field must report the deployed commit, not a stale RELEASE."""
+    from src.api.health import _release_label
+
+    sha = "a" * 40
+    for var in ("PROOFSHAPE_BUILD_ID", "RENDER_GIT_COMMIT", "GITHUB_SHA", "CI_COMMIT_SHA"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("RELEASE", "very-old-label")
+    monkeypatch.setenv("RENDER_GIT_COMMIT", sha)
+    assert _release_label() == sha
+
+
+@pytest.mark.asyncio
+async def test_health_version_falls_back_to_release_without_sha(monkeypatch):
+    from src.api.health import _release_label
+
+    for var in ("PROOFSHAPE_BUILD_ID", "RENDER_GIT_COMMIT", "GITHUB_SHA", "CI_COMMIT_SHA"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("RELEASE", "v9")
+    assert _release_label() == "v9"
+
+
+@pytest.mark.asyncio
+async def test_health_version_defaults_to_dev(monkeypatch):
+    from src.api.health import _release_label
+
+    for var in ("PROOFSHAPE_BUILD_ID", "RENDER_GIT_COMMIT", "GITHUB_SHA", "CI_COMMIT_SHA", "RELEASE"):
+        monkeypatch.delenv(var, raising=False)
+    assert _release_label() == "dev"

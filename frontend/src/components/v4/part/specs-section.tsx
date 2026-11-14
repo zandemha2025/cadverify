@@ -26,6 +26,7 @@ import {
   hasSpecs,
   mustHold,
   normalizeSpecs,
+  pmiBlock,
   sameSpecs,
   specExclusions,
   specLines,
@@ -98,6 +99,10 @@ export function SpecsSection() {
   const specDays = (est?.lead_time?.components as Record<string, number> | undefined)?.specs ?? null;
   const must = mustHold(stored);
   const running = useStoredRecheck(key);
+  // GD&T the engine read from the file itself (AP242 PMI). Absent on non-STEP
+  // files and wherever that reading isn't available, so the block simply
+  // doesn't render: never a guess standing in for a reading.
+  const pmi = React.useMemo(() => pmiBlock(p.data.validation?.tolerances ?? null), [p.data.validation]);
 
   return (
     <>
@@ -105,6 +110,20 @@ export function SpecsSection() {
         <span>Specs</span>
         <span>{hasSpecs(stored) ? "Saved with this part" : "Not set"}</span>
       </div>
+      {pmi ? (
+        <div className="pickset" role="group" aria-label="PMI read from this file">
+          <span className="lab">
+            Read from this file{pmi.lines.length ? ` · ${pmi.lines.length} ${pmi.lines.length === 1 ? "tolerance" : "tolerances"}` : ""}
+          </span>
+          {pmi.lines.map((line, i) => (
+            <span key={i} style={{ display: "block", width: "100%", fontSize: 13 }}>
+              {line}
+              {pmi.held[i] ? <small style={{ color: "var(--ink3)" }}> · {pmi.held[i]}</small> : null}
+            </span>
+          ))}
+          {pmi.note ? <span style={{ display: "block", width: "100%", fontSize: 12, color: "var(--ink3)" }}>{pmi.note}</span> : null}
+        </div>
+      ) : null}
       {stale ? (
         <div className="note" role="status" style={{ borderColor: "#E9C46A" }}>
           <b>The prices on this page used {hasSpecs(p.data.cost?.specs?.declared) ? "the previous specs" : "no specs"}</b>

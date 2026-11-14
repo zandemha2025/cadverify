@@ -185,6 +185,31 @@ export interface ValidationResult {
   };
   /** What the file holds: one solid, or several bodies and what kind of set (checks since part types). */
   part_type?: PartType;
+  /** GD&T read from a STEP AP242 file's PMI (tolerance_service.tolerance_report_to_dict). */
+  tolerances?: ToleranceReport;
+}
+
+export interface ToleranceEntry {
+  tolerance_id: string;
+  /** ISO 1101 category, e.g. "position", "flatness". */
+  tolerance_type: string;
+  value_mm: number;
+  datum_refs?: string[];
+  feature_description?: string;
+  surface_finish_ra_um?: number;
+  upper_deviation?: number;
+  lower_deviation?: number;
+  process_verdicts?: { process: string; verdict: "achievable" | "marginal" | "not_achievable"; process_capability_mm: number; margin_mm: number }[];
+  /** "deg" for an angular size's deviations; absent (millimetres) for everything else. */
+  unit?: string;
+}
+
+export interface ToleranceReport {
+  has_pmi: boolean;
+  summary_score?: number;
+  /** Why there is no PMI, or which annotations could not be read. */
+  pmi_note?: string;
+  entries?: ToleranceEntry[];
 }
 
 export interface Material {
