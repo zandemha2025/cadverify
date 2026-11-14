@@ -1,0 +1,99 @@
+# Self-contained production stack for a single Docker host.
+# All configuration comes from the .env file that sits next to this file on the
+# server (compose auto-loads it for ${VAR} substitution AND we hand it to each
+# service as env_file so the containers see the same values).
+services:
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - PORT=8000
+      - RATE_LIBRARY_ENABLED=1
+      - DESIGN_INTELLIGENCE_ENABLED=1
+    ports:
+      - "8000:8000"
+    volumes:
+      - blobdata:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).read()"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  worker:
+    build: ./backend
+    restart: unless-stopped
+    command: ["arq", "src.jobs.worker.WorkerSettings"]
+    env_file: .env
+    environment:
+      - RATE_LIBRARY_ENABLED=1
+      - DESIGN_INTELLIGENCE_ENABLED=1
+    volumes:
+      - blobdata:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: cadverify
+      POSTGRES_USER: cadverify
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    # Bound to localhost only — never exposed off the box.
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cadverify"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # Bound to localhost only.
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE}
+        NEXT_PUBLIC_VERIFY_UI: ${NEXT_PUBLIC_VERIFY_UI:-1}
+        NEXT_PUBLIC_DESIGN_INTELLIGENCE: ${NEXT_PUBLIC_DESIGN_INTELLIGENCE:-1}
+        NEXT_PUBLIC_SHOW_DEV_TOOLS: ${NEXT_PUBLIC_SHOW_DEV_TOOLS:-0}
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          node -e "require('http').get('http://127.0.0.1:3000', (res) => process.exit(res.statusCode >= 200 && res.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1))"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  pgdata:
+  blobdata:

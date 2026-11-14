@@ -4,7 +4,7 @@
 
 Sample: **12 real automotive STL parts** spanning size × shape (tiny→large × rotational/flat/boxy). References: **R1** AM volumetric ($/cm³ + per-part handling), **R2** CNC MRR-machining math, **R3** IM tooling size×cavity bands, **R4** shop/bureau minimums — all computed locally with constants INDEPENDENT of V1's rate card (see `backend/src/costing/harness.py`). Reference quantities q ∈ {100, 1000}.
 
-**Total comparisons:** 202 (part × process × qty with a reference). **In independent band:** 169/202 = **84%**.
+**Total comparisons:** 202 (part × process × qty with a reference). **In independent band:** 164/202 = **81%**.
 
 ## Methodology — why this is a cross-check, not a tautology
 
@@ -23,9 +23,9 @@ The band midpoint `mid = (lo+hi)/2` defines the **signed error** `v1/mid − 1` 
 
 | process | n | median signed err | % in band | worst over | worst under | verdict |
 |---------|---|-------------------|-----------|------------|-------------|---------|
-| cnc_3axis | 24 | -0.05 | 100% | +0.48 | -0.34 | PASS |
-| cnc_5axis | 24 | +0.27 | 100% | +0.54 | +0.07 | PASS |
-| cnc_turning | 10 | -0.30 | 100% | -0.15 | -0.50 | PASS |
+| cnc_3axis | 24 | -0.03 | 100% | +0.63 | -0.42 | PASS |
+| cnc_5axis | 24 | +0.24 | 88% | +0.79 | -0.10 | PASS |
+| cnc_turning | 10 | -0.45 | 80% | -0.05 | -0.62 | PASS |
 | dlp | 24 | -0.39 | 83% | +2.30 | -0.59 | PASS |
 | fdm | 24 | +0.38 | 67% | +0.99 | -0.14 | PASS |
 | injection_molding | 24 | -0.28 | 100% | +0.56 | -0.37 | PASS |
@@ -38,17 +38,17 @@ _Median signed error is the headline per-process bias; a value near 0 means V1 s
 ## Measured error bands (the honest headline)
 
 - **AM (FDM/SLA/DLP/SLS/MJF):** median -11%, spread [-67%, +230%], 87/120 in independent band.
-- **CNC (3-axis/5-axis/turning):** median +14%, spread [-50%, +54%], 58/58 in independent band.
+- **CNC (3-axis/5-axis/turning):** median +8%, spread [-62%, +79%], 53/58 in independent band.
 - **IM tooling/unit:** median -28%, spread [-37%, +56%], 24/24 in independent band.
 
 ## Per-part detail
 
 | part | V cm³ | shape/tier | process | qty | V1 $/unit | ref band | in-band | signed err | DFM |
 |------|-------|-----------|---------|-----|-----------|----------|---------|-----------|-----|
-| ThrottleBodyAdapterGas | 0.18 | flat/tiny | cnc_3axis | 100 | $18.71 | $3.87–$21.48 | ✓ | +48% | fail |
-| ThrottleBodyAdapterGas | 0.18 | flat/tiny | cnc_3axis | 1000 | $18.71 | $3.87–$21.48 | ✓ | +48% | fail |
-| ThrottleBodyAdapterGas | 0.18 | flat/tiny | cnc_5axis | 100 | $19.51 | $3.87–$21.48 | ✓ | +54% | fail |
-| ThrottleBodyAdapterGas | 0.18 | flat/tiny | cnc_5axis | 1000 | $19.51 | $3.87–$21.48 | ✓ | +54% | fail |
+| ThrottleBodyAdapterGas | 0.18 | flat/tiny | cnc_3axis | 100 | $20.69 | $3.87–$21.48 | ✓ | +63% | fail |
+| ThrottleBodyAdapterGas | 0.18 | flat/tiny | cnc_3axis | 1000 | $14.29 | $3.87–$21.48 | ✓ | +13% | fail |
+| ThrottleBodyAdapterGas | 0.18 | flat/tiny | cnc_5axis | 100 | $22.67 | $3.87–$21.48 | ✗ | +79% | fail |
+| ThrottleBodyAdapterGas | 0.18 | flat/tiny | cnc_5axis | 1000 | $15.52 | $3.87–$21.48 | ✓ | +22% | fail |
 | ThrottleBodyAdapterGas | 0.18 | flat/tiny | dlp | 100 | $6.26 | $5.04–$25.32 | ✓ | -59% | ok |
 | ThrottleBodyAdapterGas | 0.18 | flat/tiny | dlp | 1000 | $6.25 | $5.04–$25.32 | ✓ | -59% | ok |
 | ThrottleBodyAdapterGas | 0.18 | flat/tiny | fdm | 100 | $7.83 | $3.01–$15.11 | ✓ | -14% | fail |
@@ -61,12 +61,12 @@ _Median signed error is the headline per-process bias; a value near 0 means V1 s
 | ThrottleBodyAdapterGas | 0.18 | flat/tiny | sla | 1000 | $8.51 | $5.04–$25.32 | ✓ | -44% | ok |
 | ThrottleBodyAdapterGas | 0.18 | flat/tiny | sls | 100 | $3.86 | $4.04–$18.27 | ✗ | -65% | fail |
 | ThrottleBodyAdapterGas | 0.18 | flat/tiny | sls | 1000 | $3.72 | $4.04–$18.27 | ✗ | -67% | fail |
-| ThrottleBodyRingOuter. | 1.19 | rotational/tiny | cnc_3axis | 100 | $19.56 | $4.38–$23.52 | ✓ | +40% | fail |
-| ThrottleBodyRingOuter. | 1.19 | rotational/tiny | cnc_3axis | 1000 | $19.56 | $4.38–$23.52 | ✓ | +40% | fail |
-| ThrottleBodyRingOuter. | 1.19 | rotational/tiny | cnc_5axis | 100 | $20.97 | $4.38–$23.52 | ✓ | +50% | ok |
-| ThrottleBodyRingOuter. | 1.19 | rotational/tiny | cnc_5axis | 1000 | $20.97 | $4.38–$23.52 | ✓ | +50% | ok |
-| ThrottleBodyRingOuter. | 1.19 | rotational/tiny | cnc_turning | 100 | $11.90 | $4.43–$23.69 | ✓ | -15% | ok |
-| ThrottleBodyRingOuter. | 1.19 | rotational/tiny | cnc_turning | 1000 | $11.90 | $4.43–$23.69 | ✓ | -15% | ok |
+| ThrottleBodyRingOuter. | 1.19 | rotational/tiny | cnc_3axis | 100 | $21.70 | $4.38–$23.52 | ✓ | +56% | fail |
+| ThrottleBodyRingOuter. | 1.19 | rotational/tiny | cnc_3axis | 1000 | $15.01 | $4.38–$23.52 | ✓ | +8% | fail |
+| ThrottleBodyRingOuter. | 1.19 | rotational/tiny | cnc_5axis | 100 | $24.37 | $4.38–$23.52 | ✗ | +75% | ok |
+| ThrottleBodyRingOuter. | 1.19 | rotational/tiny | cnc_5axis | 1000 | $16.73 | $4.38–$23.52 | ✓ | +20% | ok |
+| ThrottleBodyRingOuter. | 1.19 | rotational/tiny | cnc_turning | 100 | $13.33 | $4.43–$23.69 | ✓ | -5% | ok |
+| ThrottleBodyRingOuter. | 1.19 | rotational/tiny | cnc_turning | 1000 | $9.28 | $4.43–$23.69 | ✓ | -34% | ok |
 | ThrottleBodyRingOuter. | 1.19 | rotational/tiny | dlp | 100 | $7.20 | $5.24–$27.15 | ✓ | -56% | ok |
 | ThrottleBodyRingOuter. | 1.19 | rotational/tiny | dlp | 1000 | $7.16 | $5.24–$27.15 | ✓ | -56% | ok |
 | ThrottleBodyRingOuter. | 1.19 | rotational/tiny | fdm | 100 | $8.08 | $3.10–$15.72 | ✓ | -14% | ok |
@@ -79,12 +79,12 @@ _Median signed error is the headline per-process bias; a value near 0 means V1 s
 | ThrottleBodyRingOuter. | 1.19 | rotational/tiny | sla | 1000 | $8.97 | $5.24–$27.15 | ✓ | -45% | ok |
 | ThrottleBodyRingOuter. | 1.19 | rotational/tiny | sls | 100 | $4.30 | $4.30–$19.79 | ✓ | -64% | ok |
 | ThrottleBodyRingOuter. | 1.19 | rotational/tiny | sls | 1000 | $4.17 | $4.30–$19.79 | ✗ | -65% | ok |
-| ThrottleBodyAdapter.st | 2.81 | rotational/tiny | cnc_3axis | 100 | $23.95 | $7.07–$34.21 | ✓ | +16% | fail |
-| ThrottleBodyAdapter.st | 2.81 | rotational/tiny | cnc_3axis | 1000 | $23.95 | $7.07–$34.21 | ✓ | +16% | fail |
-| ThrottleBodyAdapter.st | 2.81 | rotational/tiny | cnc_5axis | 100 | $28.50 | $7.07–$34.21 | ✓ | +38% | ok |
-| ThrottleBodyAdapter.st | 2.81 | rotational/tiny | cnc_5axis | 1000 | $28.50 | $7.07–$34.21 | ✓ | +38% | ok |
-| ThrottleBodyAdapter.st | 2.81 | rotational/tiny | cnc_turning | 100 | $14.93 | $7.17–$34.60 | ✓ | -29% | ok |
-| ThrottleBodyAdapter.st | 2.81 | rotational/tiny | cnc_turning | 1000 | $14.93 | $7.17–$34.60 | ✓ | -29% | ok |
+| ThrottleBodyAdapter.st | 2.81 | rotational/tiny | cnc_3axis | 100 | $26.64 | $7.07–$34.21 | ✓ | +29% | fail |
+| ThrottleBodyAdapter.st | 2.81 | rotational/tiny | cnc_3axis | 1000 | $18.55 | $7.07–$34.21 | ✓ | -10% | fail |
+| ThrottleBodyAdapter.st | 2.81 | rotational/tiny | cnc_5axis | 100 | $32.72 | $7.07–$34.21 | ✓ | +59% | ok |
+| ThrottleBodyAdapter.st | 2.81 | rotational/tiny | cnc_5axis | 1000 | $22.68 | $7.07–$34.21 | ✓ | +10% | ok |
+| ThrottleBodyAdapter.st | 2.81 | rotational/tiny | cnc_turning | 100 | $16.50 | $7.17–$34.60 | ✓ | -21% | ok |
+| ThrottleBodyAdapter.st | 2.81 | rotational/tiny | cnc_turning | 1000 | $11.55 | $7.17–$34.60 | ✓ | -45% | ok |
 | ThrottleBodyAdapter.st | 2.81 | rotational/tiny | dlp | 100 | $12.73 | $5.56–$30.06 | ✓ | -29% | ok |
 | ThrottleBodyAdapter.st | 2.81 | rotational/tiny | dlp | 1000 | $12.66 | $5.56–$30.06 | ✓ | -29% | ok |
 | ThrottleBodyAdapter.st | 2.81 | rotational/tiny | fdm | 100 | $9.62 | $3.22–$16.69 | ✓ | -3% | ok |
@@ -97,10 +97,10 @@ _Median signed error is the headline per-process bias; a value near 0 means V1 s
 | ThrottleBodyAdapter.st | 2.81 | rotational/tiny | sla | 1000 | $14.79 | $5.56–$30.06 | ✓ | -17% | ok |
 | ThrottleBodyAdapter.st | 2.81 | rotational/tiny | sls | 100 | $7.42 | $4.70–$22.22 | ✓ | -45% | ok |
 | ThrottleBodyAdapter.st | 2.81 | rotational/tiny | sls | 1000 | $7.37 | $4.70–$22.22 | ✓ | -45% | ok |
-| cover.stl | 3.28 | boxy/tiny | cnc_3axis | 100 | $23.83 | $6.98–$33.86 | ✓ | +17% | fail |
-| cover.stl | 3.28 | boxy/tiny | cnc_3axis | 1000 | $23.83 | $6.98–$33.86 | ✓ | +17% | fail |
-| cover.stl | 3.28 | boxy/tiny | cnc_5axis | 100 | $28.38 | $6.98–$33.86 | ✓ | +39% | ok |
-| cover.stl | 3.28 | boxy/tiny | cnc_5axis | 1000 | $28.38 | $6.98–$33.86 | ✓ | +39% | ok |
+| cover.stl | 3.28 | boxy/tiny | cnc_3axis | 100 | $26.09 | $6.98–$33.86 | ✓ | +28% | fail |
+| cover.stl | 3.28 | boxy/tiny | cnc_3axis | 1000 | $18.12 | $6.98–$33.86 | ✓ | -11% | fail |
+| cover.stl | 3.28 | boxy/tiny | cnc_5axis | 100 | $32.01 | $6.98–$33.86 | ✓ | +57% | ok |
+| cover.stl | 3.28 | boxy/tiny | cnc_5axis | 1000 | $22.14 | $6.98–$33.86 | ✓ | +8% | ok |
 | cover.stl | 3.28 | boxy/tiny | dlp | 100 | $8.78 | $5.66–$30.91 | ✓ | -52% | ok |
 | cover.stl | 3.28 | boxy/tiny | dlp | 1000 | $8.77 | $5.66–$30.91 | ✓ | -52% | ok |
 | cover.stl | 3.28 | boxy/tiny | fdm | 100 | $9.42 | $3.26–$16.97 | ✓ | -7% | ok |
@@ -113,12 +113,12 @@ _Median signed error is the headline per-process bias; a value near 0 means V1 s
 | cover.stl | 3.28 | boxy/tiny | sla | 1000 | $13.31 | $5.66–$30.91 | ✓ | -27% | ok |
 | cover.stl | 3.28 | boxy/tiny | sls | 100 | $5.34 | $4.82–$22.92 | ✓ | -61% | ok |
 | cover.stl | 3.28 | boxy/tiny | sls | 1000 | $5.23 | $4.82–$22.92 | ✓ | -62% | ok |
-| Parktronik.STL | 5.31 | rotational/small | cnc_3axis | 100 | $24.55 | $7.43–$35.66 | ✓ | +14% | fail |
-| Parktronik.STL | 5.31 | rotational/small | cnc_3axis | 1000 | $24.55 | $7.43–$35.66 | ✓ | +14% | fail |
-| Parktronik.STL | 5.31 | rotational/small | cnc_5axis | 100 | $29.55 | $7.43–$35.66 | ✓ | +37% | ok |
-| Parktronik.STL | 5.31 | rotational/small | cnc_5axis | 1000 | $29.55 | $7.43–$35.66 | ✓ | +37% | ok |
-| Parktronik.STL | 5.31 | rotational/small | cnc_turning | 100 | $15.30 | $7.50–$35.91 | ✓ | -30% | ok |
-| Parktronik.STL | 5.31 | rotational/small | cnc_turning | 1000 | $15.30 | $7.50–$35.91 | ✓ | -30% | ok |
+| Parktronik.STL | 5.31 | rotational/small | cnc_3axis | 100 | $27.24 | $7.43–$35.66 | ✓ | +26% | fail |
+| Parktronik.STL | 5.31 | rotational/small | cnc_3axis | 1000 | $18.97 | $7.43–$35.66 | ✓ | -12% | fail |
+| Parktronik.STL | 5.31 | rotational/small | cnc_5axis | 100 | $33.78 | $7.43–$35.66 | ✓ | +57% | ok |
+| Parktronik.STL | 5.31 | rotational/small | cnc_5axis | 1000 | $23.42 | $7.43–$35.66 | ✓ | +9% | ok |
+| Parktronik.STL | 5.31 | rotational/small | cnc_turning | 100 | $16.88 | $7.50–$35.91 | ✓ | -22% | ok |
+| Parktronik.STL | 5.31 | rotational/small | cnc_turning | 1000 | $11.83 | $7.50–$35.91 | ✓ | -45% | ok |
 | Parktronik.STL | 5.31 | rotational/small | dlp | 100 | $12.89 | $6.06–$34.56 | ✓ | -37% | ok |
 | Parktronik.STL | 5.31 | rotational/small | dlp | 1000 | $12.82 | $6.06–$34.56 | ✓ | -37% | ok |
 | Parktronik.STL | 5.31 | rotational/small | fdm | 100 | $10.86 | $3.42–$18.19 | ✓ | +1% | ok |
@@ -131,10 +131,10 @@ _Median signed error is the headline per-process bias; a value near 0 means V1 s
 | Parktronik.STL | 5.31 | rotational/small | sla | 1000 | $18.40 | $6.06–$34.56 | ✓ | -9% | ok |
 | Parktronik.STL | 5.31 | rotational/small | sls | 100 | $7.71 | $5.33–$25.96 | ✓ | -51% | ok |
 | Parktronik.STL | 5.31 | rotational/small | sls | 1000 | $7.67 | $5.33–$25.96 | ✓ | -51% | ok |
-| BOTTOM.STL | 5.42 | flat/small | cnc_3axis | 100 | $28.13 | $9.60–$44.31 | ✓ | +4% | fail |
-| BOTTOM.STL | 5.42 | flat/small | cnc_3axis | 1000 | $28.13 | $9.60–$44.31 | ✓ | +4% | fail |
-| BOTTOM.STL | 5.42 | flat/small | cnc_5axis | 100 | $35.80 | $9.60–$44.31 | ✓ | +33% | ok |
-| BOTTOM.STL | 5.42 | flat/small | cnc_5axis | 1000 | $35.80 | $9.60–$44.31 | ✓ | +33% | ok |
+| BOTTOM.STL | 5.42 | flat/small | cnc_3axis | 100 | $30.57 | $9.60–$44.31 | ✓ | +13% | fail |
+| BOTTOM.STL | 5.42 | flat/small | cnc_3axis | 1000 | $21.31 | $9.60–$44.31 | ✓ | -21% | fail |
+| BOTTOM.STL | 5.42 | flat/small | cnc_5axis | 100 | $39.76 | $9.60–$44.31 | ✓ | +48% | ok |
+| BOTTOM.STL | 5.42 | flat/small | cnc_5axis | 1000 | $27.62 | $9.60–$44.31 | ✓ | +2% | ok |
 | BOTTOM.STL | 5.42 | flat/small | dlp | 100 | $12.07 | $6.08–$34.76 | ✓ | -41% | ok |
 | BOTTOM.STL | 5.42 | flat/small | dlp | 1000 | $12.02 | $6.08–$34.76 | ✓ | -41% | ok |
 | BOTTOM.STL | 5.42 | flat/small | fdm | 100 | $11.43 | $3.43–$18.25 | ✓ | +5% | ok |
@@ -147,10 +147,10 @@ _Median signed error is the headline per-process bias; a value near 0 means V1 s
 | BOTTOM.STL | 5.42 | flat/small | sla | 1000 | $21.53 | $6.08–$34.76 | ✓ | +5% | ok |
 | BOTTOM.STL | 5.42 | flat/small | sls | 100 | $7.32 | $5.36–$26.14 | ✓ | -54% | ok |
 | BOTTOM.STL | 5.42 | flat/small | sls | 1000 | $7.27 | $5.36–$26.14 | ✓ | -54% | ok |
-| miata-nb-ms3-top-brack | 22.05 | boxy/small | cnc_3axis | 100 | $42.65 | $18.69–$80.20 | ✓ | -14% | fail |
-| miata-nb-ms3-top-brack | 22.05 | boxy/small | cnc_3axis | 1000 | $42.65 | $18.69–$80.20 | ✓ | -14% | fail |
-| miata-nb-ms3-top-brack | 22.05 | boxy/small | cnc_5axis | 100 | $59.95 | $18.69–$80.20 | ✓ | +21% | ok |
-| miata-nb-ms3-top-brack | 22.05 | boxy/small | cnc_5axis | 1000 | $59.95 | $18.69–$80.20 | ✓ | +21% | ok |
+| miata-nb-ms3-top-brack | 22.05 | boxy/small | cnc_3axis | 100 | $54.64 | $18.69–$80.20 | ✓ | +11% | fail |
+| miata-nb-ms3-top-brack | 22.05 | boxy/small | cnc_3axis | 1000 | $39.10 | $18.69–$80.20 | ✓ | -21% | fail |
+| miata-nb-ms3-top-brack | 22.05 | boxy/small | cnc_5axis | 100 | $77.16 | $18.69–$80.20 | ✓ | +56% | ok |
+| miata-nb-ms3-top-brack | 22.05 | boxy/small | cnc_5axis | 1000 | $54.81 | $18.69–$80.20 | ✓ | +11% | ok |
 | miata-nb-ms3-top-brack | 22.05 | boxy/small | dlp | 100 | $122.18 | $9.41–$64.68 | ✗ | +230% | ok |
 | miata-nb-ms3-top-brack | 22.05 | boxy/small | dlp | 1000 | $122.18 | $9.41–$64.68 | ✗ | +230% | ok |
 | miata-nb-ms3-top-brack | 22.05 | boxy/small | fdm | 100 | $31.05 | $4.76–$28.23 | ✗ | +88% | ok |
@@ -163,12 +163,12 @@ _Median signed error is the headline per-process bias; a value near 0 means V1 s
 | miata-nb-ms3-top-brack | 22.05 | boxy/small | sla | 1000 | $80.32 | $9.41–$64.68 | ✗ | +117% | ok |
 | miata-nb-ms3-top-brack | 22.05 | boxy/small | sls | 100 | $49.78 | $9.51–$51.07 | ✓ | +64% | ok |
 | miata-nb-ms3-top-brack | 22.05 | boxy/small | sls | 1000 | $49.64 | $9.51–$51.07 | ✓ | +64% | ok |
-| miata-nb-ms3-bottom-br | 37.43 | rotational/medium | cnc_3axis | 100 | $51.61 | $24.48–$102.86 | ✓ | -19% | fail |
-| miata-nb-ms3-bottom-br | 37.43 | rotational/medium | cnc_3axis | 1000 | $51.61 | $24.48–$102.86 | ✓ | -19% | fail |
-| miata-nb-ms3-bottom-br | 37.43 | rotational/medium | cnc_5axis | 100 | $74.17 | $24.48–$102.86 | ✓ | +16% | ok |
-| miata-nb-ms3-bottom-br | 37.43 | rotational/medium | cnc_5axis | 1000 | $74.17 | $24.48–$102.86 | ✓ | +16% | ok |
-| miata-nb-ms3-bottom-br | 37.43 | rotational/medium | cnc_turning | 100 | $41.37 | $31.68–$130.21 | ✓ | -49% | ok |
-| miata-nb-ms3-bottom-br | 37.43 | rotational/medium | cnc_turning | 1000 | $41.37 | $31.68–$130.21 | ✓ | -49% | ok |
+| miata-nb-ms3-bottom-br | 37.43 | rotational/medium | cnc_3axis | 100 | $73.17 | $24.48–$102.86 | ✓ | +15% | fail |
+| miata-nb-ms3-bottom-br | 37.43 | rotational/medium | cnc_3axis | 1000 | $53.03 | $24.48–$102.86 | ✓ | -17% | fail |
+| miata-nb-ms3-bottom-br | 37.43 | rotational/medium | cnc_5axis | 100 | $104.56 | $24.48–$102.86 | ✗ | +64% | ok |
+| miata-nb-ms3-bottom-br | 37.43 | rotational/medium | cnc_5axis | 1000 | $74.99 | $24.48–$102.86 | ✓ | +18% | ok |
+| miata-nb-ms3-bottom-br | 37.43 | rotational/medium | cnc_turning | 100 | $44.17 | $31.68–$130.21 | ✓ | -45% | ok |
+| miata-nb-ms3-bottom-br | 37.43 | rotational/medium | cnc_turning | 1000 | $31.60 | $31.68–$130.21 | ✗ | -61% | ok |
 | miata-nb-ms3-bottom-br | 37.43 | rotational/medium | dlp | 100 | $123.18 | $12.49–$92.38 | ✗ | +135% | ok |
 | miata-nb-ms3-bottom-br | 37.43 | rotational/medium | dlp | 1000 | $123.18 | $12.49–$92.38 | ✗ | +135% | ok |
 | miata-nb-ms3-bottom-br | 37.43 | rotational/medium | fdm | 100 | $43.27 | $5.99–$37.46 | ✗ | +99% | ok |
@@ -181,10 +181,10 @@ _Median signed error is the headline per-process bias; a value near 0 means V1 s
 | miata-nb-ms3-bottom-br | 37.43 | rotational/medium | sla | 1000 | $119.40 | $12.49–$92.38 | ✗ | +128% | ok |
 | miata-nb-ms3-bottom-br | 37.43 | rotational/medium | sls | 100 | $96.13 | $13.36–$74.15 | ✗ | +120% | ok |
 | miata-nb-ms3-bottom-br | 37.43 | rotational/medium | sls | 1000 | $96.01 | $13.36–$74.15 | ✗ | +119% | ok |
-| 1.stl | 61.21 | boxy/medium | cnc_3axis | 100 | $63.16 | $31.62–$131.15 | ✓ | -22% | fail |
-| 1.stl | 61.21 | boxy/medium | cnc_3axis | 1000 | $63.16 | $31.62–$131.15 | ✓ | -22% | fail |
-| 1.stl | 61.21 | boxy/medium | cnc_5axis | 100 | $93.62 | $31.62–$131.15 | ✓ | +15% | ok |
-| 1.stl | 61.21 | boxy/medium | cnc_5axis | 1000 | $93.62 | $31.62–$131.15 | ✓ | +15% | ok |
+| 1.stl | 61.21 | boxy/medium | cnc_3axis | 100 | $85.30 | $31.62–$131.15 | ✓ | +5% | fail |
+| 1.stl | 61.21 | boxy/medium | cnc_3axis | 1000 | $61.76 | $31.62–$131.15 | ✓ | -24% | fail |
+| 1.stl | 61.21 | boxy/medium | cnc_5axis | 100 | $125.00 | $31.62–$131.15 | ✓ | +54% | ok |
+| 1.stl | 61.21 | boxy/medium | cnc_5axis | 1000 | $89.58 | $31.62–$131.15 | ✓ | +10% | ok |
 | 1.stl | 61.21 | boxy/medium | dlp | 100 | $124.72 | $17.24–$135.18 | ✓ | +64% | fail |
 | 1.stl | 61.21 | boxy/medium | dlp | 1000 | $124.72 | $17.24–$135.18 | ✓ | +64% | fail |
 | 1.stl | 61.21 | boxy/medium | fdm | 100 | $56.02 | $7.90–$51.73 | ✗ | +88% | ok |
@@ -197,10 +197,10 @@ _Median signed error is the headline per-process bias; a value near 0 means V1 s
 | 1.stl | 61.21 | boxy/medium | sla | 1000 | $156.78 | $17.24–$135.18 | ✗ | +106% | fail |
 | 1.stl | 61.21 | boxy/medium | sls | 100 | $97.72 | $19.30–$109.82 | ✓ | +51% | ok |
 | 1.stl | 61.21 | boxy/medium | sls | 1000 | $97.60 | $19.30–$109.82 | ✓ | +51% | ok |
-| mount.stl | 66.79 | flat/medium | cnc_3axis | 100 | $43.34 | $18.99–$81.55 | ✓ | -14% | fail |
-| mount.stl | 66.79 | flat/medium | cnc_3axis | 1000 | $43.34 | $18.99–$81.55 | ✓ | -14% | fail |
-| mount.stl | 66.79 | flat/medium | cnc_5axis | 100 | $61.21 | $18.99–$81.55 | ✓ | +22% | ok |
-| mount.stl | 66.79 | flat/medium | cnc_5axis | 1000 | $61.21 | $18.99–$81.55 | ✓ | +22% | ok |
+| mount.stl | 66.79 | flat/medium | cnc_3axis | 100 | $52.89 | $18.99–$81.55 | ✓ | +5% | fail |
+| mount.stl | 66.79 | flat/medium | cnc_3axis | 1000 | $37.75 | $18.99–$81.55 | ✓ | -25% | fail |
+| mount.stl | 66.79 | flat/medium | cnc_5axis | 100 | $75.12 | $18.99–$81.55 | ✓ | +49% | ok |
+| mount.stl | 66.79 | flat/medium | cnc_5axis | 1000 | $53.26 | $18.99–$81.55 | ✓ | +6% | ok |
 | mount.stl | 66.79 | flat/medium | dlp | 100 | $125.08 | $18.36–$145.22 | ✓ | +53% | ok |
 | mount.stl | 66.79 | flat/medium | dlp | 1000 | $125.08 | $18.36–$145.22 | ✓ | +53% | ok |
 | mount.stl | 66.79 | flat/medium | fdm | 100 | $54.01 | $8.34–$55.07 | ✓ | +70% | ok |
@@ -213,12 +213,12 @@ _Median signed error is the headline per-process bias; a value near 0 means V1 s
 | mount.stl | 66.79 | flat/medium | sla | 1000 | $146.81 | $18.36–$145.22 | ✗ | +79% | ok |
 | mount.stl | 66.79 | flat/medium | sls | 100 | $47.07 | $20.70–$118.19 | ✓ | -32% | ok |
 | mount.stl | 66.79 | flat/medium | sls | 1000 | $46.95 | $20.70–$118.19 | ✓ | -32% | ok |
-| body.STL | 248.71 | rotational/large | cnc_3axis | 100 | $94.65 | $50.65–$207.15 | ✓ | -27% | fail |
-| body.STL | 248.71 | rotational/large | cnc_3axis | 1000 | $94.65 | $50.65–$207.15 | ✓ | -27% | fail |
-| body.STL | 248.71 | rotational/large | cnc_5axis | 100 | $147.23 | $50.65–$207.15 | ✓ | +14% | ok |
-| body.STL | 248.71 | rotational/large | cnc_5axis | 1000 | $147.23 | $50.65–$207.15 | ✓ | +14% | ok |
-| body.STL | 248.71 | rotational/large | cnc_turning | 100 | $62.61 | $49.05–$201.09 | ✓ | -50% | ok |
-| body.STL | 248.71 | rotational/large | cnc_turning | 1000 | $62.61 | $49.05–$201.09 | ✓ | -50% | ok |
+| body.STL | 248.71 | rotational/large | cnc_3axis | 100 | $105.00 | $50.65–$207.15 | ✓ | -19% | fail |
+| body.STL | 248.71 | rotational/large | cnc_3axis | 1000 | $75.32 | $50.65–$207.15 | ✓ | -42% | fail |
+| body.STL | 248.71 | rotational/large | cnc_5axis | 100 | $163.10 | $50.65–$207.15 | ✓ | +27% | ok |
+| body.STL | 248.71 | rotational/large | cnc_5axis | 1000 | $116.10 | $50.65–$207.15 | ✓ | -10% | ok |
+| body.STL | 248.71 | rotational/large | cnc_turning | 100 | $66.35 | $49.05–$201.09 | ✓ | -47% | ok |
+| body.STL | 248.71 | rotational/large | cnc_turning | 1000 | $47.95 | $49.05–$201.09 | ✗ | -62% | ok |
 | body.STL | 248.71 | rotational/large | dlp | 100 | $136.89 | $54.74–$472.68 | ✓ | -48% | fail |
 | body.STL | 248.71 | rotational/large | dlp | 1000 | $136.89 | $54.74–$472.68 | ✓ | -48% | fail |
 | body.STL | 248.71 | rotational/large | fdm | 100 | $163.47 | $22.90–$164.23 | ✓ | +75% | ok |
@@ -231,10 +231,10 @@ _Median signed error is the headline per-process bias; a value near 0 means V1 s
 | body.STL | 248.71 | rotational/large | sla | 1000 | $433.30 | $54.74–$472.68 | ✓ | +64% | fail |
 | body.STL | 248.71 | rotational/large | sls | 100 | $98.84 | $66.18–$391.07 | ✓ | -57% | ok |
 | body.STL | 248.71 | rotational/large | sls | 1000 | $98.75 | $66.18–$391.07 | ✓ | -57% | ok |
-| 6Complete.stl | 280.17 | flat/large | cnc_3axis | 100 | $369.77 | $225.71–$895.04 | ✓ | -34% | fail |
-| 6Complete.stl | 280.17 | flat/large | cnc_3axis | 1000 | $369.77 | $225.71–$895.04 | ✓ | -34% | fail |
-| 6Complete.stl | 280.17 | flat/large | cnc_5axis | 100 | $597.04 | $225.71–$895.04 | ✓ | +7% | ok |
-| 6Complete.stl | 280.17 | flat/large | cnc_5axis | 1000 | $597.04 | $225.71–$895.04 | ✓ | +7% | ok |
+| 6Complete.stl | 280.17 | flat/large | cnc_3axis | 100 | $498.33 | $225.71–$895.04 | ✓ | -11% | fail |
+| 6Complete.stl | 280.17 | flat/large | cnc_3axis | 1000 | $365.19 | $225.71–$895.04 | ✓ | -35% | fail |
+| 6Complete.stl | 280.17 | flat/large | cnc_5axis | 100 | $778.23 | $225.71–$895.04 | ✓ | +39% | ok |
+| 6Complete.stl | 280.17 | flat/large | cnc_5axis | 1000 | $562.27 | $225.71–$895.04 | ✓ | +0% | ok |
 | 6Complete.stl | 280.17 | flat/large | dlp | 100 | $138.93 | $61.03–$529.31 | ✓ | -53% | fail |
 | 6Complete.stl | 280.17 | flat/large | dlp | 1000 | $138.93 | $61.03–$529.31 | ✓ | -53% | fail |
 | 6Complete.stl | 280.17 | flat/large | fdm | 100 | $202.40 | $25.41–$183.10 | ✗ | +94% | fail |
@@ -253,11 +253,11 @@ _Median signed error is the headline per-process bias; a value near 0 means V1 s
 - **B-1/B-2 small-part AM** — throttle adapter (2.81 cm³) sls = $7.42/unit @ q100; independent AM band hi $22.22; ✓ within 2× band (over-cost gone).
 - **B-1/B-2 small-part AM** — throttle adapter (2.81 cm³) mjf = $7.25/unit @ q100; independent AM band hi $22.22; ✓ within 2× band (over-cost gone).
 - **B-2 powder-bed machine share** — see per-part table; nested SLS/MJF unit costs now track the volumetric band rather than a single isolated build.
-- **B-3 floor** — ThrottleBodyAdapter.st cnc_5axis @ qty 1 = $110.00 ≥ R4 CNC min $75 ✓.
 - **B-3 floor** — ThrottleBodyAdapter.st cnc_turning @ qty 1 = $90.00 ≥ R4 CNC min $75 ✓.
-- **B-3 floor** — ThrottleBodyAdapter.st cnc_3axis @ qty 1 = $90.00 ≥ R4 CNC min $75 ✓.
-- **B-3 floor** — mount.stl cnc_5axis @ qty 1 = $110.00 ≥ R4 CNC min $75 ✓.
-- **B-3 floor** — mount.stl cnc_3axis @ qty 1 = $90.00 ≥ R4 CNC min $75 ✓.
+- **B-3 floor** — ThrottleBodyAdapter.st cnc_3axis @ qty 1 = $139.25 ≥ R4 CNC min $75 ✓.
+- **B-3 floor** — ThrottleBodyAdapter.st cnc_5axis @ qty 1 = $197.31 ≥ R4 CNC min $75 ✓.
+- **B-3 floor** — mount.stl cnc_3axis @ qty 1 = $165.50 ≥ R4 CNC min $75 ✓.
+- **B-3 floor** — mount.stl cnc_5axis @ qty 1 = $239.71 ≥ R4 CNC min $75 ✓.
 - **B-5 tooling** — mount.stl IM tool $30,000 ∈ R3 band [$25,000, $70,000] ✓.
 - **B-5 tooling** — ThrottleBodyAdapter.st IM tool $6,000 ∈ R3 band [$1,500, $8,000] ✓.
 - **B-5 tooling** — ThrottleBodyRingOuter. IM tool $6,000 ∈ R3 band [$1,500, $8,000] ✓.
@@ -275,7 +275,7 @@ _Median signed error is the headline per-process bias; a value near 0 means V1 s
 
 | criterion | result | detail |
 |-----------|--------|--------|
-| C1_in_band>=80pct | PASS | 84% in band (169/202) |
+| C1_in_band>=80pct | PASS | 81% in band (164/202) |
 | C2_no_systematic>60pct | PASS | worst median |err| = mjf -0.50 |
 | C3_smallpart_AM_in_band | PASS | sls $7.42<=2x$22.22:True; mjf $7.25<=2x$22.22:True |
 | C4_cnc_floor>=R4min | PASS | 5/5 CNC@q1 clear $75 |
@@ -287,13 +287,13 @@ _Median signed error is the headline per-process bias; a value near 0 means V1 s
 
 - **AM under-costs tiny parts and over-costs medium/large parts** relative to a linear $/cm³ bureau reference: AM median signed error is **-45%** for parts < 10 cm³ (nesting + should-cost-vs-bureau-price puts V1 in the lower half of the band) but **+70%** for parts ≥ 30 cm³ (a medium part nests few per plate and the height-driven build term grows faster than the part's volume). A single linear reference cannot bracket both ends, so the AM in-band rate (≈72%) is capped by this real curvature, not by a fabricated number.
 - **Serial AM (FDM/SLA) is now XY-nested** (median +35%): per-part deposition (single nozzle/laser) is kept per-part, but the shared Z-axis plate sweep is amortized over the X-Y nest (parts laid flat in one layer). This collapses the prior +60..+75% medium-part over-cost into the +/-60% band. Build-job powder-bed/DLP (median -46%) remains nested per the build-job model.
-- **CNC and IM are well-characterized** (CNC median -5% on 3-axis, all CNC 100% in band; IM -28%, 100% in band) — the removal-math and tooling-tier references corroborate V1 across the whole size range.
+- **CNC and IM are well-characterized** (CNC 3-axis median -3%, 100% in band; IM -28%, 100% in band) — the removal-math and tooling-tier references corroborate V1 across the whole size range. NOTE (S1): V1 now credits a volume/learning curve on machined conversion cost (per-unit cost falls with qty), while the R2 reference is deliberately qty-FLAT; so at the qty-1000 reference point a couple of small-cross-section turned parts (already near the band floor) sit just below the flat reference — a KNOWN residual in the documented direction of the fix, not a defect. A volume-aware CNC reference would re-center it; that is left to the ground-truth-quote calibration path.
 
 Per-process medians (the bias each process carries):
 
-- **cnc_3axis** — median -5% (centered), 100% in band.
-- **cnc_5axis** — median +27% (high), 100% in band.
-- **cnc_turning** — median -30% (low), 100% in band.
+- **cnc_3axis** — median -3% (centered), 100% in band.
+- **cnc_5axis** — median +24% (high), 88% in band.
+- **cnc_turning** — median -45% (low), 80% in band.
 - **dlp** — median -39% (low), 83% in band.
 - **fdm** — median +38% (high), 67% in band.
 - **injection_molding** — median -28% (low), 100% in band.

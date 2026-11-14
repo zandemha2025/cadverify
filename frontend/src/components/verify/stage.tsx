@@ -79,6 +79,7 @@ export function Stage({
         minWidth: 380,
         flexShrink: 0,
         position: "relative",
+        containerType: "inline-size",
         background: "radial-gradient(110% 90% at 50% 38%, #ffffff 0%, #ececef 85%)",
         borderRight: `1px solid ${C.hair2}`,
       }}
@@ -96,8 +97,14 @@ export function Stage({
         />
       </div>
 
-      <div style={{ position: "absolute", top: 22, left: 24, pointerEvents: "none" }}>
-        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 400, letterSpacing: "-0.01em" }}>
+      <div
+        className="cv-verify-stage-heading"
+        style={{ position: "absolute", top: 22, left: 24, right: 340, minWidth: 0, pointerEvents: "none" }}
+      >
+        <h1
+          title={partName}
+          style={{ margin: 0, fontSize: 22, fontWeight: 400, letterSpacing: "-0.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+        >
           {partName}
         </h1>
         <p style={{ margin: "7px 0 0", fontFamily: MONO, fontSize: 11, lineHeight: 1.7, color: C.ink45 }}>
@@ -189,6 +196,7 @@ function ContextStrip({
 
   return (
     <div
+      className="cv-verify-stage-context"
       data-testid="verify-stage-context"
       data-context-state={hasParent ? "declared-parent" : "no-parent"}
       style={{

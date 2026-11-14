@@ -28,6 +28,20 @@ _requires_pg = pytest.mark.skipif(
 )
 
 
+@pytest.fixture(autouse=True)
+def _loop_hermetic_engine():
+    """Do not reuse asyncpg connections created on another pytest event loop."""
+    import src.db.engine as eng
+
+    eng._ENGINE = None
+    eng._SESSION_FACTORY = None
+    try:
+        yield
+    finally:
+        eng._ENGINE = None
+        eng._SESSION_FACTORY = None
+
+
 def _build_app():
     from fastapi import FastAPI
 
@@ -169,6 +183,18 @@ async def test_part_context_upsert_read_and_isolation():
             f"/api/v1/part-context/{mesh}", json={"annual_volume": 0}
         )
         assert r.status_code == 400
+
+        # Python's permissive JSON decoder accepts NaN; the central trust
+        # boundary must still reject it before persistence or safety gating.
+        r = await c.put(
+            f"/api/v1/part-context/{mesh}",
+            content=b'{"service_environment":{"max_temp_c":NaN}}',
+            headers={"content-type": "application/json"},
+        )
+        assert r.status_code == 400
+        assert "max_temp_c must be finite" in r.text
+        r = await c.get(f"/api/v1/part-context/{mesh}")
+        assert r.json()["service_environment"]["max_temp_c"] == 120
 
         # --- cross-tenant isolation -----------------------------------------
         _act_as(app, uid_b)

@@ -3,7 +3,7 @@
  * every function only SELECTS or FORMATS values the engine already returned, or
  * returns null when the engine did not carry the value. Unit-tested in derive.test.ts.
  */
-import type { CostReport, CostEstimate, CostDriver } from "@/lib/api";
+import type { CostConfidence, CostReport, CostEstimate, CostDriver } from "@/lib/api";
 import type { Prov } from "./tokens";
 
 /** Normalise the engine's provenance string to a Prov key. Inlined (not imported
@@ -14,6 +14,11 @@ function normProv(p: string | null | undefined): Prov {
   if (u === "MEASURED" || u === "SHOP" || u === "USER" || u === "MODEL")
     return u as Prov;
   return "DEFAULT";
+}
+
+/** Preserve the engine's confidence provenance instead of inferring it from validated. */
+export function confidenceDisclosure(confidence: CostConfidence): string {
+  return `${confidence.label} · ${confidence.method} · n=${confidence.n_samples} · ${confidence.basis}`;
 }
 
 /** The make-now route's estimate at a given quantity (drivers/confidence/lead). */

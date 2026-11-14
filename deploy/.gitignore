@@ -1,0 +1,5 @@
+# Never commit these — secrets, keys, and per-deploy state
+.secrets.env
+.env.rendered
+deploy.state
+*.pem

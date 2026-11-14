@@ -89,6 +89,8 @@ async def run_reconstruction_job(ctx: dict, job_ulid: str) -> dict:
 
             # 5. Load mesh and compute confidence
             mesh = trimesh.load(io.BytesIO(result.mesh_bytes), file_type="stl")
+            if not isinstance(mesh, trimesh.Trimesh):
+                raise RuntimeError("Reconstruction engine did not return a single mesh")
             score = compute_reconstruction_confidence(mesh)
             level = confidence_level(score)
             message = confidence_message(level)
@@ -123,24 +125,14 @@ async def run_reconstruction_job(ctx: dict, job_ulid: str) -> dict:
                     rule_pack=rule_pack_name,
                     user=mock_user,
                     session=session,
+                    org_id=job.org_id,
                 )
 
-                # Extract analysis ULID from persisted row
-                analysis_id = await analysis_service.get_latest_analysis_id(
-                    session,
-                    job.user_id,
-                    analysis_service.compute_mesh_hash(result.mesh_bytes),
-                )
-                if analysis_id is not None:
-                    from src.db.models import Analysis
-                    analysis_row = (
-                        await session.execute(
-                            select(Analysis).where(Analysis.id == analysis_id)
-                        )
-                    ).scalars().first()
-                    if analysis_row:
-                        analysis_ulid = analysis_row.ulid
-                        analysis_url = f"/api/v1/analyses/{analysis_ulid}"
+                saved = analysis_result.get("saved")
+                saved_ulid = saved.get("id") if isinstance(saved, dict) else None
+                if isinstance(saved_ulid, str) and saved_ulid:
+                    analysis_ulid = saved_ulid
+                    analysis_url = f"/api/v1/analyses/{saved_ulid}"
 
             except Exception:
                 logger.warning(

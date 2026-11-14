@@ -9,10 +9,30 @@
  * gates render the honest unknown/feature state — NEVER a fabricated verdict. The
  * walk stops honestly at a failed gate (geometry invalid → no downstream compute).
  */
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { C, MONO, USD, NUM, procLabel, statusColor } from "@/lib/verify/tokens";
 import type { VerifyResult } from "@/lib/verify/run";
-import type { CostReport, CostComparison } from "@/lib/api";
+import type {
+  CostComparison,
+  DesignIntelligenceFinding,
+  DesignIntelligenceResponse,
+  OrgPrecedentResponse,
+  PriorityFix,
+} from "@/lib/api";
+import {
+  fetchAnalysisDesignIntelligence,
+  fetchAnalysisFeedback,
+  fetchAnalysisPrecedents,
+  recordAnalysisFeedback,
+} from "@/lib/api";
+import {
+  canRecordAnalysisMemory,
+  designIntelligenceEmptyMessage,
+  designIntelligenceEnabled,
+  findingRefForPriorityFix,
+  isResearchOnly,
+  safeEvidenceUrl,
+} from "@/lib/design-intelligence";
 import {
   parseAsk,
   computeCostAtQty,
@@ -35,6 +55,7 @@ import {
 } from "@/lib/verify/ask";
 import {
   driverViews,
+  confidenceDisclosure,
   makeNowEstimate,
   toolingEstimate,
   nearestQty,
@@ -43,6 +64,7 @@ import {
   provenanceMix,
   type DriverView,
 } from "@/lib/verify/derive";
+import { useAuth } from "@/components/ui/auth-provider";
 import { interpUnitCost, type InterpPoint } from "@/lib/verify/scrub";
 import {
   verdictBannerModel,
@@ -58,6 +80,7 @@ import { envelopeSummary } from "@/lib/verify/machine-api";
 import { useToast } from "./toast";
 import { Card, Kicker, ProvChip, ProvDot, ConfidenceBand, GhostButton, EmptyState, Spinner } from "./primitives";
 import { PipelineOverlay } from "./pipeline-overlay";
+import { DesignIntelligenceAdvisory } from "@/components/design-intelligence-advisory";
 
 /** Light status colour for a verdict/fit tone. */
 function toneColor(t: Tone): string {
@@ -75,7 +98,6 @@ interface Props {
   materialClass: string;
   setMaterialClass: (materialClass: string) => void;
   onPickFile: () => void;
-  onReverify: () => void;
   nav: Nav;
 }
 
@@ -110,7 +132,6 @@ export function VerifyScreen(props: Props) {
     materialClass,
     setMaterialClass,
     onPickFile,
-    onReverify,
     nav,
   } = props;
   const [scrubFrac, setScrubFrac] = useState(0.5);
@@ -237,7 +258,7 @@ export function VerifyScreen(props: Props) {
             setDisclose={setDisclose}
             decision={decision}
             setDecision={setDecision}
-            onReverify={onReverify}
+            onReupload={onPickFile}
             nav={nav}
           />
         )}
@@ -247,7 +268,7 @@ export function VerifyScreen(props: Props) {
           front door to what the engine ACTUALLY computed for this part (real slices
           of `result`) plus the honest refusal for anything non-deterministic; it
           never generates a number. */}
-      <AskDock cost={result?.cost ?? null} running={running} nav={nav} />
+      <AskDock result={result} running={running} nav={nav} />
     </div>
     <PipelineOverlay running={running} result={result} fileName={props.fileName} />
     </>
@@ -402,7 +423,7 @@ function Walk({
   setDisclose,
   decision,
   setDecision,
-  onReverify,
+  onReupload,
   nav,
 }: {
   result: VerifyResult;
@@ -412,7 +433,7 @@ function Walk({
   setDisclose: (s: string | null) => void;
   decision: string | null;
   setDecision: (d: string | null) => void;
-  onReverify: () => void;
+  onReupload: () => void;
   nav: Nav;
 }) {
   const { cost, costGeometryInvalid, machines, verification } = result;
@@ -528,7 +549,7 @@ function Walk({
               )}
             </p>
             <div style={{ marginTop: 12 }}>
-              <GhostButton onClick={onReverify}>Repair &amp; re-upload →</GhostButton>
+              <GhostButton onClick={onReupload}>Repair &amp; re-upload changed CAD →</GhostButton>
             </div>
           </div>
         )}
@@ -597,7 +618,15 @@ function Walk({
             )}
 
             {/* decide + hallmark */}
-            {cost && <DecideHallmark result={result} decision={decision} setDecision={setDecision} nav={nav} />}
+            {cost && (
+              <DecideHallmark
+                result={result}
+                decision={decision}
+                setDecision={setDecision}
+                nav={nav}
+                onReupload={onReupload}
+              />
+            )}
           </>
         )}
 
@@ -814,6 +843,18 @@ function EnvStrikesBlock({ verification, envDeclared }: { verification: Verifica
   );
 }
 
+function relevantPriorityFixes(
+  validation: NonNullable<VerifyResult["validation"]>
+): PriorityFix[] {
+  const routeFindings = validation.priority_fixes.filter(
+    (fix) =>
+      fix.process === "all" ||
+      !validation.best_process ||
+      fix.process === validation.best_process
+  );
+  return routeFindings.length ? routeFindings : validation.priority_fixes.slice(0, 5);
+}
+
 function ProcessPhysics({ result }: { result: VerifyResult }) {
   const v = result.validation;
   if (!v) {
@@ -824,6 +865,9 @@ function ProcessPhysics({ result }: { result: VerifyResult }) {
     );
   }
   const rows = [...v.process_scores].sort((a, b) => b.score - a.score).slice(0, 6);
+  const recommendedFindings = relevantPriorityFixes(v);
+  const showDesignContext =
+    designIntelligenceEnabled() && recommendedFindings.length > 0;
   return (
     <div style={{ marginTop: 12, display: "flex", flexDirection: "column" }}>
       {rows.map((ps) => {
@@ -868,6 +912,97 @@ function ProcessPhysics({ result }: { result: VerifyResult }) {
         {v.priority_fixes.length} priority fix{v.priority_fixes.length === 1 ? "" : "es"} across routes ·{" "}
         overall {v.overall_verdict} · rendered from POST /validate
       </p>
+      {showDesignContext && (
+        <div style={{ marginTop: 14, borderTop: `1px solid ${C.hair2}`, paddingTop: 12 }}>
+          <p style={{ margin: 0, fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.1em", color: C.ink45 }}>
+            DETERMINISTIC FINDINGS · DESIGN CONTEXT ON DEMAND
+          </p>
+          <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 10 }}>
+            {recommendedFindings.map((fix, index) => (
+              <PriorityFindingCard
+                key={`${fix.code}-${fix.process}-${index}`}
+                fix={fix}
+                validation={v}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function priorityFixFinding(fix: PriorityFix): DesignIntelligenceFinding {
+  const severity =
+    fix.severity === "error" || fix.severity === "warning" || fix.severity === "info"
+      ? fix.severity
+      : "info";
+  return {
+    code: fix.code,
+    severity,
+    message: fix.message,
+    fix_suggestion: fix.fix,
+    process: fix.process,
+    ...(fix.measured_value != null ? { measured_value: fix.measured_value } : {}),
+    ...(fix.required_value != null ? { required_value: fix.required_value } : {}),
+  };
+}
+
+function PriorityFindingCard({
+  fix,
+  validation,
+}: {
+  fix: PriorityFix;
+  validation: NonNullable<VerifyResult["validation"]>;
+}) {
+  const finding = priorityFixFinding(fix);
+  const findingRef = findingRefForPriorityFix(validation, fix);
+  const color =
+    finding.severity === "error"
+      ? C.fail
+      : finding.severity === "warning"
+        ? C.cond
+        : C.ink45;
+  return (
+    <div>
+      <div style={{ border: `1px solid ${C.hair}`, borderRadius: 10, background: C.sunken, padding: "11px 12px" }}>
+        <div style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: 7 }}>
+          <span style={{ fontFamily: MONO, fontSize: 9.5, color, letterSpacing: "0.06em" }}>
+            {finding.severity.toUpperCase()}
+          </span>
+          <span style={{ fontFamily: MONO, fontSize: 10, color: C.ink45 }}>{finding.code}</span>
+          <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 9.5, color: C.ink40 }}>
+            {procLabel(fix.process)} · ENGINE
+          </span>
+        </div>
+        <p style={{ margin: "7px 0 0", fontSize: 12.5, lineHeight: 1.55, color: C.ink }}>
+          {finding.message}
+        </p>
+        {finding.measured_value !== undefined && finding.required_value !== undefined && (
+          <p style={{ margin: "5px 0 0", fontFamily: MONO, fontSize: 10, color: C.measured }}>
+            measured {finding.measured_value} · required {finding.required_value}
+          </p>
+        )}
+        {finding.fix_suggestion && (
+          <p style={{ margin: "5px 0 0", fontSize: 11.5, lineHeight: 1.55, color: C.ink55 }}>
+            {finding.fix_suggestion}
+          </p>
+        )}
+      </div>
+      <DesignIntelligenceAdvisory
+        key={[
+          finding.code,
+          finding.severity,
+          finding.message,
+          finding.fix_suggestion ?? "",
+          finding.process ?? "",
+          finding.measured_value ?? "",
+          finding.required_value ?? "",
+        ].join("\u001f")}
+        finding={finding}
+        analysisId={validation.saved?.id}
+        findingRef={findingRef}
+      />
     </div>
   );
 }
@@ -1092,104 +1227,223 @@ function ResourceCost({
   );
 }
 
-const DECIDE_OPTS: { key: string; label: string }[] = [
+const DECIDE_OPTS = [
   { key: "inhouse", label: "Make in-house" },
   { key: "outside", label: "Make outside" },
   { key: "acquire", label: "Acquire capability" },
   { key: "redesign", label: "Redesign" },
-];
+] as const;
+
+const DECISION_SIGNAL = {
+  inhouse: "make_in_house",
+  outside: "make_outside",
+  acquire: "acquire_capability",
+  redesign: "redesign",
+} as const;
+
+const DECISION_KEY = {
+  make_in_house: "inhouse",
+  make_outside: "outside",
+  acquire_capability: "acquire",
+  redesign: "redesign",
+} as const;
 
 function DecideHallmark({
   result,
   decision,
   setDecision,
   nav,
+  onReupload,
 }: {
   result: VerifyResult;
   decision: string | null;
   setDecision: (d: string | null) => void;
   nav: Nav;
+  onReupload: () => void;
 }) {
   const toast = useToast();
-  const saved = result.cost?.saved;
+  const { user } = useAuth();
+  const canRecord = canRecordAnalysisMemory(user?.role);
+  const savedCost = result.cost?.saved;
+  const savedAnalysis = result.validation?.saved;
+  const [saving, setSaving] = useState(false);
+  const [pendingDecision, setPendingDecision] = useState<string | null>(null);
+  const [decisionIsSaved, setDecisionIsSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const activeAnalysisId = useRef(savedAnalysis?.id ?? null);
+  const decisionRequestGeneration = useRef(0);
+  activeAnalysisId.current = savedAnalysis?.id ?? null;
   const est = result.cost ? makeNowEstimate(result.cost) : null;
   const validated = est?.confidence?.validated ?? false;
   const decidedLabel = DECIDE_OPTS.find((o) => o.key === decision)?.label ?? null;
+  const pendingLabel = DECIDE_OPTS.find((o) => o.key === pendingDecision)?.label ?? null;
   // Real, verbatim id of the persisted cost-decision artifact (never the design's
   // fixture "V-0117"). A short handle for the line; the full record opens in Records.
-  const shortId = saved?.id ? `#${saved.id.slice(0, 8)}` : null;
-  const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  const shortId = savedAnalysis?.id ? `#${savedAnalysis.id.slice(0, 8)}` : null;
+  useEffect(() => {
+    const generation = ++decisionRequestGeneration.current;
+    const analysisId = savedAnalysis?.id ?? null;
+    setSaving(false);
+    setSaveError(null);
+    setPendingDecision(null);
+    setDecisionIsSaved(false);
+    setDecision(null);
+    if (!analysisId) return;
+    let active = true;
+    fetchAnalysisFeedback(analysisId).then(
+      (feedback) => {
+        if (
+          active &&
+          generation === decisionRequestGeneration.current &&
+          analysisId === activeAnalysisId.current &&
+          feedback.decision
+        ) {
+          setDecision(DECISION_KEY[feedback.decision]);
+          setDecisionIsSaved(true);
+        }
+      },
+      () => undefined
+    );
+    return () => {
+      active = false;
+    };
+  }, [savedAnalysis?.id, setDecision]);
 
-  const choose = (key: string, label: string) => {
-    const withdrawing = decision === key;
-    setDecision(withdrawing ? null : key);
-    if (withdrawing) {
-      toast(`Decision withdrawn — ${label}`);
+  const choose = async (
+    key: (typeof DECIDE_OPTS)[number]["key"],
+    label: string
+  ) => {
+    if (!canRecord) return;
+    if (decision === key && decisionIsSaved && !saveError) {
+      toast(`${label} — already recorded`);
       return;
     }
-    // Honest: the user's outcome is noted on THIS verification (session). The
-    // cost-decision artifact itself is what's persisted (POST /validate/cost); the
-    // toast asserts only what actually happened.
-    toast(saved ? `${label} — noted · cost-decision ${shortId} is saved` : `${label} — noted on this verification`);
+    setSaveError(null);
+    // Keep the native file chooser inside the originating user gesture.
+    if (key === "redesign") onReupload();
     if (key === "acquire") nav("acquisition");
+    if (savedAnalysis?.id) {
+      const analysisId = savedAnalysis.id;
+      const generation = ++decisionRequestGeneration.current;
+      setSaving(true);
+      setPendingDecision(key);
+      try {
+        const feedback = await recordAnalysisFeedback(analysisId, {
+          decision: DECISION_SIGNAL[key],
+        });
+        if (
+          generation !== decisionRequestGeneration.current ||
+          analysisId !== activeAnalysisId.current
+        ) return;
+        if (feedback.decision !== DECISION_SIGNAL[key]) {
+          throw new Error("recorded decision did not round-trip");
+        }
+        setDecision(key);
+        setDecisionIsSaved(true);
+        toast(`${label} — recorded on verification ${shortId}`);
+      } catch (error) {
+        if (
+          generation !== decisionRequestGeneration.current ||
+          analysisId !== activeAnalysisId.current
+        ) return;
+        const message = error instanceof Error ? error.message : "recording failed";
+        setSaveError(message);
+        toast(`${label} — not saved; retry when the record is available`);
+      } finally {
+        if (
+          generation === decisionRequestGeneration.current &&
+          analysisId === activeAnalysisId.current
+        ) {
+          setPendingDecision(null);
+          setSaving(false);
+        }
+      }
+    } else {
+      setDecision(key);
+      setDecisionIsSaved(false);
+      setSaveError("verification persistence is off");
+      toast(`${label} — session only; verification persistence is off`);
+    }
   };
 
   return (
     <Card>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <p style={{ margin: 0, fontSize: 15, fontWeight: 500, marginRight: "auto" }}>Decide</p>
-        {DECIDE_OPTS.map((o) => {
+        {canRecord ? DECIDE_OPTS.map((o) => {
           const on = decision === o.key;
+          const pending = pendingDecision === o.key;
           return (
             <button
               key={o.key}
               type="button"
-              onClick={() => choose(o.key, o.label)}
+              aria-pressed={on}
+              onClick={() => void choose(o.key, o.label)}
+              disabled={saving}
               style={{
                 background: on ? C.ink : "none",
-                border: `1px solid ${on ? C.ink : "#d8d8dc"}`,
+                border: `1px ${pending ? "dashed" : "solid"} ${on ? C.ink : pending ? C.cond : "#d8d8dc"}`,
                 borderRadius: 999,
                 color: on ? "#ffffff" : C.ink,
                 padding: "9px 16px",
                 fontSize: 12.5,
                 fontWeight: 500,
-                cursor: "pointer",
+                cursor: saving ? "wait" : "pointer",
                 fontFamily: "inherit",
                 transition: "all 150ms",
               }}
             >
-              {o.label}
+              {pending ? `${o.label}…` : o.label}
             </button>
           );
-        })}
+        }) : (
+          <span style={{ fontFamily: MONO, fontSize: 9.5, color: C.ink45 }}>
+            READ ONLY · ANALYST ROLE REQUIRED
+          </span>
+        )}
       </div>
 
-      {decidedLabel ? (
+      {saving && pendingLabel ? (
+        <p aria-live="polite" style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.cond, lineHeight: 1.6 }}>
+          Recording {pendingLabel}… not yet saved.
+        </p>
+      ) : decidedLabel ? (
         <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.pass, lineHeight: 1.6, animation: "vtraceIn 300ms cubic-bezier(0.2,0,0,1) both" }}>
-          ✓ {decidedLabel} — noted on this verification · {today}
-          {saved ? (
+          ✓ {decidedLabel} — {decisionIsSaved ? "recorded on this verification" : "SESSION ONLY · NOT SAVED"}
+          {savedAnalysis && decisionIsSaved ? (
             <>
-              {" "}· cost-decision <span style={{ color: C.ink }}>{shortId}</span> is the persisted artifact
+              {" "}· verification <span style={{ color: C.ink }}>{shortId}</span> is the persisted system-of-record artifact
             </>
           ) : (
-            " · this session only (persistence off)"
+            " · this session only"
           )}
+        </p>
+      ) : canRecord ? (
+        <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40, lineHeight: 1.6 }}>
+          next → pick one above · your choice is noted on this verification
+          {savedAnalysis ? " and appended to its audit record" : ""}.
         </p>
       ) : (
         <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40, lineHeight: 1.6 }}>
-          next → pick one above · your choice is noted on this verification
-          {saved ? " beside the saved cost-decision record" : ""}.
+          Organization decision memory is read-only for viewers.
+        </p>
+      )}
+
+      {saveError && (
+        <p role="alert" style={{ margin: "7px 0 0", fontFamily: MONO, fontSize: 10, color: C.fail, lineHeight: 1.6 }}>
+          Not saved: {saveError}{decisionIsSaved ? " · the previous recorded choice is unchanged" : ""}.
         </p>
       )}
 
       <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        <GhostButton onClick={() => nav("records")} disabled={!saved}>
-          {saved ? "Open the record →" : "Not persisted"}
+        <GhostButton onClick={() => nav("records")} disabled={!savedCost}>
+          {savedCost ? "Open the cost record →" : "Cost not persisted"}
         </GhostButton>
+        <GhostButton onClick={onReupload}>Re-upload changed CAD →</GhostButton>
         <span style={{ fontFamily: MONO, fontSize: 9.5, color: C.ink40, lineHeight: 1.5, flex: 1, minWidth: 180 }}>
-          {saved
-            ? "the cost-decision is the immutable saved artifact; your choice above is noted in this verification session and the record opens from Records."
-            : "persistence is off for this decision (COST_PERSIST_ENABLED) — it computed, but was not saved server-side."}
+          {savedAnalysis
+            ? "the choice is durable organization memory on the saved verification; selecting another choice appends a new audited state."
+            : "analysis persistence is off — the engine computed this run, but no verification exists to receive an organization decision."}
         </span>
       </div>
 
@@ -1197,9 +1451,9 @@ function DecideHallmark({
         <div style={{ flex: 1 }}>
           <ConfidenceBand validated={validated} pointFraction={0.5} />
           <p style={{ margin: "7px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink45, lineHeight: 1.6 }}>
-            {validated
-              ? "this verdict ships solid — validated against your actuals."
-              : "this verdict ships hatched — assumption band, not shop-validated · n=0. It flips solid only when your actuals come back."}
+            {est?.confidence
+              ? `this verdict ships ${validated ? "solid" : "hatched"} · ${confidenceDisclosure(est.confidence)}`
+              : "confidence metadata unavailable — no validation claim is made."}
           </p>
         </div>
         <GhostButton onClick={() => nav("calibration")}>See how truth arrives →</GhostButton>
@@ -1226,6 +1480,7 @@ function formatDriverValue(d: DriverView): string {
 function driverUnit(d: DriverView): string {
   if (d.unit === "usd") return "";
   if (d.unit === "count") return "";
+  if (d.name === "parts_per_build" && d.value === 1) return "part";
   return d.unit;
 }
 
@@ -1248,7 +1503,7 @@ function driverUnit(d: DriverView): string {
 
 type DockState =
   | { t: "idle" }
-  | { t: "loading" }
+  | { t: "loading"; label: string }
   | { t: "routes"; data: Extract<RouteCompareResult, { status: "ok" }> }
   | { t: "cost"; data: CostAtQtyResult }
   | { t: "saved"; data: CostComparison; otherId: string }
@@ -1257,18 +1512,54 @@ type DockState =
   | { t: "drivers"; data: DriverReadoutResult }
   | { t: "time"; data: TimeReadoutResult }
   | { t: "crossover"; data: CrossoverReadoutResult }
+  | {
+      t: "precedents";
+      org: OrgPrecedentResponse | null;
+      advisory: DesignIntelligenceResponse | null;
+      finding: DesignIntelligenceFinding | null;
+    }
   | { t: "refuse"; title: string; reason: string; nl: boolean };
 
-function AskDock({ cost, running, nav }: { cost: CostReport | null; running: boolean; nav: Nav }) {
+function AskDock({
+  result,
+  running,
+  nav,
+}: {
+  result: VerifyResult | null;
+  running: boolean;
+  nav: Nav;
+}) {
+  const cost = result?.cost ?? null;
   const [text, setText] = useState("");
   const [state, setState] = useState<DockState>({ t: "idle" });
-  const canAsk = !!cost && !running;
+  const requestVersion = useRef(0);
+  const canAsk = !!result && !running;
+  const announcement =
+    state.t === "loading"
+      ? state.label
+      : state.t === "idle"
+        ? ""
+        : state.t === "refuse"
+          ? `Answer unavailable: ${state.title}`
+          : state.t === "precedents"
+            ? "Precedent search complete."
+            : "Engine answer ready.";
 
+  useEffect(() => {
+    requestVersion.current += 1;
+    setText("");
+    setState({ t: "idle" });
+  }, [result]);
+
+  function show(next: DockState) {
+    requestVersion.current += 1;
+    setState(next);
+  }
   function refuse(title: string, reason: string, nl = false) {
-    setState({ t: "refuse", title, reason, nl });
+    show({ t: "refuse", title, reason, nl });
   }
   function clear() {
-    setState({ t: "idle" });
+    show({ t: "idle" });
   }
 
   function askRoutes(qty: number | null) {
@@ -1280,19 +1571,21 @@ function AskDock({ cost, running, nav }: { cost: CostReport | null; running: boo
         "Only one route was costed for this part, so there is no second route to diff. The should-cost above already carries every driver for that route."
       );
     } else {
-      setState({ t: "routes", data: r });
+      show({ t: "routes", data: r });
     }
   }
 
   function askCost(qty: number | null) {
     if (!cost) return;
-    setState({ t: "cost", data: computeCostAtQty(cost, qty) });
+    show({ t: "cost", data: computeCostAtQty(cost, qty) });
   }
 
   async function askSaved() {
     if (!cost) return;
-    setState({ t: "loading" });
+    const request = ++requestVersion.current;
+    setState({ t: "loading", label: "comparing saved decisions…" });
     const res = await compareSaved(cost.saved?.id ?? null);
+    if (request !== requestVersion.current) return;
     if (res.status === "ok") {
       setState({ t: "saved", data: res.comparison, otherId: res.otherId });
     } else if (res.status === "not_saved") {
@@ -1313,31 +1606,80 @@ function AskDock({ cost, running, nav }: { cost: CostReport | null; running: boo
     }
   }
 
+  async function askPrecedents() {
+    const validation = result?.validation;
+    const analysisId = validation?.saved?.id;
+    if (!validation || !analysisId) {
+      refuse(
+        "No saved verification memory.",
+        "Similar cases are searched only inside this organization’s saved engine analyses. Save this verification, then ask again."
+      );
+      return;
+    }
+    const request = ++requestVersion.current;
+    setState({ t: "loading", label: "searching organization memory…" });
+    const fix = relevantPriorityFixes(validation)[0] ?? null;
+    const findingRef = fix ? findingRefForPriorityFix(validation, fix) : null;
+    const [orgResult, advisoryResult] = await Promise.allSettled([
+      fetchAnalysisPrecedents(analysisId),
+      designIntelligenceEnabled() && fix && findingRef
+        ? fetchAnalysisDesignIntelligence(analysisId, findingRef)
+        : Promise.resolve(null),
+    ]);
+    if (request !== requestVersion.current) return;
+    const org = orgResult.status === "fulfilled" ? orgResult.value : null;
+    const advisory =
+      advisoryResult.status === "fulfilled" ? advisoryResult.value : null;
+    if (!org && !advisory) {
+      refuse(
+        "Precedent memory unavailable.",
+        "Neither organization memory nor third-party advisory context returned. The engine verdict is unchanged."
+      );
+      return;
+    }
+    setState({
+      t: "precedents",
+      org,
+      advisory,
+      finding: fix ? priorityFixFinding(fix) : null,
+    });
+  }
+
   function submit() {
     const raw = text.trim();
     if (!raw) return;
-    if (!cost) {
-      refuse("No part loaded.", "Load a part above first — the engine answers only about a part it has actually computed.");
+    const p = parseAsk(raw);
+    if (p.kind === "precedents") {
+      void askPrecedents();
       return;
     }
-    const p = parseAsk(raw);
+    if (!cost) {
+      refuse(
+        "No cost artifact for this part.",
+        "The verification did not produce a cost report, so cost, route, material, and time reads are withheld. Similar saved cases may still be available."
+      );
+      return;
+    }
     if (p.kind === "cost_at_qty") askCost(p.qty);
     else if (p.kind === "compare_routes") askRoutes(p.qty);
     else if (p.kind === "compare_saved") void askSaved();
-    else if (p.kind === "explain_verdict") setState({ t: "verdict", data: explainVerdict(cost) });
-    else if (p.kind === "materials") setState({ t: "materials", data: materialsForReport(cost) });
-    else if (p.kind === "drivers") setState({ t: "drivers", data: driverReadout(cost, p.qty) });
-    else if (p.kind === "time") setState({ t: "time", data: timeReadout(cost, p.qty) });
-    else if (p.kind === "crossover") setState({ t: "crossover", data: crossoverReadout(cost) });
+    else if (p.kind === "explain_verdict") show({ t: "verdict", data: explainVerdict(cost) });
+    else if (p.kind === "materials") show({ t: "materials", data: materialsForReport(cost) });
+    else if (p.kind === "drivers") show({ t: "drivers", data: driverReadout(cost, p.qty) });
+    else if (p.kind === "time") show({ t: "time", data: timeReadout(cost, p.qty) });
+    else if (p.kind === "crossover") show({ t: "crossover", data: crossoverReadout(cost) });
     else refuse("The engine can't compute that.", NL_REFUSAL, true);
   }
 
   return (
     <div style={{ flexShrink: 0, borderTop: `1px solid ${C.hair2}`, background: C.panel, padding: "10px 30px" }}>
+      <p className="sr-only" aria-live="polite" aria-atomic="true">
+        {announcement}
+      </p>
       {/* the answer — an engine artifact, never prose-with-numbers */}
       {state.t === "loading" && (
         <div style={ARTIFACT_STYLE}>
-          <Spinner label="asking GET /cost-decisions/compare…" />
+          <Spinner label={state.label} />
         </div>
       )}
       {state.t === "routes" && <RouteCompareArtifact data={state.data} onClose={clear} />}
@@ -1348,6 +1690,14 @@ function AskDock({ cost, running, nav }: { cost: CostReport | null; running: boo
       {state.t === "drivers" && <DriversArtifact data={state.data} onClose={clear} />}
       {state.t === "time" && <TimeArtifact data={state.data} onClose={clear} />}
       {state.t === "crossover" && <CrossoverArtifact data={state.data} onClose={clear} />}
+      {state.t === "precedents" && (
+        <PrecedentArtifact
+          org={state.org}
+          advisory={state.advisory}
+          finding={state.finding}
+          onClose={clear}
+        />
+      )}
       {state.t === "refuse" && <RefusalArtifact title={state.title} reason={state.reason} nl={state.nl} onClose={clear} />}
 
       {/* the ask row */}
@@ -1408,9 +1758,10 @@ function AskDock({ cost, running, nav }: { cost: CostReport | null; running: boo
             </svg>
           </button>
         </div>
-        <AskChip label="Compare routes @ 1,000" disabled={!canAsk} onClick={() => askRoutes(1000)} />
-        <AskChip label="Compare saved decisions →" disabled={!canAsk} onClick={() => void askSaved()} />
-        <AskChip label="Why this verdict?" disabled={!canAsk} onClick={() => cost && setState({ t: "verdict", data: explainVerdict(cost) })} />
+        <AskChip label="Compare routes @ 1,000" disabled={!cost || running} onClick={() => askRoutes(1000)} />
+        <AskChip label="Compare saved decisions →" disabled={!cost || running} onClick={() => void askSaved()} />
+        <AskChip label="Find similar cases" disabled={!canAsk} onClick={() => void askPrecedents()} />
+        <AskChip label="Why this verdict?" disabled={!cost || running} onClick={() => cost && show({ t: "verdict", data: explainVerdict(cost) })} />
         <AskChip
           label="An uncomputable ask"
           disabled={false}
@@ -1424,7 +1775,7 @@ function AskDock({ cost, running, nav }: { cost: CostReport | null; running: boo
       </div>
 
       <p style={{ margin: "6px 0 0", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontFamily: MONO, fontSize: 9, color: C.ink35 }}>
-        <span>answers are deterministic engine artifacts — verdict, materials, drivers, hours, cost, routes, and saved records</span>
+        <span>answers are deterministic engine artifacts or clearly labeled precedent — verdict, materials, drivers, hours, cost, routes, and saved records</span>
       </p>
     </div>
   );
@@ -1605,6 +1956,140 @@ function SavedCompareArtifact({ data, otherId, onClose, nav }: { data: CostCompa
   );
 }
 
+function PrecedentArtifact({
+  org,
+  advisory,
+  finding,
+  onClose,
+}: {
+  org: OrgPrecedentResponse | null;
+  advisory: DesignIntelligenceResponse | null;
+  finding: DesignIntelligenceFinding | null;
+  onClose: () => void;
+}) {
+  const thirdPartyRows = advisory
+    ? [
+        ...advisory.possible_intents.map((row) => ({
+          text: row.candidate,
+          source_url: row.source_url,
+        })),
+        ...advisory.relevant_requirements.map((row) => ({
+          text: row.excerpt,
+          source_url: row.source_url,
+        })),
+        ...advisory.workflow_evidence.map((row) => ({
+          text: row.excerpt,
+          source_url: row.source_url,
+        })),
+      ]
+    : [];
+  const advisoryEmpty = advisory
+    ? designIntelligenceEmptyMessage(
+        advisory.status,
+        advisory.reason,
+        advisory.index_truncated
+      )
+    : null;
+  return (
+    <div style={{ ...ARTIFACT_STYLE, maxWidth: 820 }}>
+      <ArtifactHeader
+        kicker="PRECEDENT — ADVISORY, NEVER A VERDICT INPUT"
+        onClose={onClose}
+      />
+      <section aria-label="Organization precedents" style={{ marginTop: 12 }}>
+        <p style={{ margin: 0, fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em", color: C.measured }}>
+          ORG PRECEDENT · SAVED ENGINE ANALYSES
+        </p>
+        {!org ? (
+          <p style={{ margin: "7px 0 0", fontSize: 12, color: C.ink45 }}>
+            Organization memory did not return. No similar case is asserted.
+          </p>
+        ) : org.status === "unavailable" ? (
+          <p style={{ margin: "7px 0 0", fontSize: 12, color: C.ink45 }}>
+            Similarity could not be computed for this analysis. No similar case is asserted.
+          </p>
+        ) : org.status === "no_match" ? (
+          <p style={{ margin: "7px 0 0", fontSize: 12, color: C.ink45 }}>
+            {org.search_truncated
+              ? `No usable case was found in the ${NUM(org.candidates_examined)} bounded recent candidates searched.`
+              : "No usable saved case was found in this organization."}
+          </p>
+        ) : (
+          <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 7 }}>
+            {org.cases.map((row) => (
+              <div key={row.analysis_id} style={{ border: `1px solid ${C.hair}`, borderRadius: 8, background: C.panel, padding: "9px 11px" }}>
+                <div style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: 8 }}>
+                  <a href={row.analysis_url} style={{ color: C.ink, fontSize: 12.5, fontWeight: 500 }}>
+                    {row.filename}
+                  </a>
+                  <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 9.5, color: C.ink40 }}>
+                    geometry distance {row.distance.toFixed(3)} · lower is closer
+                  </span>
+                </div>
+                <p style={{ margin: "5px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink55, lineHeight: 1.6 }}>
+                  verdict {row.verdict ?? "withheld"} · route {row.best_process ? procLabel(row.best_process) : "withheld"}
+                  {row.recommended_material ? ` · ${row.recommended_material}` : ""}
+                  {row.stale ? " · STALE ENGINE VERSION" : ""}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+        {org?.search_truncated && (
+          <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 9.5, color: C.cond }}>
+            BOUNDED SEARCH · examined the {NUM(org.candidates_examined)} most recent saved candidates; browse saved analyses for the full history.
+          </p>
+        )}
+        <div style={{ marginTop: 8 }}>
+          <a href="/history" style={{ color: C.measured, fontSize: 11.5, fontWeight: 500 }}>
+            Browse saved analyses →
+          </a>
+        </div>
+      </section>
+
+      <section aria-label="Third-party advisory precedent" style={{ marginTop: 14, borderTop: `1px solid ${C.hair2}`, paddingTop: 12 }}>
+        <p style={{ margin: 0, fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em", color: C.cond }}>
+          THIRD-PARTY ADVISORY{advisory && isResearchOnly(advisory) ? " · RESEARCH_ONLY · UNLICENSED" : ""}
+        </p>
+        {finding && (
+          <p style={{ margin: "6px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink45 }}>
+            context for engine finding {finding.code}
+          </p>
+        )}
+        {thirdPartyRows.length === 0 ? (
+          <p style={{ margin: "7px 0 0", fontSize: 12, color: C.ink45 }}>
+            {advisoryEmpty ?? "No cited third-party workflow context is available. The finding remains unchanged."}
+          </p>
+        ) : (
+          <ul style={{ margin: "7px 0 0", paddingLeft: 18 }}>
+            {thirdPartyRows.map((row, index) => {
+              const href = safeEvidenceUrl(row.source_url);
+              return (
+                <li key={`${row.text}-${index}`} style={{ marginTop: index ? 5 : 0, fontSize: 12, lineHeight: 1.55, color: C.ink55 }}>
+                  {row.text}
+                  {href && (
+                    <a href={href} target="_blank" rel="noreferrer" style={{ marginLeft: 7, color: C.measured }}>
+                      source ↗
+                    </a>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {advisory?.index_truncated && (
+          <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 9.5, color: C.cond }}>
+            BOUNDED SEARCH · indexed {NUM(advisory.indexed_records)} of {NUM(advisory.eligible_records_scanned)} eligible records; unindexed eligible records may contain additional context.
+          </p>
+        )}
+      </section>
+      <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 9.5, color: C.ink35, lineHeight: 1.55 }}>
+        Organization cases are deterministic comparisons over measured saved geometry. Third-party workflows are unverified design context. Neither can change makeability, machine fit, material validity, time, or cost.
+      </p>
+    </div>
+  );
+}
+
 function VerdictArtifact({ data, onClose }: { data: VerdictExplanationResult; onClose: () => void }) {
   const blockers = data.blockers.slice(0, 3);
   return (
@@ -1731,7 +2216,7 @@ function CrossoverArtifact({ data, onClose }: { data: CrossoverReadoutResult; on
 /** The honest refusal — never a fabricated answer. */
 function RefusalArtifact({ title, reason, nl, onClose }: { title: string; reason: string; nl: boolean; onClose: () => void }) {
   return (
-    <div style={{ maxWidth: 720, marginBottom: 12, border: `1.5px dashed #d3d3d8`, borderRadius: 14, padding: "16px 18px", animation: "vstepIn 300ms cubic-bezier(0.2,0,0,1) both" }}>
+    <div role="alert" style={{ maxWidth: 720, marginBottom: 12, border: `1.5px dashed #d3d3d8`, borderRadius: 14, padding: "16px 18px", animation: "vstepIn 300ms cubic-bezier(0.2,0,0,1) both" }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
         <p style={{ margin: 0, fontSize: 14, fontWeight: 500 }}>{title}</p>
         {nl && <span style={{ fontFamily: MONO, fontSize: 9.5, color: C.ink40 }}>DETERMINISTIC REFUSAL</span>}

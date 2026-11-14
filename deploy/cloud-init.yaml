@@ -1,0 +1,15 @@
+#cloud-config
+# Bootstraps a bare Ubuntu box into a Docker host ready to run the CadVerify stack.
+package_update: true
+package_upgrade: false
+runcmd:
+  # 4 GB swap so a small instance can survive the Next.js / pip build steps
+  - [ bash, -lc, "fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile" ]
+  - [ bash, -lc, "echo '/swapfile none swap sw 0 0' >> /etc/fstab" ]
+  # Docker Engine + compose plugin via the official convenience script
+  - [ bash, -lc, "curl -fsSL https://get.docker.com | sh" ]
+  - [ bash, -lc, "systemctl enable --now docker" ]
+  - [ bash, -lc, "usermod -aG docker ubuntu" ]
+  - [ bash, -lc, "mkdir -p /opt/cadverify && chown ubuntu:ubuntu /opt/cadverify" ]
+  # Signal file the deploy script polls for
+  - [ bash, -lc, "touch /opt/cadverify/.cloud-init-done" ]

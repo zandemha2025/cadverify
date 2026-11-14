@@ -24,6 +24,7 @@ import importlib.util
 import logging
 import os
 import re
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import select
@@ -58,6 +59,12 @@ class ReconstructionUnavailableError(RuntimeError):
     """
 
     code = "RECONSTRUCTION_UNAVAILABLE"
+
+
+class ReconstructionQueueError(RuntimeError):
+    """The durable reconstruction job could not be submitted to the worker."""
+
+    code = "RECONSTRUCTION_QUEUE_UNAVAILABLE"
 
 
 def _validate_ulid(ulid: str) -> None:
@@ -240,10 +247,10 @@ async def create_reconstruction_job(
     process_types: str | None,
     rule_pack: str | None,
 ) -> Job:
-    """Create a reconstruction job: validate images, persist Job row, save blobs, enqueue.
+    """Create a durable reconstruction job, save blobs, then enqueue it.
 
     Args:
-        session: DB session (caller commits).
+        session: DB session (this function commits before enqueue).
         user: Authenticated user.
         images: List of (file_bytes, content_type) tuples.
         process_types: Comma-separated process types for auto-feed analysis.
@@ -281,14 +288,33 @@ async def create_reconstruction_job(
     # Save images to blob storage
     await save_reconstruction_images(job.ulid, images)
 
+    # The worker can start immediately, so its row and input blobs must be
+    # durable before the queue receives the job id.
+    await session.commit()
+
     # Enqueue arq task
     from src.jobs.arq_backend import get_arq_pool
-    pool = await get_arq_pool()
-    await pool.enqueue_job(
-        "run_reconstruction_job",
-        job.ulid,
-        _job_id=f"recon_{job.ulid}",
-    )
+    try:
+        pool = await get_arq_pool()
+        await pool.enqueue_job(
+            "run_reconstruction_job",
+            job.ulid,
+            _job_id=f"recon_{job.ulid}",
+        )
+    except Exception as exc:
+        job.status = "failed"
+        job.completed_at = datetime.now(timezone.utc)
+        job.result_json = {
+            "error": {
+                "code": ReconstructionQueueError.code,
+                "message": "Reconstruction could not be queued. Retry the upload.",
+            }
+        }
+        await session.commit()
+        logger.exception("Failed to enqueue reconstruction job %s", job.ulid)
+        raise ReconstructionQueueError(
+            "Reconstruction could not be queued. Retry the upload."
+        ) from exc
 
     logger.info(
         "Created reconstruction job %s with %d images for user %s",

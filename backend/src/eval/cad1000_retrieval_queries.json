@@ -1,0 +1,140 @@
+{
+  "queries": [
+    {
+      "query_id": "crankshaft-offset-journals",
+      "query": "crankshaft stepped journals offset crank throws counterweight webs end flange",
+      "workflow_id": "5e233b48-08b5-40da-bcec-10140624a906",
+      "relevant_workflow_ids": [
+        "7127f2c2-0a06-4d32-937d-8c4ffe5bfc10",
+        "7834c930-2ad8-4335-a9ec-a0837cf72b73",
+        "bd7a95db-9e8c-478a-b3db-5eba9448e6e7"
+      ],
+      "application": "CATIA",
+      "task_family": "crankshaft"
+    },
+    {
+      "query_id": "radial-impeller-curved-vanes",
+      "query": "radial impeller circular backplate central keyed hub six curved vanes",
+      "workflow_id": "99ad8880-fe71-489b-be26-4d487c72087e",
+      "relevant_workflow_ids": [
+        "67f2c461-4bd7-4b6b-b994-92b35ac26958",
+        "9e88e023-8baa-46ed-839f-0bc98d23a16a",
+        "ac508aae-a282-4b4c-8528-962b46883836",
+        "af53d07b-b7a1-4ba6-9631-3a4da08ae742"
+      ],
+      "application": "SOLIDWORKS",
+      "task_family": "impeller"
+    },
+    {
+      "query_id": "v-belt-pulley-grooves-keyway",
+      "query": "V-belt pulley grooved outer rim recessed web central keyed bore lightening holes",
+      "workflow_id": "70411ce8-7643-4bf1-a55d-e15af44aa4d4",
+      "relevant_workflow_ids": [
+        "39c1800d-2450-4362-ba29-603229339056",
+        "af78734c-0b34-44e9-bab5-03d7302519af",
+        "f6859c6f-7d06-4c72-a1fa-7244211041cb"
+      ],
+      "application": "CATIA",
+      "task_family": "belt-pulley"
+    },
+    {
+      "query_id": "connecting-rod-bearing-eyes",
+      "query": "connecting rod large bearing eye small piston pin eye tapered recessed shank",
+      "workflow_id": "80b8961b-cecd-47a0-807d-c0a497802fda",
+      "relevant_workflow_ids": [
+        "22270eb8-c7f7-43f8-8f35-9b766f007380",
+        "95998037-b7be-4e25-8898-acdc844c1292",
+        "a27b4ebc-335b-4d4a-86fd-aa3312922e63",
+        "d3e52297-1a29-4335-96f0-bfff575c4e82"
+      ],
+      "application": "CATIA",
+      "task_family": "connecting-rod"
+    },
+    {
+      "query_id": "forked-clevis-bracket",
+      "query": "forked clevis support bracket paired lugs aligned pin holes reinforcing base",
+      "workflow_id": "ec2a8eea-73e6-4dc4-b7bf-a4500b870723",
+      "relevant_workflow_ids": [
+        "2415e811-269b-492d-b88c-48bc6788e1a6",
+        "a574d9dc-0e73-4282-bb43-f71c18a428ba",
+        "fa6cc213-b190-4660-94fc-08514a2d97b4"
+      ],
+      "application": "CATIA",
+      "task_family": "forked-bracket"
+    },
+    {
+      "query_id": "pulley-support-assembly",
+      "query": "pulley support assembly grooved pulley shaft reinforced bracket retaining hardware drawing",
+      "workflow_id": "bad6338d-6d12-4ef9-8a71-25c7ee2f0287",
+      "relevant_workflow_ids": [
+        "12e1e631-ab77-48d5-a41b-9e020527c871",
+        "2ceb08e8-baa1-49cd-a76b-75ce46be605d",
+        "b21ae315-f328-4c8b-90b1-6d5cf6eb740d",
+        "f5604438-5afd-4a15-b68f-3a19acb7c761"
+      ],
+      "application": "CATIA",
+      "task_family": "pulley-support-assembly"
+    },
+    {
+      "query_id": "screw-jack-body-housing",
+      "query": "screw jack body circular base flange tapered hollow housing cylindrical upper neck",
+      "workflow_id": "0dcf8ffc-4dba-4660-a2be-c358f4060a35",
+      "relevant_workflow_ids": [
+        "2849aa15-0799-4138-a824-294f553dd42c"
+      ],
+      "application": "Siemens NX",
+      "task_family": "screw-jack-body"
+    },
+    {
+      "query_id": "slotted-soap-tray",
+      "query": "rounded rectangular open top soap tray raised rim three elongated drainage slots",
+      "workflow_id": "ec66a74d-2313-40aa-8dca-36137ddfcd78",
+      "relevant_workflow_ids": [
+        "86b526ad-bee2-46f8-8b8f-8b402b1733a9",
+        "eda5984e-cbd7-44aa-a33a-76e6488d9595"
+      ],
+      "application": "SOLIDWORKS",
+      "task_family": "slotted-tray"
+    },
+    {
+      "query_id": "plummer-block-assembly",
+      "query": "Plummer block split bearing housing brasses fasteners component assembly drawing",
+      "workflow_id": "bbd7c53e-e783-4f06-b309-96d114e37fb0",
+      "relevant_workflow_ids": [
+        "c3bcc75d-58b4-4d96-b8be-2c0fff89a049"
+      ],
+      "application": "CATIA",
+      "task_family": "plummer-block"
+    },
+    {
+      "query_id": "wheel-support-assembly",
+      "query": "wheel support assembly grooved wheel paired upright brackets base plate axle fasteners",
+      "workflow_id": "a654f84b-6ca8-4c72-86d2-5bbcf9485eca",
+      "relevant_workflow_ids": [
+        "afad4e7f-c38d-49f5-9c4d-e1f6ba407c44",
+        "b09b1ab1-941b-4b23-be1c-f83628891cc9",
+        "e4141666-150e-40ec-8a6e-ea3a74f1ba6a"
+      ],
+      "application": "CATIA",
+      "task_family": "wheel-support-assembly"
+    },
+    {
+      "query_id": "negative-orthogonal-synthetic",
+      "query": "SYNTHETIC ORTHOGONAL quantum nebula insurance underwriting tax compliance adjust orbital coffee temperature synthetic",
+      "workflow_id": "5e233b48-08b5-40da-bcec-10140624a906",
+      "relevant_workflow_ids": [],
+      "expected_no_match": true,
+      "application": "NEGATIVE_CONTROL",
+      "task_family": "orthogonal"
+    },
+    {
+      "query_id": "negative-exceeds-build-volume",
+      "query": "EXCEEDS BUILD VOLUME Part exceeds the selected printer build volume Reduce dimensions or select a larger machine fdm",
+      "workflow_id": "5e233b48-08b5-40da-bcec-10140624a906",
+      "relevant_workflow_ids": [],
+      "expected_no_match": true,
+      "application": "NEGATIVE_CONTROL",
+      "task_family": "unsupported-additive"
+    }
+  ]
+}

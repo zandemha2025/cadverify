@@ -29,6 +29,8 @@ spec:
               value: "http://{{ include "cadverify.fullname" . }}-backend:8000"
             - name: NEXT_PUBLIC_API_BASE
               value: "http://{{ include "cadverify.fullname" . }}-backend:8000"
+            - name: NEXT_PUBLIC_DESIGN_INTELLIGENCE
+              value: "1"
           livenessProbe:
             httpGet:
               path: /

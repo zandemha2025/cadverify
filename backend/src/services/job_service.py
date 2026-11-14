@@ -34,6 +34,7 @@ async def create_sam3d_job(
     analysis_id: int,
     user_id: int,
     mesh_hash: str,
+    org_id: str | None,
 ) -> Job:
     """Create a SAM-3D job for an analysis. Idempotent by (analysis_id, 'sam3d').
 
@@ -46,6 +47,7 @@ async def create_sam3d_job(
             select(Job).where(
                 Job.analysis_id == analysis_id,
                 Job.job_type == "sam3d",
+                Job.org_id == org_id,
             )
         )
     ).scalars().first()
@@ -58,12 +60,10 @@ async def create_sam3d_job(
         return existing
 
     # Create new job
-    from src.auth.org_context import resolve_org
-
     job = Job(
         ulid=str(ULID()),
         user_id=user_id,
-        org_id=await resolve_org(session, user_id),
+        org_id=org_id,
         analysis_id=analysis_id,
         job_type="sam3d",
         status="queued",
@@ -80,6 +80,7 @@ async def create_sam3d_job(
                 select(Job).where(
                     Job.analysis_id == analysis_id,
                     Job.job_type == "sam3d",
+                    Job.org_id == org_id,
                 )
             )
         ).scalars().first()

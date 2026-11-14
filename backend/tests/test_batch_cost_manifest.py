@@ -74,6 +74,36 @@ def test_cost_manifest_rejects_bad_region_and_material():
     assert "material_class" in str(exc.value) and "Row 2" in str(exc.value)
 
 
+def test_cost_manifest_accepts_governed_only_shop_for_worker_resolution():
+    items = bs.parse_csv_manifest(
+        "filename,shop\npart.stl,org-governed-only\n",
+        validate_cost=True,
+    )
+    assert items[0]["shop"] == "org-governed-only"
+
+
+@pytest.mark.parametrize(
+    "unsafe_shop",
+    ["..", "../secret", "..\\secret", "bad\x1fshop", "bad\u202eshop", "x" * 129],
+)
+def test_cost_manifest_rejects_unsafe_shop_identifiers(unsafe_shop):
+    with pytest.raises(ValueError) as exc:
+        bs.parse_csv_manifest(
+            f"filename,shop\npart.stl,{unsafe_shop}\n",
+            validate_cost=True,
+        )
+    assert "Row 2" in str(exc.value)
+    assert "shop" in str(exc.value)
+
+
+def test_cost_manifest_rejects_nul_before_csv_parsing():
+    with pytest.raises(ValueError, match="NUL"):
+        bs.parse_csv_manifest(
+            "filename,shop\npart.stl,bad\x00shop\n",
+            validate_cost=True,
+        )
+
+
 def test_dfm_manifest_ignores_cost_columns_byte_identical():
     """A DFM parse (validate_cost False) never looks at cost columns, so a stray
     'region' value does NOT error and no cost keys are added."""
@@ -133,8 +163,10 @@ class _CsvSession:
     def __init__(self, rows):
         self._rows = rows
         self._served = False
+        self.statements = []
 
     async def execute(self, stmt):
+        self.statements.append(stmt)
         # First page returns all rows; subsequent pages are empty (< page size
         # → the generator stops after one page).
         if self._served:
@@ -156,10 +188,15 @@ async def test_cost_csv_shape_and_withholding():
     session = _CsvSession(rows)
 
     out = []
-    async for chunk in bs.generate_results_csv(session, batch_id=1, job_type="cost"):
+    async for chunk in bs.generate_results_csv(
+        session, batch_id=1, org_id="org-a", job_type="cost"
+    ):
         out.append(chunk)
     text = "".join(out)
     lines = text.strip().split("\n")
+    query = str(session.statements[0])
+    assert "batch_items.org_id" in query
+    assert "cost_decisions.org_id" in query
 
     assert lines[0] == (
         "filename,status,make_now_process,crossover_qty,quantities,"

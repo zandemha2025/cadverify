@@ -15,6 +15,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  confidenceDisclosure,
   makeNowEstimate,
   toolingEstimate,
   unitCostByQty,
@@ -26,6 +27,25 @@ import {
   provenanceMix,
 } from "./derive.ts";
 import type { CostReport, CostEstimate } from "@/lib/api";
+
+test("confidence disclosure preserves an unvalidated measured residual", () => {
+  const text = confidenceDisclosure({
+    low_usd: 9,
+    high_usd: 13,
+    point_usd: 11,
+    level: 0.8,
+    method: "measured-residual",
+    validated: false,
+    n_samples: 5,
+    half_width_pct: 18,
+    basis: "stand-in residuals; not validated on shop actuals",
+    label: "stand-in-derived, not validated",
+  });
+  assert.match(text, /measured-residual/);
+  assert.match(text, /n=5/);
+  assert.match(text, /stand-in-derived, not validated/);
+  assert.doesNotMatch(text, /n=0|assumption band/);
+});
 
 function est(
   process: string,

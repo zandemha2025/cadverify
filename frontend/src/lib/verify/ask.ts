@@ -29,6 +29,7 @@ export type AskKind =
   | "drivers"
   | "time"
   | "crossover"
+  | "precedents"
   | "uncomputable";
 
 export interface ParsedAsk {
@@ -84,7 +85,12 @@ export function parseAsk(text: string): ParsedAsk {
   const wantsDrivers = /\b(driver|drivers|breakdown|why.*cost|cost.*why|line item|line-item|largest|dominant)\b/.test(t);
   const wantsTime = /\b(hour|hours|time|lead|leadtime|lead-time|machine time|setup time|days)\b/.test(t);
   const wantsCrossover = /\b(crossover|cross-over|break[- ]?even|breakeven|make[- ]?vs[- ]?buy|buy|acquire|tooling pays|payback)\b/.test(t);
+  const wantsPrecedents =
+    /\b(precedent|precedents|analogue|analog|org memory)\b/.test(t) ||
+    (/\b(similar|like this)\b/.test(t) &&
+      /\b(part|parts|case|cases|design|designs|workflow|workflows|history|record|records)\b/.test(t));
 
+  if (wantsPrecedents) return { kind: "precedents", qty, raw };
   if (isCompare) {
     if (wantsSaved) return { kind: "compare_saved", qty, raw };
     if (/\broute|routes|process|processes\b/.test(t) || qty != null)

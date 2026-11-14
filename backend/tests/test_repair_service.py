@@ -163,6 +163,7 @@ async def test_face_count_cap_rejects_oversize(monkeypatch):
             rule_pack=None,
             user=mock_user,
             session=mock_session,
+            org_id="org-a",
         )
     assert exc_info.value.status_code == 413
     assert "REPAIR_MAX_FACES" in exc_info.value.detail
@@ -206,9 +207,45 @@ async def test_timeout_returns_original_analysis(monkeypatch):
         rule_pack=None,
         user=mock_user,
         session=mock_session,
+        org_id="org-a",
     )
     assert result["repair_applied"] is False
     assert result["repair_details"].get("error") is not None
+
+
+@pytest.mark.asyncio
+async def test_original_and_repaired_analysis_share_frozen_org(monkeypatch):
+    from src.services import repair_service
+
+    mesh = trimesh.creation.box(extents=[10.0, 10.0, 10.0])
+    stl_bytes = mesh.export(file_type="stl")
+    monkeypatch.setattr(
+        repair_service,
+        "_do_repair",
+        lambda candidate: (candidate, "trimesh", 0),
+    )
+
+    with patch(
+        "src.services.analysis_service.run_analysis",
+        new_callable=AsyncMock,
+        side_effect=[{"saved": {"id": "A"}}, {"saved": {"id": "B"}}],
+    ) as run_analysis:
+        result = await repair_service.repair_mesh(
+            file_bytes=stl_bytes,
+            filename="cube.stl",
+            processes=None,
+            rule_pack=None,
+            user=MagicMock(user_id=1, api_key_id=1),
+            session=AsyncMock(),
+            org_id="org-a",
+        )
+
+    assert result["repair_applied"] is True
+    assert run_analysis.await_count == 2
+    assert all(
+        call.kwargs["org_id"] == "org-a"
+        for call in run_analysis.await_args_list
+    )
 
 
 # ---------------------------------------------------------------------------

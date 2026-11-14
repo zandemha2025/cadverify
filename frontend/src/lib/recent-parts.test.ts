@@ -14,6 +14,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { toRecentPartChip, type AnalysisListRow } from "./recent-parts.ts";
+import {
+  formatDurationMs,
+  formatRateLimitReset,
+} from "./history-format.ts";
 
 /** A row exactly as `backend/src/api/history.py::list_analyses` serialises it. */
 function realRow(overrides: Partial<AnalysisListRow> = {}): AnalysisListRow {
@@ -68,4 +72,17 @@ test("does not read fabricated ulid / overall_verdict fields", () => {
   assert.ok(chip.id.length > 0);
   assert.ok(!chip.href.includes("undefined"));
   assert.equal(chip.verdict, "issues");
+});
+
+test("history formatting handles absent durations and absolute reset timestamps", () => {
+  assert.equal(formatDurationMs(undefined), "—");
+  assert.equal(formatDurationMs(null), "—");
+  assert.equal(formatDurationMs(Number.NaN), "—");
+  assert.equal(formatDurationMs(1234.5), "1234.5 ms");
+
+  const nowMs = Date.UTC(2026, 8, 2, 12, 0, 0);
+  const nowSeconds = Math.floor(nowMs / 1000);
+  assert.equal(formatRateLimitReset(nowSeconds + 121, nowMs), "Resets in 3 min");
+  assert.equal(formatRateLimitReset(nowSeconds - 1, nowMs), "Resets now");
+  assert.equal(formatRateLimitReset(0, nowMs), null);
 });

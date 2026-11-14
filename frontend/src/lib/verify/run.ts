@@ -28,6 +28,7 @@ import {
   envToServiceEnvironment,
 } from "./part-context";
 import { fetchPartContext, type PartContext } from "./part-context-read";
+import { serializeVerificationRun } from "./run-queue";
 
 // Re-export so existing importers keep resolving these off `run` unchanged.
 export type { VerificationBlock, MakeabilityLattice } from "./verification";
@@ -98,7 +99,8 @@ export const QTY_LADDER = [1, 100, 1000, 2000, 5000, 10000];
  */
 async function postCost(
   input: VerifyInput,
-  ownedProcesses: string[]
+  ownedProcesses: string[],
+  serviceEnvironment: ReturnType<typeof envToServiceEnvironment>
 ): Promise<{ cost: CostReport | null; invalid: CostGeometryInvalid | null; error: string | null }> {
   const form = new FormData();
   form.append("file", input.file);
@@ -106,6 +108,7 @@ async function postCost(
   form.append("cavities", "1");
   form.append("complexity", "moderate");
   form.append("material_class", input.materialClass);
+  form.append("service_environment", JSON.stringify(serviceEnvironment));
   if (ownedProcesses.length > 0) {
     form.append("owned_processes", ownedProcesses.join(","));
   }
@@ -137,9 +140,13 @@ async function postCost(
   return { cost: null, invalid: null, error: detail };
 }
 
-/** Run the full verification for one dropped part. Independent calls run in
- *  parallel; each failure is isolated so a partial result is still honest. */
-export async function runVerification(input: VerifyInput): Promise<VerifyResult> {
+/** Run the full verification for one dropped part. Runs are serialized so
+ *  mutable part-context writes cannot cross-contaminate concurrent uploads. */
+export function runVerification(input: VerifyInput): Promise<VerifyResult> {
+  return serializeVerificationRun(() => runVerificationNow(input));
+}
+
+async function runVerificationNow(input: VerifyInput): Promise<VerifyResult> {
   // The floor first (cheap) — its owned processes calibrate the cost to marginal.
   let machines: OwnedMachine[] = [];
   let machinesError: string | null = null;
@@ -184,7 +191,7 @@ export async function runVerification(input: VerifyInput): Promise<VerifyResult>
     (v) => ({ v, err: null as string | null }),
     (e) => ({ v: null as ValidationResult | null, err: e instanceof Error ? e.message : "Validation failed" })
   );
-  const costOut = await postCost(input, owned);
+  const costOut = await postCost(input, owned, serviceEnv);
 
   // The verification block rides the cost response when the org declared machines
   // and/or this part's environment; its ABSENCE (never a fabricated value) drives

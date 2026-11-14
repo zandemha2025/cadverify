@@ -38,6 +38,7 @@ CORPUS_ROOT = DATA_DIR / "corpus"
 MESH_DIR = CORPUS_ROOT / "meshes"
 MANIFEST = CORPUS_ROOT / "manifest.jsonl"
 FEATURES_NPZ = CORPUS_ROOT / "features.npz"
+CAD1000_KNOWLEDGE = DATA_DIR / "knowledge" / "cad1000.jsonl"
 
 # Human label store + smoke seed. ``LABELS_PATH`` (and the ``LABELS`` alias the
 # spec names) is the *file path* to labels.jsonl — NOT to be confused with the

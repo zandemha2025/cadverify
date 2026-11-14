@@ -50,7 +50,9 @@ def test_main_wires_auth_routers():
     # a real external host is never dereferenced by the test client either.
     with patch(
         "src.auth.oauth.oauth.google.authorize_redirect", new_callable=AsyncMock
-    ) as mock_authorize_redirect:
+    ) as mock_authorize_redirect, patch(
+        "src.auth.oauth.ip_signup_limit_enabled", return_value=False
+    ):
         mock_authorize_redirect.return_value = RedirectResponse(
             "https://accounts.google.com/mock-authorize", status_code=302
         )

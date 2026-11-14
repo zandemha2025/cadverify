@@ -38,6 +38,9 @@ export default function AnalysisDetailPage({
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setError(null);
+    setAnalysis(null);
+    setRepairResult(null);
     fetchAnalysis(id)
       .then((data) => {
         if (!cancelled) setAnalysis(data);
@@ -92,7 +95,7 @@ export default function AnalysisDetailPage({
             />
             <PdfDownloadButton analysisId={id} filename={analysis.filename} />
             <RepairButton
-              universalIssues={analysis.result_json.universal_issues}
+              universalIssues={analysis.result.universal_issues}
               file={null}
               onRepairComplete={setRepairResult}
             />
@@ -107,7 +110,7 @@ export default function AnalysisDetailPage({
           originalFilename={analysis.filename}
         />
       ) : (
-        <AnalysisDashboard result={analysis.result_json} />
+        <AnalysisDashboard result={analysis.result} />
       )}
     </div>
   );

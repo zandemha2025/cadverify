@@ -63,6 +63,15 @@ async def reconstruct(
         job = await reconstruction_service.create_reconstruction_job(
             session, user, image_data, process_types, rule_pack
         )
+    except reconstruction_service.ReconstructionQueueError as e:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": e.code,
+                "message": str(e),
+                "doc_url": f"{DOC_BASE}/{e.code}",
+            },
+        ) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

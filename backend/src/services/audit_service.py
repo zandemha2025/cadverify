@@ -62,20 +62,19 @@ async def log_action(
     user_agent: str | None = None,
     file_hash: str | None = None,
     result_summary: str | None = None,
+    org_id: str | None = None,
 ) -> None:
     """Insert an audit_log row. Swallows DB errors to avoid breaking requests."""
     try:
         async with get_session_factory()() as session:
             from src.auth.org_context import resolve_org
 
-            org_id = (
-                await resolve_org(session, user_id)
-                if user_id is not None
-                else None
-            )
+            resolved_org_id = org_id
+            if resolved_org_id is None and user_id is not None:
+                resolved_org_id = await resolve_org(session, user_id)
             entry = AuditLog(
                 user_id=user_id,
-                org_id=org_id,
+                org_id=resolved_org_id,
                 user_email=user_email,
                 action=action,
                 resource_type=resource_type,
@@ -106,6 +105,7 @@ def emit_event(
     resource_type: str,
     resource_id: str | None = None,
     detail: dict | None = None,
+    org_id: str | None = None,
 ) -> None:
     """Fire-and-forget a product audit event, resolving the actor's email.
 
@@ -124,6 +124,7 @@ def emit_event(
             resource_type=resource_type,
             resource_id=resource_id,
             detail=detail,
+            org_id=org_id,
         )
 
     try:

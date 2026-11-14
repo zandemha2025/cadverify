@@ -23,7 +23,7 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.errors import DOC_BASE
@@ -31,7 +31,7 @@ from src.auth.org_context import caller_org_subquery
 from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_db_session
-from src.db.models import Batch, BatchItem
+from src.db.models import Analysis, Batch, BatchItem, CostDecision
 from src.services import batch_service
 from src.services.batch_service import (
     BATCH_MAX_ZIP_BYTES,
@@ -201,6 +201,8 @@ async def create_batch(
 
         if input_mode == "zip":
             # Extract files to disk (streamed from the temp file, not RAM).
+            if zip_tmp_path is None:
+                raise HTTPException(status_code=400, detail="ZIP upload is missing")
             try:
                 items_data = batch_service.extract_zip_path_to_items(
                     zip_tmp_path, batch.ulid
@@ -402,13 +404,66 @@ async def get_batch_items(
         session, batch.id, status_filter=status, cursor=cursor_int, limit=limit
     )
 
+    artifact_ids = {}
+    if items:
+        rows = (
+            await session.execute(
+                select(BatchItem.id, Analysis.ulid, CostDecision.ulid)
+                .outerjoin(
+                    Analysis,
+                    and_(
+                        BatchItem.analysis_id == Analysis.id,
+                        Analysis.org_id == batch.org_id,
+                    ),
+                )
+                .outerjoin(
+                    CostDecision,
+                    and_(
+                        BatchItem.cost_decision_id == CostDecision.id,
+                        CostDecision.org_id == batch.org_id,
+                    ),
+                )
+                .where(
+                    BatchItem.id.in_([item.id for item in items]),
+                    BatchItem.batch_id == batch.id,
+                    BatchItem.org_id == batch.org_id,
+                )
+            )
+        ).all()
+        artifact_ids = {
+            item_id: (analysis_ulid, cost_decision_ulid)
+            for item_id, analysis_ulid, cost_decision_ulid in rows
+        }
+
     items_list = [
         {
             "item_ulid": item.ulid,
             "filename": item.filename,
             "status": item.status,
             "priority": item.priority,
-            "analysis_id": item.analysis_id,
+            "analysis_id": (
+                item.analysis_id
+                if artifact_ids.get(item.id, (None, None))[0]
+                else None
+            ),
+            "analysis": (
+                {
+                    "id": artifact_ids[item.id][0],
+                    "url": f"/api/v1/analyses/{artifact_ids[item.id][0]}",
+                }
+                if artifact_ids.get(item.id, (None, None))[0]
+                else None
+            ),
+            "cost_decision": (
+                {
+                    "id": artifact_ids[item.id][1],
+                    "url": (
+                        f"/api/v1/cost-decisions/{artifact_ids[item.id][1]}"
+                    ),
+                }
+                if artifact_ids.get(item.id, (None, None))[1]
+                else None
+            ),
             "error_message": item.error_message,
             "duration_ms": item.duration_ms,
             "created_at": item.created_at.isoformat() if item.created_at else None,
@@ -456,7 +511,7 @@ async def get_batch_results_csv(
         )
 
     csv_generator = batch_service.generate_results_csv(
-        session, batch.id, batch.job_type
+        session, batch.id, batch.org_id, batch.job_type
     )
     return StreamingResponse(
         csv_generator,

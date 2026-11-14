@@ -76,25 +76,25 @@ MATERIALS: list[MaterialProfile] = merge_materials(_HARDCODED_MATERIALS, _YAML_M
 
 MACHINES: list[MachineProfile] = [
     # FDM
-    MachineProfile("Bambu Lab X1C", "Bambu Lab", ProcessType.FDM, (256, 256, 256), 0.04, 0.4, 0.4, ["PLA", "PETG", "ABS", "Nylon", "TPU"]),
+    MachineProfile("Bambu Lab X1C", "Bambu Lab", ProcessType.FDM, (256, 256, 256), 0.04, 0.4, 0.4, ["PLA", "PETG", "ABS", "Nylon (PA6)", "TPU 95A"]),
     MachineProfile("Prusa MK4S", "Prusa Research", ProcessType.FDM, (250, 210, 220), 0.05, 0.35, 0.4, ["PLA", "PETG", "ABS"]),
-    MachineProfile("Stratasys F900", "Stratasys", ProcessType.FDM, (914, 610, 914), 0.127, 0.508, 0.4, ["ULTEM 9085", "Nylon 12CF", "ABS-M30"]),
-    MachineProfile("BigRep ONE", "BigRep", ProcessType.FDM, (1005, 1005, 1005), 0.1, 1.0, 0.6, ["PLA", "PETG", "PA6/66"]),
+    MachineProfile("Stratasys F900", "Stratasys", ProcessType.FDM, (914, 610, 914), 0.127, 0.508, 0.4, ["ULTEM 9085", "CF-Nylon", "ABS"]),
+    MachineProfile("BigRep ONE", "BigRep", ProcessType.FDM, (1005, 1005, 1005), 0.1, 1.0, 0.6, ["PLA", "PETG", "Nylon (PA6)"]),
     # SLA/DLP
-    MachineProfile("Formlabs Form 4", "Formlabs", ProcessType.SLA, (200, 125, 210), 0.025, 0.3, 0.05, ["Standard", "Tough", "Flexible", "Castable"]),
-    MachineProfile("Carbon M2", "Carbon", ProcessType.DLP, (189, 118, 326), 0.025, 0.1, 0.075, ["RPU 70", "EPU 41", "CE 221"]),
-    MachineProfile("Elegoo Saturn 4 Ultra", "Elegoo", ProcessType.DLP, (218, 123, 250), 0.01, 0.2, 0.019, ["Standard", "ABS-like", "Castable"]),
+    MachineProfile("Formlabs Form 4", "Formlabs", ProcessType.SLA, (200, 125, 210), 0.025, 0.3, 0.05, ["Standard Resin", "Tough Resin", "Flexible Resin", "Castable Resin"]),
+    MachineProfile("Carbon M2", "Carbon", ProcessType.DLP, (189, 118, 326), 0.025, 0.1, 0.075, ["polymer"]),
+    MachineProfile("Elegoo Saturn 4 Ultra", "Elegoo", ProcessType.DLP, (218, 123, 250), 0.01, 0.2, 0.019, ["Standard Resin", "Tough Resin", "Castable Resin"]),
     # SLS
-    MachineProfile("EOS P 396", "EOS", ProcessType.SLS, (340, 340, 600), 0.06, 0.18, 0.15, ["PA12", "PA11", "PA-GF"]),
-    MachineProfile("Farsoon HT1001P", "Farsoon", ProcessType.SLS, (1000, 500, 450), 0.06, 0.2, 0.15, ["PA12", "PA11", "PEEK"]),
+    MachineProfile("EOS P 396", "EOS", ProcessType.SLS, (340, 340, 600), 0.06, 0.18, 0.15, ["PA12 (Nylon 12)", "PA11", "Glass-filled PA12"]),
+    MachineProfile("Farsoon HT1001P", "Farsoon", ProcessType.SLS, (1000, 500, 450), 0.06, 0.2, 0.15, ["PA12 (Nylon 12)", "PA11", "PEEK"]),
     # MJF
-    MachineProfile("HP Jet Fusion 5200", "HP", ProcessType.MJF, (380, 284, 380), 0.08, 0.08, 0.08, ["PA12", "PA11", "TPU", "PP"]),
+    MachineProfile("HP Jet Fusion 5200", "HP", ProcessType.MJF, (380, 284, 380), 0.08, 0.08, 0.08, ["PA12 (Nylon 12)", "PA11", "PP (MJF)"]),
     # Metal AM
     MachineProfile("EOS M 400-4", "EOS", ProcessType.DMLS, (400, 400, 400), 0.02, 0.1, 0.04, ["Ti6Al4V", "Inconel 718", "SS316L", "AlSi10Mg"]),
     MachineProfile("SLM 500", "SLM Solutions", ProcessType.SLM, (500, 280, 365), 0.02, 0.09, 0.04, ["Ti6Al4V", "Inconel 718", "AlSi10Mg"]),
     MachineProfile("Arcam Q20plus", "GE Additive", ProcessType.EBM, (350, 380, 380), 0.05, 0.2, 0.1, ["Ti6Al4V", "CoCr"]),
-    MachineProfile("ExOne S-Max Pro", "ExOne", ProcessType.BINDER_JET, (1800, 1000, 700), 0.28, 0.5, 0.3, ["Sand", "SS316", "Bronze"]),
-    MachineProfile("Desktop Metal Shop System", "Desktop Metal", ProcessType.BINDER_JET, (350, 220, 200), 0.05, 0.2, 0.1, ["17-4 PH", "SS316L"]),
+    MachineProfile("ExOne S-Max Pro", "ExOne", ProcessType.BINDER_JET, (1800, 1000, 700), 0.28, 0.5, 0.3, ["SS316L"]),
+    MachineProfile("Desktop Metal Shop System", "Desktop Metal", ProcessType.BINDER_JET, (350, 220, 200), 0.05, 0.2, 0.1, ["17-4 PH SS", "SS316L"]),
     # CNC
     MachineProfile("Haas VF-2", "Haas", ProcessType.CNC_3AXIS, (762, 406, 508), notes="30x16x20 inches, 8100 RPM"),
     MachineProfile("DMG MORI DMU 50", "DMG MORI", ProcessType.CNC_5AXIS, (500, 450, 400), notes="5-axis simultaneous"),

@@ -27,6 +27,8 @@ spec:
           env:
             - name: PORT
               value: "8000"
+            - name: DESIGN_INTELLIGENCE_ENABLED
+              value: "1"
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:

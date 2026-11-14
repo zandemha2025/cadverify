@@ -31,6 +31,7 @@ def _make_batch(
     batch.id = 1
     batch.ulid = ulid
     batch.user_id = user_id
+    batch.org_id = "org-a"
     batch.status = status
     batch.input_mode = "zip"
     batch.total_items = total_items
@@ -56,6 +57,7 @@ def _make_item(
     item.id = 1
     item.ulid = ulid
     item.batch_id = 1
+    item.org_id = "org-a"
     item.filename = filename
     item.status = status
     item.priority = priority
@@ -356,15 +358,16 @@ async def test_sweep_task_off_switch(monkeypatch):
 
 @pytest.mark.asyncio
 @patch("src.jobs.batch_tasks.get_session_factory")
-async def test_item_task_calls_run_analysis(mock_gsf):
-    """Item task calls analysis_service.run_analysis."""
+async def test_dfm_item_webhook_preserves_saved_artifact(mock_gsf):
+    """DFM items keep run_analysis's public artifact in their webhook."""
     from src.jobs.batch_tasks import run_batch_item
 
     mock_session = AsyncMock()
     mock_gsf.return_value = _mock_session_factory(mock_session)
 
     item = _make_item(status="queued")
-    batch = _make_batch()
+    batch = _make_batch(webhook_url="https://hook.example.com/x")
+    batch.job_type = "dfm"
 
     call_count = 0
 
@@ -391,11 +394,13 @@ async def test_item_task_calls_run_analysis(mock_gsf):
     import src.services.batch_service as _bs_mod
     import src.services.webhook_service as _ws_mod
 
-    with patch.object(_as_mod, "run_analysis", new_callable=AsyncMock, return_value={"verdict": "pass"}) as mock_run, \
-         patch.object(_as_mod, "get_latest_analysis_id", new_callable=AsyncMock, return_value=42), \
-         patch.object(_as_mod, "compute_mesh_hash", return_value="abc123"), \
+    saved = {"id": "AN42", "url": "/api/v1/analyses/AN42"}
+    delivery = MagicMock(id=7)
+
+    with patch.object(_as_mod, "run_analysis", new_callable=AsyncMock, return_value={"verdict": "pass", "saved": saved}) as mock_run, \
+         patch.object(_as_mod, "get_analysis_id_by_ulid", new_callable=AsyncMock, return_value=42) as resolve_id, \
          patch.object(_bs_mod, "update_batch_counters", new_callable=AsyncMock) as mock_counters, \
-         patch.object(_ws_mod, "create_webhook_delivery", new_callable=AsyncMock), \
+         patch.object(_ws_mod, "create_webhook_delivery", new_callable=AsyncMock, return_value=delivery) as create_delivery, \
          patch("builtins.open", MagicMock(return_value=MagicMock(
              __enter__=MagicMock(return_value=MagicMock(read=MagicMock(return_value=b"stl data"))),
              __exit__=MagicMock(return_value=False),
@@ -404,6 +409,13 @@ async def test_item_task_calls_run_analysis(mock_gsf):
         await run_batch_item(ctx, "01ITEM000000000000001")
 
         mock_run.assert_called_once()
+        assert mock_run.await_args.kwargs["org_id"] == "org-a"
+        resolve_id.assert_awaited_once_with(mock_session, batch.user_id, "AN42", org_id="org-a")
+        payload = create_delivery.await_args.args[3]
+        assert payload["analysis_id"] == "AN42"
+        assert payload["analysis_url"] == "/api/v1/analyses/AN42"
+        assert payload["saved"] == saved
+        assert payload["analysis"] == saved
 
 
 @pytest.mark.asyncio
@@ -443,9 +455,8 @@ async def test_item_task_updates_counters(mock_gsf):
     import src.services.batch_service as _bs_mod
     import src.services.webhook_service as _ws_mod
 
-    with patch.object(_as_mod, "run_analysis", new_callable=AsyncMock, return_value={"verdict": "pass"}), \
-         patch.object(_as_mod, "get_latest_analysis_id", new_callable=AsyncMock, return_value=42), \
-         patch.object(_as_mod, "compute_mesh_hash", return_value="abc123"), \
+    with patch.object(_as_mod, "run_analysis", new_callable=AsyncMock, return_value={"verdict": "pass", "saved": {"id": "AN42"}}), \
+         patch.object(_as_mod, "get_analysis_id_by_ulid", new_callable=AsyncMock, return_value=42), \
          patch.object(_bs_mod, "update_batch_counters", new_callable=AsyncMock) as mock_counters, \
          patch.object(_ws_mod, "create_webhook_delivery", new_callable=AsyncMock), \
          patch("builtins.open", MagicMock(return_value=MagicMock(
@@ -508,9 +519,8 @@ async def test_item_completion_refreshes_batch_heartbeat(mock_gsf):
     import src.services.batch_service as _bs_mod
     import src.services.webhook_service as _ws_mod
 
-    with patch.object(_as_mod, "run_analysis", new_callable=AsyncMock, return_value={"verdict": "pass"}), \
-         patch.object(_as_mod, "get_latest_analysis_id", new_callable=AsyncMock, return_value=42), \
-         patch.object(_as_mod, "compute_mesh_hash", return_value="abc123"), \
+    with patch.object(_as_mod, "run_analysis", new_callable=AsyncMock, return_value={"verdict": "pass", "saved": {"id": "AN42"}}), \
+         patch.object(_as_mod, "get_analysis_id_by_ulid", new_callable=AsyncMock, return_value=42), \
          patch.object(_bs_mod, "update_batch_counters", new_callable=AsyncMock), \
          patch.object(_ws_mod, "create_webhook_delivery", new_callable=AsyncMock), \
          patch("builtins.open", MagicMock(return_value=MagicMock(

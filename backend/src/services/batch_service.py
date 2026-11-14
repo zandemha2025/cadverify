@@ -11,11 +11,12 @@ import logging
 import os
 import shutil
 import tempfile
+import unicodedata
 import zipfile
 from datetime import datetime, timezone
 from typing import AsyncGenerator, Optional
 
-from sqlalchemy import select, text
+from sqlalchemy import and_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
@@ -83,6 +84,7 @@ _COST_VALID_MATERIAL_CLASSES = {
 }
 _COST_MAX_QTYS = 6
 _COST_MAX_QTY = 10_000_000
+_COST_SHOP_MAX_BYTES = 128
 
 
 # ---------------------------------------------------------------------------
@@ -103,16 +105,17 @@ async def create_batch(
     """Create a Batch row with status='pending'. Returns the Batch object."""
     from src.auth.org_context import resolve_org
 
+    org_id = await resolve_org(session, user_id)
     batch = Batch(
         ulid=str(ULID()),
         user_id=user_id,
-        org_id=await resolve_org(session, user_id),
+        org_id=org_id,
         input_mode=input_mode,
         job_type=job_type,
         webhook_url=webhook_url,
         webhook_secret=webhook_secret,
         concurrency_limit=concurrency_limit or DEFAULT_BATCH_CONCURRENCY,
-        api_key_id=api_key_id,
+        api_key_id=api_key_id if api_key_id and api_key_id > 0 else None,
     )
     session.add(batch)
     await session.flush()
@@ -125,6 +128,7 @@ async def create_batch(
         user_id=user_id, user_email=_email,
         action="batch.submitted", resource_type="batch",
         resource_id=batch.ulid,
+        org_id=org_id,
         detail={"input_mode": input_mode, "job_type": job_type},
     ))
 
@@ -313,13 +317,16 @@ def parse_csv_manifest(csv_content: str, *, validate_cost: bool = False) -> list
 
     When *validate_cost* is True (a cost batch), the optional cost columns
     ``quantities`` (semicolon-separated ints, e.g. "1;100;1000"), ``region``,
-    ``material_class`` and ``shop`` are parsed and validated against the SAME
-    vectors the live POST /validate/cost route accepts — an invalid value raises
-    ``ValueError`` naming the 1-indexed row, which the router turns into a
-    structured 400. Missing values stay ``None`` → the worker uses engine
-    defaults. DFM batches (validate_cost False) ignore these columns entirely, so
-    their behaviour is byte-identical.
+    ``material_class`` and ``shop`` are parsed against the same input bounds as
+    POST /validate/cost. Shop existence is intentionally resolved later by the
+    frozen-org worker so a governed-only slug is valid; traversal/control input
+    is still rejected here. An invalid value raises ``ValueError`` naming the
+    1-indexed row, which the router turns into a structured 400. Missing values
+    stay ``None`` → the worker uses engine defaults. DFM batches (validate_cost
+    False) ignore these columns entirely, so their behaviour is byte-identical.
     """
+    if "\x00" in csv_content:
+        raise ValueError("CSV manifest contains a NUL byte")
     reader = csv.DictReader(io.StringIO(csv_content))
     if reader.fieldnames is None or "filename" not in reader.fieldnames:
         raise ValueError("CSV manifest must contain a 'filename' column")
@@ -408,13 +415,13 @@ def _parse_cost_manifest_fields(row: dict, row_num: int) -> dict:
             )
         material_class = raw_material
 
-    # shop: resolve to a known local profile slug (or reject). Mirrors the route's
-    # _resolve_shop_param — only an existing profile (by slug or display name) is
-    # accepted, never an arbitrary path.
+    # Shop identity is stored, not resolved, at submission time.  The worker has
+    # the batch's frozen org and performs the authoritative governed-first lookup;
+    # requiring a local profile here would reject valid governed-only shops.
     raw_shop = (row.get("shop") or "").strip()
     shop: Optional[str] = None
     if raw_shop:
-        shop = _resolve_manifest_shop(raw_shop, row_num)
+        shop = _validate_manifest_shop(raw_shop, row_num)
 
     return {
         "quantities": quantities,
@@ -424,27 +431,28 @@ def _parse_cost_manifest_fields(row: dict, row_num: int) -> dict:
     }
 
 
-def _resolve_manifest_shop(shop: str, row_num: int) -> str:
-    """Resolve a caller-supplied shop (slug OR display name) to a known profile
-    slug, or raise ValueError(row_num). Reads the local shop-profile store only —
-    the same allow-list the cost route enforces (no path traversal)."""
-    from src.costing.shop_profile import _slug, load_profile, list_profiles
+def _validate_manifest_shop(shop: str, row_num: int) -> str:
+    """Keep a bounded shop identifier for frozen-org resolution by the worker.
 
-    req = shop.strip()
-    req_slug = _slug(req)
-    for slug in list_profiles():
-        if req == slug or req_slug == slug:
-            return slug
-        try:
-            p = load_profile(slug)
-        except Exception:  # pragma: no cover - defensive; skip unreadable profile
-            continue
-        if req.lower() == (p.name or "").lower():
-            return slug
-    raise ValueError(
-        f"Row {row_num}: unknown shop '{shop}'. Available: "
-        f"{list(list_profiles()) or '(none)'}"
-    )
+    No filesystem lookup occurs here.  Path separators and control characters
+    are rejected before persistence; syntactically safe but unknown identifiers
+    are rejected clearly by ``resolve_cost_shop`` when the item executes.
+    """
+    encoded = shop.encode("utf-8")
+    if len(encoded) > _COST_SHOP_MAX_BYTES:
+        raise ValueError(
+            f"Row {row_num}: shop exceeds {_COST_SHOP_MAX_BYTES} UTF-8 bytes"
+        )
+    if (
+        shop in {".", ".."}
+        or "/" in shop
+        or "\\" in shop
+        or any(unicodedata.category(ch).startswith("C") for ch in shop)
+    ):
+        raise ValueError(
+            f"Row {row_num}: shop must be a safe identifier or display name"
+        )
+    return shop
 
 
 # ---------------------------------------------------------------------------
@@ -563,6 +571,7 @@ async def get_batch_items_page(
 async def generate_results_csv(
     session: AsyncSession,
     batch_id: int,
+    org_id: str,
     job_type: str = "dfm",
 ) -> AsyncGenerator[str, None]:
     """Async generator yielding CSV rows for StreamingResponse.
@@ -575,7 +584,7 @@ async def generate_results_csv(
     engine's confidence band, never computed here.
     """
     if job_type == "cost":
-        async for chunk in _generate_cost_results_csv(session, batch_id):
+        async for chunk in _generate_cost_results_csv(session, batch_id, org_id):
             yield chunk
         return
 
@@ -586,8 +595,17 @@ async def generate_results_csv(
     while True:
         stmt = (
             select(BatchItem, Analysis)
-            .outerjoin(Analysis, BatchItem.analysis_id == Analysis.id)
-            .where(BatchItem.batch_id == batch_id)
+            .outerjoin(
+                Analysis,
+                and_(
+                    BatchItem.analysis_id == Analysis.id,
+                    Analysis.org_id == org_id,
+                ),
+            )
+            .where(
+                BatchItem.batch_id == batch_id,
+                BatchItem.org_id == org_id,
+            )
         )
         if cursor is not None:
             stmt = stmt.where(BatchItem.id > cursor)
@@ -631,6 +649,7 @@ async def generate_results_csv(
 async def _generate_cost_results_csv(
     session: AsyncSession,
     batch_id: int,
+    org_id: str,
 ) -> AsyncGenerator[str, None]:
     """Cost-batch CSV: one row per item, joined to its cost_decision.
 
@@ -651,9 +670,16 @@ async def _generate_cost_results_csv(
         stmt = (
             select(BatchItem, CostDecision)
             .outerjoin(
-                CostDecision, BatchItem.cost_decision_id == CostDecision.id
+                CostDecision,
+                and_(
+                    BatchItem.cost_decision_id == CostDecision.id,
+                    CostDecision.org_id == org_id,
+                ),
             )
-            .where(BatchItem.batch_id == batch_id)
+            .where(
+                BatchItem.batch_id == batch_id,
+                BatchItem.org_id == org_id,
+            )
         )
         if cursor is not None:
             stmt = stmt.where(BatchItem.id > cursor)

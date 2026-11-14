@@ -27,7 +27,7 @@ import {
   type CostDecisionDetail,
 } from "@/lib/api";
 import { C, MONO, USD, NUM, procLabel, normProv } from "@/lib/verify/tokens";
-import { makeNowEstimate, driverViews } from "@/lib/verify/derive";
+import { confidenceDisclosure, makeNowEstimate, driverViews } from "@/lib/verify/derive";
 import {
   Kicker,
   ProvDot,
@@ -322,7 +322,7 @@ function RecordDetail({ id, onClose }: { id: string; onClose: () => void }) {
                   {conf ? (
                     <span style={{ color: conf.validated ? C.pass : C.cond }}>
                       {USD(conf.low_usd)} – {USD(conf.high_usd)} · ±{Math.round(conf.half_width_pct)}%{" "}
-                      {conf.validated ? `· validated · n=${conf.n_samples}` : `[assumption, not shop-validated] · n=${conf.n_samples}`}
+                      · {confidenceDisclosure(conf)}
                     </span>
                   ) : (
                     <span style={{ color: C.cond }}>±{Math.round(est.est_error_band_pct)}% assumption band</span>

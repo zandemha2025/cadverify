@@ -21,7 +21,7 @@
  * that has since changed is carried as STALE (a visible count + flag), never served
  * as fresh. Empty org → a zeroed rollup; a cold projection says so plainly.
  */
-import { API_BASE } from "@/lib/api-base";
+import { API_BASE } from "../api-base.ts";
 
 const BASE = `${API_BASE}/catalog`;
 
@@ -88,6 +88,21 @@ export interface BucketPage {
   next_cursor: string | null;
 }
 
+/** Append a keyset page without rendering a part twice if pages overlap. */
+export function mergeMakeabilityRows(
+  current: MakeabilityRow[],
+  incoming: MakeabilityRow[]
+): MakeabilityRow[] {
+  const seen = new Set(current.map((row) => row.part_key));
+  const merged = [...current];
+  for (const row of incoming) {
+    if (seen.has(row.part_key)) continue;
+    seen.add(row.part_key);
+    merged.push(row);
+  }
+  return merged;
+}
+
 /** One acquisition in the capability-investment ranking. */
 export interface CapabilityAcquisition {
   kind: "acquire" | "upgrade";
@@ -128,6 +143,183 @@ export interface ManifestImportSummary {
   errors: { line: number; reason: string }[];
 }
 
+export interface RecurringBlockerAffectedPart {
+  part_key: string;
+  filename: string;
+  analysis: { id: string; url: string };
+  finding_ref: {
+    scope: "universal" | "process";
+    code: string;
+    occurrence: number;
+    process?: string;
+  };
+  message: string;
+  fix_suggestion: string | null;
+  created_at: string | null;
+  analysis_version: string;
+  stale: boolean;
+  staleness: {
+    analysis_version: "current" | "stale";
+    part_summary: "current" | "missing" | "malformed" | "out_of_sync";
+  };
+}
+
+export interface RecurringBlockerCluster {
+  id: string;
+  code: string;
+  scope: "universal" | "process";
+  process: string | null;
+  severity: "error";
+  message: string;
+  fix_suggestion: string | null;
+  affected_part_count: number;
+  count_basis: "distinct_latest_parts";
+  severity_basis: string;
+  stale: boolean;
+  stale_part_count: number;
+  affected_parts: RecurringBlockerAffectedPart[];
+  provenance: Record<string, string>;
+}
+
+export interface RecurringBlockerRollup {
+  clusters: RecurringBlockerCluster[];
+  summary: {
+    latest_part_count: number;
+    parts_with_blockers: number;
+    recurring_cluster_count: number;
+    recurring_affected_part_count: number;
+    stale_affected_part_count: number;
+    part_summary_count: number;
+    malformed_analysis_count: number;
+    malformed_part_summary_count: number;
+    truncated: boolean;
+  };
+  provenance: {
+    source: "ACTIVE_ORGANIZATION_LATEST_SAVED_ANALYSES";
+    algorithm_version: string;
+    minimum_distinct_parts: number;
+    candidate_limit: number;
+    scope: "WHOLE_ORGANIZATION" | "MOST_RECENT_LATEST_PARTS_BOUNDED";
+    llm_inference: false;
+  };
+}
+
+function objectValue(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nullableString(value: unknown): boolean {
+  return value === null || typeof value === "string";
+}
+
+function nonnegativeInteger(value: unknown): boolean {
+  return Number.isInteger(value) && Number(value) >= 0;
+}
+
+function stringRecord(value: unknown): boolean {
+  const row = objectValue(value);
+  return !!row && Object.values(row).every((item) => typeof item === "string");
+}
+
+function isRecurringBlockerAffectedPart(
+  value: unknown
+): value is RecurringBlockerAffectedPart {
+  const part = objectValue(value);
+  const analysis = objectValue(part?.analysis);
+  const finding = objectValue(part?.finding_ref);
+  const staleness = objectValue(part?.staleness);
+  return !!(
+    part &&
+    analysis &&
+    finding &&
+    staleness &&
+    typeof part.part_key === "string" &&
+    typeof part.filename === "string" &&
+    typeof analysis.id === "string" &&
+    typeof analysis.url === "string" &&
+    new Set(["universal", "process"]).has(String(finding.scope)) &&
+    typeof finding.code === "string" &&
+    nonnegativeInteger(finding.occurrence) &&
+    (finding.process === undefined || typeof finding.process === "string") &&
+    typeof part.message === "string" &&
+    nullableString(part.fix_suggestion) &&
+    nullableString(part.created_at) &&
+    typeof part.analysis_version === "string" &&
+    typeof part.stale === "boolean" &&
+    new Set(["current", "stale"]).has(String(staleness.analysis_version)) &&
+    new Set(["current", "missing", "malformed", "out_of_sync"]).has(
+      String(staleness.part_summary)
+    )
+  );
+}
+
+function isRecurringBlockerCluster(
+  value: unknown
+): value is RecurringBlockerCluster {
+  const row = objectValue(value);
+  const parts = row?.affected_parts;
+  return !!(
+    row &&
+    typeof row.id === "string" &&
+    typeof row.code === "string" &&
+    new Set(["universal", "process"]).has(String(row.scope)) &&
+    nullableString(row.process) &&
+    row.severity === "error" &&
+    typeof row.message === "string" &&
+    nullableString(row.fix_suggestion) &&
+    nonnegativeInteger(row.affected_part_count) &&
+    row.count_basis === "distinct_latest_parts" &&
+    typeof row.severity_basis === "string" &&
+    typeof row.stale === "boolean" &&
+    nonnegativeInteger(row.stale_part_count) &&
+    Number(row.stale_part_count) <= Number(row.affected_part_count) &&
+    Array.isArray(parts) &&
+    row.affected_part_count === parts.length &&
+    parts.every(isRecurringBlockerAffectedPart) &&
+    stringRecord(row.provenance)
+  );
+}
+
+export function isRecurringBlockerRollup(
+  value: unknown
+): value is RecurringBlockerRollup {
+  const rollup = objectValue(value);
+  const summary = objectValue(rollup?.summary);
+  const provenance = objectValue(rollup?.provenance);
+  const clusters = rollup?.clusters;
+  const summaryCounts = [
+    "latest_part_count",
+    "parts_with_blockers",
+    "recurring_cluster_count",
+    "recurring_affected_part_count",
+    "stale_affected_part_count",
+    "part_summary_count",
+    "malformed_analysis_count",
+    "malformed_part_summary_count",
+  ];
+  return !!(
+    rollup &&
+    summary &&
+    provenance &&
+    Array.isArray(clusters) &&
+    clusters.every(isRecurringBlockerCluster) &&
+    summaryCounts.every((key) => nonnegativeInteger(summary[key])) &&
+    typeof summary.truncated === "boolean" &&
+    provenance.source === "ACTIVE_ORGANIZATION_LATEST_SAVED_ANALYSES" &&
+    typeof provenance.algorithm_version === "string" &&
+    nonnegativeInteger(provenance.minimum_distinct_parts) &&
+    Number(provenance.minimum_distinct_parts) >= 2 &&
+    nonnegativeInteger(provenance.candidate_limit) &&
+    Number(provenance.candidate_limit) >= 1 &&
+    new Set(["WHOLE_ORGANIZATION", "MOST_RECENT_LATEST_PARTS_BOUNDED"]).has(
+      String(provenance.scope)
+    ) &&
+    provenance.llm_inference === false
+  );
+}
+
 /** Relay the backend's structured error `detail` as the thrown Error message. */
 async function toError(res: Response): Promise<Error> {
   const body = await res.json().catch(() => null);
@@ -165,6 +357,20 @@ export async function fetchCapabilityInvestment(): Promise<CapabilityRanking> {
   });
   if (!res.ok) throw await toError(res);
   return res.json();
+}
+
+/** Exact recurring engine blockers across distinct latest saved parts. */
+export async function fetchRecurringBlockers(): Promise<RecurringBlockerRollup> {
+  const res = await fetch(
+    `${API_BASE}/portfolio-intelligence/blocker-clusters`,
+    { cache: "no-store" }
+  );
+  if (!res.ok) throw await toError(res);
+  const value: unknown = await res.json();
+  if (!isRecurringBlockerRollup(value)) {
+    throw new Error("Unsafe recurring blocker response");
+  }
+  return value;
 }
 
 /** One keyset page of the parts a single acquisition unlocks (?process=&gate=). */

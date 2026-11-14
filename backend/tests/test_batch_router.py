@@ -53,8 +53,10 @@ def _make_batch(
     batch.id = 1
     batch.ulid = ulid
     batch.user_id = user_id
+    batch.org_id = "org-a"
     batch.status = status
     batch.input_mode = "zip"
+    batch.job_type = "dfm"
     batch.total_items = total_items
     batch.completed_items = completed_items
     batch.failed_items = failed_items
@@ -74,11 +76,14 @@ def _make_batch_item(
 ) -> MagicMock:
     item = MagicMock(spec=BatchItem)
     item.id = 1
+    item.batch_id = 1
+    item.org_id = "org-a"
     item.ulid = ulid
     item.filename = filename
     item.status = status
     item.priority = "normal"
     item.analysis_id = 100
+    item.cost_decision_id = 200
     item.error_message = None
     item.duration_ms = 450.0
     item.created_at = datetime(2026, 4, 15, 12, 0, 0, tzinfo=timezone.utc)
@@ -362,7 +367,11 @@ def test_get_batch_items_paginated():
     mock_scalars = MagicMock()
     mock_scalars.first.return_value = mock_batch
     mock_result.scalars.return_value = mock_scalars
-    mock_session.execute = AsyncMock(return_value=mock_result)
+    mock_artifact_result = MagicMock()
+    mock_artifact_result.all.return_value = [(1, "AN100", "CD200")]
+    mock_session.execute = AsyncMock(
+        side_effect=[mock_result, mock_artifact_result]
+    )
 
     app.dependency_overrides[get_db_session] = lambda: mock_session
 
@@ -377,7 +386,50 @@ def test_get_batch_items_paginated():
     assert "items" in data
     assert len(data["items"]) == 1
     assert data["has_more"] is False
+    assert data["items"][0]["analysis_id"] == 100
+    assert data["items"][0]["analysis"] == {
+        "id": "AN100",
+        "url": "/api/v1/analyses/AN100",
+    }
+    assert data["items"][0]["cost_decision"] == {
+        "id": "CD200",
+        "url": "/api/v1/cost-decisions/CD200",
+    }
 
+    app.dependency_overrides.clear()
+
+
+def test_get_batch_items_hides_cross_org_artifact_pointer():
+    """A legacy foreign artifact FK is blanked when the org-scoped join misses."""
+    from src.db.engine import get_db_session
+    from src.auth.require_api_key import require_api_key
+
+    app.dependency_overrides[require_api_key] = _override_auth
+
+    mock_session = AsyncMock()
+    mock_batch = _make_batch()
+    mock_item = _make_batch_item()
+
+    mock_batch_result = MagicMock()
+    mock_batch_result.scalars.return_value.first.return_value = mock_batch
+    mock_artifact_result = MagicMock()
+    mock_artifact_result.all.return_value = [(mock_item.id, None, None)]
+    mock_session.execute = AsyncMock(
+        side_effect=[mock_batch_result, mock_artifact_result]
+    )
+    app.dependency_overrides[get_db_session] = lambda: mock_session
+
+    with patch("src.api.batch_router.batch_service") as mock_bs:
+        mock_bs.get_batch_items_page = AsyncMock(return_value=([mock_item], False))
+        response = TestClient(app).get(
+            "/api/v1/batch/01BATCH00000000000001/items"
+        )
+
+    assert response.status_code == 200
+    item = response.json()["items"][0]
+    assert item["analysis_id"] is None
+    assert item["analysis"] is None
+    assert item["cost_decision"] is None
     app.dependency_overrides.clear()
 
 
@@ -404,7 +456,10 @@ def test_csv_export_returns_csv():
 
     app.dependency_overrides[get_db_session] = lambda: mock_session
 
+    csv_args = []
+
     async def _mock_csv_gen(*args, **kwargs):
+        csv_args.append(args)
         yield "filename,status\n"
         yield "part1.stl,completed\n"
 
@@ -417,6 +472,7 @@ def test_csv_export_returns_csv():
     assert resp.status_code == 200
     assert "text/csv" in resp.headers.get("content-type", "")
     assert "attachment" in resp.headers.get("content-disposition", "")
+    assert csv_args[0][1:] == (mock_batch.id, mock_batch.org_id, mock_batch.job_type)
 
     app.dependency_overrides.clear()
 

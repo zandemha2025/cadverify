@@ -1,7 +1,11 @@
 import { toast } from "sonner";
 import * as Sentry from "@sentry/nextjs";
-import { API_BASE, browserOrBackendUrl } from "./api-base";
-import type { AnalysisListRow } from "./recent-parts";
+import { API_BASE, browserOrBackendUrl } from "./api-base.ts";
+import type { AnalysisListRow } from "./recent-parts.ts";
+import {
+  isSafeDesignIntelligenceResponse,
+  isSafeOrgPrecedentResponse,
+} from "./design-intelligence.ts";
 
 export interface GeometryInfo {
   vertices: number;
@@ -56,6 +60,143 @@ export interface Issue {
   /** "localized" when the finding has faces or a region center; "whole_part"
    *  when it is honestly unlocalizable (no faked location). */
   scope?: "localized" | "whole_part";
+}
+
+export interface DesignIntelligenceFinding {
+  code: string;
+  severity: "error" | "warning" | "info";
+  message: string;
+  fix_suggestion?: string | null;
+  process?: string;
+  measured_value?: number;
+  required_value?: number;
+}
+
+export type DesignIntelligenceStatus =
+  | "available"
+  | "research_only"
+  | "no_match"
+  | "unavailable";
+
+export interface DesignIntentHypothesis {
+  candidate: string;
+  basis: string;
+  confidence: "hypothesis" | string;
+  workflow_id: string | null;
+  source_url: string | null;
+  provenance: "THIRD_PARTY_UNVERIFIED";
+  license_status: string;
+  production_eligible: boolean;
+}
+
+export interface DesignIntelligenceEvidence {
+  workflow_id: string | null;
+  application: string | null;
+  task: string | null;
+  knowledge_role: string | null;
+  excerpt: string;
+  start_s: number | null;
+  end_s: number | null;
+  source_url: string | null;
+  score: number;
+  provenance: string;
+  license_status: string;
+  production_eligible: boolean;
+}
+
+/** Third-party design context only. These fields are intentionally incapable
+ * of carrying or changing an engine verdict. */
+export interface DesignIntelligenceResponse {
+  status: DesignIntelligenceStatus;
+  reason: string | null;
+  finding_code: string | null;
+  authority: "ADVISORY_ONLY";
+  engineering_authority: "NONE";
+  provenance: "THIRD_PARTY_UNVERIFIED";
+  may_affect_deterministic_verdict: false;
+  is_manufacturing_ground_truth: false;
+  research_mode?: boolean;
+  eligible_records_scanned: number;
+  indexed_records: number;
+  index_truncated: boolean;
+  possible_intents: DesignIntentHypothesis[];
+  relevant_requirements: DesignIntelligenceEvidence[];
+  workflow_evidence: DesignIntelligenceEvidence[];
+  /** Present on the saved-analysis endpoint; absent on the live compatibility endpoint. */
+  analysis_id?: string;
+  finding_ref?: DesignIntelligenceFindingRef;
+  corpus_revision?: string;
+}
+
+export interface DesignIntelligenceFindingRef {
+  scope: "universal" | "process";
+  code: string;
+  occurrence: number;
+  process?: string;
+}
+
+export interface OrgPrecedentGeometryField {
+  name: string;
+  target: number | number[];
+  candidate: number | number[];
+  provenance: "MEASURED" | "MEASURED_DERIVED";
+}
+
+export interface OrgPrecedentCase {
+  analysis_id: string;
+  analysis_url: string;
+  analysis_api_url: string;
+  filename: string;
+  created_at: string | null;
+  /** Deterministic geometry distance; lower is closer. It is not a probability. */
+  distance: number;
+  shared_geometry: OrgPrecedentGeometryField[];
+  verdict: string | null;
+  best_process: string | null;
+  recommended_material: string | null;
+  recommended_machine: string | null;
+  analysis_version: string;
+  stale: boolean;
+  provenance: Record<string, string>;
+}
+
+/** Similar cases from this active organization's saved engine analyses only. */
+export interface OrgPrecedentResponse {
+  status: "available" | "no_match" | "unavailable";
+  reason: string | null;
+  analysis_id: string;
+  authority: "ADVISORY_ONLY";
+  may_affect_deterministic_verdict: false;
+  corpus_version: string;
+  algorithm_version: string;
+  analysis_version: string;
+  current_analysis_version: string;
+  max_distance: number;
+  candidate_limit: number;
+  candidates_examined: number;
+  search_truncated: boolean;
+  cases: OrgPrecedentCase[];
+  provenance: {
+    corpus: "ACTIVE_ORGANIZATION_SAVED_ANALYSES";
+    similarity: "DETERMINISTIC_DERIVED_FROM_MEASURED_GEOMETRY";
+  };
+}
+
+export type AnalysisDecisionSignal =
+  | "make_in_house"
+  | "make_outside"
+  | "acquire_capability"
+  | "redesign";
+export type AdvisoryFeedbackSignal = "helpful" | "not_relevant" | "incorrect";
+
+export interface AnalysisFeedbackResponse {
+  analysis_id: string;
+  saved: true;
+  decision: AnalysisDecisionSignal | null;
+  advisory: AdvisoryFeedbackSignal | null;
+  finding_ref: DesignIntelligenceFindingRef | null;
+  source: "authenticated_user";
+  provenance: "user";
 }
 
 export interface Segment {
@@ -140,6 +281,8 @@ export interface ValidationResult {
   rule_pack?: { name: string; version: string };
   /** present only when the analysis was requested with include_thickness. */
   wall_thickness_map?: WallThicknessMap;
+  /** Response-only pointer to the immutable saved analysis; never persisted inside result_json. */
+  saved?: { id: string; url: string };
 }
 
 export interface Material {
@@ -165,34 +308,23 @@ export interface Machine {
 /*  Analysis history types (Phase 3 — PERS-09)                        */
 /* ------------------------------------------------------------------ */
 
-export interface AnalysisSummary {
-  id: number;
-  ulid: string;
-  filename: string;
-  file_type: string;
-  overall_verdict: "pass" | "issues" | "fail" | "unknown";
-  face_count: number;
-  analysis_time_ms: number;
-  created_at: string;
-}
+export type AnalysisSummary = AnalysisListRow;
 
 export interface AnalysisDetail {
-  id: number;
-  ulid: string;
+  /** Public analysis ULID returned by GET /analyses/{id}. */
+  id: string;
   filename: string;
   file_type: string;
-  overall_verdict: "pass" | "issues" | "fail" | "unknown";
-  face_count: number;
-  analysis_time_ms: number;
   created_at: string;
-  result_json: ValidationResult;
   is_public: boolean;
   share_url: string | null;
+  result: ValidationResult;
 }
 
 export interface RateLimits {
   remaining: number;
   limit: number;
+  /** Absolute Unix timestamp from X-RateLimit-Reset. */
   reset: number;
 }
 
@@ -276,7 +408,11 @@ const apiClient = {
   async fetch(
     url: string,
     options: RequestInit = {},
-    { retries = 0, retryDelayMs = 1000 }: { retries?: number; retryDelayMs?: number } = {}
+    {
+      retries = 0,
+      retryDelayMs = 1000,
+      silent = false,
+    }: { retries?: number; retryDelayMs?: number; silent?: boolean } = {}
   ): Promise<Response> {
     // Same-origin → the httpOnly session cookie is sent automatically and the
     // Next proxy forwards it to the backend. No Authorization header needed.
@@ -295,7 +431,7 @@ const apiClient = {
         // Network error / timeout
         lastError = err instanceof Error ? err : new Error(String(err));
         if (attempt === retries) {
-          toast.error("Connection timed out. Check your network.");
+          if (!silent) toast.error("Connection timed out. Check your network.");
           throw lastError;
         }
         continue;
@@ -308,7 +444,7 @@ const apiClient = {
       // 429 — rate limited, no retry
       if (res.status === 429) {
         const retryAfter = parseInt(res.headers.get("Retry-After") || "60", 10);
-        toast.error(`Rate limit exceeded. Try again in ${retryAfter}s.`);
+        if (!silent) toast.error(`Rate limit exceeded. Try again in ${retryAfter}s.`);
         const err = await res.json().catch(() => ({ detail: "Rate limit exceeded" }));
         throw new Error(err.detail || "Rate limit exceeded");
       }
@@ -317,7 +453,7 @@ const apiClient = {
       if (res.status >= 500) {
         lastError = new Error(`Server error ${res.status}`);
         if (attempt === retries) {
-          toast.error("Server error. We've been notified.");
+          if (!silent) toast.error("Server error. We've been notified.");
           Sentry.captureException(lastError, { extra: { url, status: res.status } });
           throw lastError;
         }
@@ -335,13 +471,21 @@ const apiClient = {
     throw lastError || new Error("Request failed");
   },
 
-  async fetchJson<T>(url: string, options: RequestInit = {}): Promise<T> {
-    const res = await this.fetch(url, options, { retries: 2, retryDelayMs: 1000 });
+  async fetchJson<T>(
+    url: string,
+    options: RequestInit = {},
+    policy: { retries?: number; retryDelayMs?: number; silent?: boolean } = {}
+  ): Promise<T> {
+    const res = await this.fetch(url, options, {
+      retries: policy.retries ?? 2,
+      retryDelayMs: policy.retryDelayMs ?? 1000,
+      silent: policy.silent,
+    });
     try {
       return await res.json();
     } catch {
       Sentry.captureMessage("Malformed JSON response", { extra: { url } });
-      toast.error("Unexpected server response.");
+      if (!policy.silent) toast.error("Unexpected server response.");
       throw new Error("Unexpected server response");
     }
   },
@@ -394,6 +538,206 @@ export async function validateQuick(file: File): Promise<{
     method: "POST",
     body: formData,
   });
+}
+
+/** Fetch cited design context for one already-computed deterministic finding.
+ * The endpoint is intentionally quiet and non-retrying: this optional advisory
+ * must never interrupt or delay the authoritative verification experience. */
+export async function fetchDesignIntelligence(
+  finding: DesignIntelligenceFinding,
+  limit = 3
+): Promise<DesignIntelligenceResponse> {
+  const allowedFinding: DesignIntelligenceFinding = {
+    code: finding.code,
+    severity: finding.severity,
+    message: finding.message,
+    ...(finding.fix_suggestion ? { fix_suggestion: finding.fix_suggestion } : {}),
+    ...(finding.process ? { process: finding.process } : {}),
+    ...(finding.measured_value !== undefined
+      ? { measured_value: finding.measured_value }
+      : {}),
+    ...(finding.required_value !== undefined
+      ? { required_value: finding.required_value }
+      : {}),
+  };
+  const result = await apiClient.fetchJson<unknown>(
+    `${API_BASE}/design-intelligence/explain`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ finding: allowedFinding, limit }),
+    },
+    { retries: 0, silent: true }
+  );
+  if (!isSafeDesignIntelligenceResponse(result)) {
+    throw new Error("Unsafe design intelligence response");
+  }
+  return result;
+}
+
+/** Fetch advisory context for a finding rehydrated from a saved analysis.
+ * Only the stable locator crosses the trust boundary; finding prose and engine
+ * values remain server-owned. */
+export async function fetchAnalysisDesignIntelligence(
+  analysisId: string,
+  findingRef: DesignIntelligenceFindingRef,
+  limit = 3
+): Promise<DesignIntelligenceResponse> {
+  const locator: DesignIntelligenceFindingRef = {
+    scope: findingRef.scope,
+    code: findingRef.code,
+    occurrence: findingRef.occurrence,
+    ...(findingRef.scope === "process" && findingRef.process
+      ? { process: findingRef.process }
+      : {}),
+  };
+  const result = await apiClient.fetchJson<unknown>(
+    `${API_BASE}/design-intelligence/analyses/${encodeURIComponent(analysisId)}/explain`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...locator, limit }),
+    },
+    { retries: 0, silent: true }
+  );
+  if (
+    !isSafeDesignIntelligenceResponse(result) ||
+    result.analysis_id !== analysisId ||
+    !sameFindingRef(result.finding_ref, locator)
+  ) {
+    throw new Error("Unsafe design intelligence response");
+  }
+  return result;
+}
+
+/** Fetch deterministic similar-case memory from the caller's active org. */
+export async function fetchAnalysisPrecedents(
+  analysisId: string,
+  limit = 3
+): Promise<OrgPrecedentResponse> {
+  const safeLimit = Math.max(1, Math.min(5, Math.trunc(limit)));
+  const result = await apiClient.fetchJson<unknown>(
+    `${API_BASE}/design-intelligence/analyses/${encodeURIComponent(analysisId)}/precedents?limit=${safeLimit}`,
+    undefined,
+    { retries: 0, silent: true }
+  );
+  if (
+    !isSafeOrgPrecedentResponse(result) ||
+    result.analysis_id !== analysisId
+  ) {
+    throw new Error("Unsafe organization precedent response");
+  }
+  return result;
+}
+
+function isAnalysisFeedbackResponse(
+  value: unknown
+): value is AnalysisFeedbackResponse {
+  if (!value || typeof value !== "object") return false;
+  const row = value as Record<string, unknown>;
+  const decisions = new Set([
+    "make_in_house",
+    "make_outside",
+    "acquire_capability",
+    "redesign",
+  ]);
+  const advisory = new Set(["helpful", "not_relevant", "incorrect"]);
+  const findingRef = row.finding_ref as Record<string, unknown> | null;
+  const findingRefIsSafe =
+    findingRef == null ||
+    ((findingRef.scope === "universal" || findingRef.scope === "process") &&
+      typeof findingRef.code === "string" &&
+      findingRef.code.length > 0 &&
+      Number.isInteger(findingRef.occurrence) &&
+      Number(findingRef.occurrence) >= 0 &&
+      (findingRef.scope === "process"
+        ? typeof findingRef.process === "string" && findingRef.process.length > 0
+        : findingRef.process == null));
+  return (
+    typeof row.analysis_id === "string" &&
+    row.saved === true &&
+    (row.decision == null || decisions.has(String(row.decision))) &&
+    (row.advisory == null || advisory.has(String(row.advisory))) &&
+    (row.advisory == null) === (row.finding_ref == null) &&
+    findingRefIsSafe &&
+    row.source === "authenticated_user" &&
+    row.provenance === "user"
+  );
+}
+
+function sameFindingRef(
+  actual: DesignIntelligenceFindingRef | undefined,
+  expected: DesignIntelligenceFindingRef
+): boolean {
+  return !!actual &&
+    actual.scope === expected.scope &&
+    actual.code === expected.code &&
+    actual.occurrence === expected.occurrence &&
+    actual.process === expected.process;
+}
+
+export async function recordAnalysisFeedback(
+  analysisId: string,
+  payload: {
+    decision?: AnalysisDecisionSignal;
+    advisory?: AdvisoryFeedbackSignal;
+    finding_ref?: DesignIntelligenceFindingRef;
+  }
+): Promise<AnalysisFeedbackResponse> {
+  const result = await apiClient.fetchJson<unknown>(
+    `${API_BASE}/design-intelligence/analyses/${encodeURIComponent(analysisId)}/feedback`,
+    {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+    { retries: 0, silent: true }
+  );
+  if (
+    !isAnalysisFeedbackResponse(result) ||
+    result.analysis_id !== analysisId ||
+    (payload.finding_ref
+      ? !sameFindingRef(result.finding_ref ?? undefined, payload.finding_ref)
+      : false)
+  ) {
+    throw new Error("Unsafe analysis feedback response");
+  }
+  return result;
+}
+
+export async function fetchAnalysisFeedback(
+  analysisId: string,
+  findingRef?: DesignIntelligenceFindingRef
+): Promise<AnalysisFeedbackResponse> {
+  const query = findingRef
+    ? `?${new URLSearchParams({
+        scope: findingRef.scope,
+        code: findingRef.code,
+        occurrence: String(findingRef.occurrence),
+        ...(findingRef.scope === "process" && findingRef.process
+          ? { process: findingRef.process }
+          : {}),
+      })}`
+    : "";
+  const result = await apiClient.fetchJson<unknown>(
+    `${API_BASE}/design-intelligence/analyses/${encodeURIComponent(analysisId)}/feedback${query}`,
+    undefined,
+    { retries: 0, silent: true }
+  );
+  if (
+    !isAnalysisFeedbackResponse(result) ||
+    result.analysis_id !== analysisId
+  ) {
+    throw new Error("Unsafe analysis feedback response");
+  }
+  if (
+    findingRef &&
+    result.advisory !== null &&
+    !sameFindingRef(result.finding_ref ?? undefined, findingRef)
+  ) {
+    throw new Error("Mismatched analysis feedback response");
+  }
+  return result;
 }
 
 export async function getProcesses(): Promise<{ processes: Array<{ process: string; material_count: number; machine_count: number; materials: string[]; machines: string[] }> }> {

@@ -30,6 +30,7 @@ from src.analysis.features import detect_all as detect_features
 from src.analysis.models import AnalysisResult, ProcessType, Severity
 from src.analysis.processes import get_analyzer
 from src.analysis.rules import get_rule_pack
+from src.auth.org_context import caller_org_subquery, resolve_org
 from src.auth.require_api_key import AuthedUser
 from src.db.models import Analysis, UsageEvent
 from src.fixes.fix_suggester import enhance_suggestions, get_priority_fixes
@@ -53,9 +54,13 @@ def compute_mesh_hash(file_bytes: bytes) -> str:
     return hashlib.sha256(file_bytes).hexdigest()
 
 
-def compute_process_set_hash(process_values: list[str]) -> str:
-    """SHA-256 of sorted, comma-joined process type values (D-11)."""
+def compute_process_set_hash(
+    process_values: list[str], rule_pack_identity: str | None = None
+) -> str:
+    """SHA-256 of the exact process/rule-pack analysis inputs (D-11)."""
     canonical = ",".join(sorted(process_values))
+    if rule_pack_identity:
+        canonical += f"|rule_pack={rule_pack_identity}"
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
@@ -67,6 +72,7 @@ def compute_process_set_hash(process_values: list[str]) -> str:
 async def _check_cache(
     session: AsyncSession,
     user_id: int,
+    org_id: str | None,
     mesh_hash: str,
     process_set_hash: str,
     analysis_version: str,
@@ -74,6 +80,7 @@ async def _check_cache(
     """Return existing Analysis row if dedup key matches, else None."""
     stmt = select(Analysis).where(
         Analysis.user_id == user_id,
+        Analysis.org_id == org_id,
         Analysis.mesh_hash == mesh_hash,
         Analysis.process_set_hash == process_set_hash,
         Analysis.analysis_version == analysis_version,
@@ -94,6 +101,7 @@ def _nullable_api_key_id(user: AuthedUser) -> int | None:
 async def _persist_analysis(
     session: AsyncSession,
     user: AuthedUser,
+    org_id: str | None,
     mesh_hash: str,
     process_set_hash: str,
     analysis_version: str,
@@ -106,12 +114,10 @@ async def _persist_analysis(
     duration_ms: float,
 ) -> Analysis:
     """Insert a new Analysis row and flush to get the assigned id."""
-    from src.auth.org_context import resolve_org
-
     analysis = Analysis(
         ulid=str(ULID()),
         user_id=user.user_id,
-        org_id=await resolve_org(session, user.user_id),
+        org_id=org_id,
         api_key_id=_nullable_api_key_id(user),
         mesh_hash=mesh_hash,
         process_set_hash=process_set_hash,
@@ -146,6 +152,7 @@ async def _persist_analysis(
 async def _write_usage_event(
     session: AsyncSession,
     user: AuthedUser,
+    org_id: str | None,
     event_type: str,
     analysis_id: int | None,
     mesh_hash: str | None,
@@ -153,11 +160,9 @@ async def _write_usage_event(
     face_count: int | None,
 ) -> None:
     """Append a usage_events row (same transaction as analysis persist)."""
-    from src.auth.org_context import resolve_org
-
     event = UsageEvent(
         user_id=user.user_id,
-        org_id=await resolve_org(session, user.user_id),
+        org_id=org_id,
         api_key_id=_nullable_api_key_id(user),
         event_type=event_type,
         analysis_id=analysis_id,
@@ -205,6 +210,7 @@ async def run_analysis(
     user: AuthedUser,
     session: AsyncSession,
     include_thickness: bool = False,
+    org_id: str | None = None,
 ) -> dict:
     """Full analysis pipeline: hash -> dedup check -> analyze -> persist -> track.
 
@@ -228,13 +234,32 @@ async def run_analysis(
     # 2. Resolve target processes
     target_processes = resolve_target_processes_fn(processes)
 
-    # 3. Process set hash
+    # Resolve and validate the rule pack before constructing the cache key. Its
+    # version is part of that key so findings can never cross rule packs.
+    pack = None
+    if rule_pack:
+        pack = get_rule_pack(rule_pack)
+        if pack is None:
+            from fastapi import HTTPException
+            from src.analysis.rules import available_rule_packs
+
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown rule pack '{rule_pack}'. Available: {available_rule_packs()}",
+            )
+
+    # 3. Exact analysis-input hash (processes + optional rule pack/version)
     process_set_hash = compute_process_set_hash(
-        [p.value for p in target_processes]
+        [p.value for p in target_processes],
+        f"{pack.name}@{pack.version}" if pack is not None else None,
     )
 
     # 4. Analysis version from package
     analysis_version = _app_version
+    # Freeze the active tenant for the whole request. A concurrent org switch
+    # cannot move the cache hit, persisted row, usage event, or audit halfway
+    # through this analysis.
+    request_org_id = org_id if org_id is not None else await resolve_org(session, user.user_id)
 
     # 5. Cache check.
     # The wall-thickness map is opt-in and deliberately NOT persisted (it would
@@ -244,7 +269,7 @@ async def run_analysis(
     cached = None
     if not include_thickness:
         cached = await _check_cache(
-            session, user.user_id, mesh_hash, process_set_hash, analysis_version
+            session, user.user_id, request_org_id, mesh_hash, process_set_hash, analysis_version
         )
 
     if cached is not None:
@@ -258,30 +283,17 @@ async def run_analysis(
         await _write_usage_event(
             session,
             user,
+            request_org_id,
             "analysis_cached",
             cached.id,
             mesh_hash,
             cached.duration_ms,
             cached.face_count,
         )
-        return cached.result_json
+        return _with_saved(cached.result_json, cached)
 
     # 7. Cache MISS — run full pipeline
     mesh, suffix = parse_mesh_fn(file_bytes, filename)
-
-    # Resolve rule pack
-    pack = None
-    if rule_pack:
-        pack = get_rule_pack(rule_pack)
-        # Invalid rule_pack already caught by routes.py caller; but guard anyway
-        if pack is None:
-            from fastapi import HTTPException
-            from src.analysis.rules import available_rule_packs
-
-            raise HTTPException(
-                status_code=400,
-                detail=f"Unknown rule pack '{rule_pack}'. Available: {available_rule_packs()}",
-            )
 
     def _run_analysis_sync():
         geometry = analyze_geometry(mesh)
@@ -387,7 +399,8 @@ async def run_analysis(
         from src.analysis.serialization import serialize_wall_thickness
 
         _thickness_map = serialize_wall_thickness(
-            ctx.wall_thickness, decimation=(ctx.metadata or {}).get("decimation")
+            [float(value) for value in ctx.wall_thickness],
+            decimation=(ctx.metadata or {}).get("decimation"),
         )
 
     # Release mesh + context memory before async persist
@@ -400,10 +413,12 @@ async def run_analysis(
         gc.collect()
 
     # Persist
+    analysis: Analysis | None = None
     try:
         analysis = await _persist_analysis(
             session=session,
             user=user,
+            org_id=request_org_id,
             mesh_hash=mesh_hash,
             process_set_hash=process_set_hash,
             analysis_version=analysis_version,
@@ -418,6 +433,7 @@ async def run_analysis(
         await _write_usage_event(
             session,
             user,
+            request_org_id,
             "analysis_complete",
             analysis.id,
             mesh_hash,
@@ -430,6 +446,7 @@ async def run_analysis(
         _audit_email = await _lookup_email(user.user_id)
         asyncio.create_task(fire_and_forget_audit(
             user_id=user.user_id, user_email=_audit_email,
+            org_id=request_org_id,
             action="analysis.created", resource_type="analysis",
             resource_id=analysis.ulid, file_hash=mesh_hash,
             result_summary=_verdict,
@@ -445,24 +462,27 @@ async def run_analysis(
             mesh_hash,
         )
         cached = await _check_cache(
-            session, user.user_id, mesh_hash, process_set_hash, analysis_version
+            session, user.user_id, request_org_id, mesh_hash, process_set_hash, analysis_version
         )
         if cached is not None:
             await _write_usage_event(
                 session,
                 user,
+                request_org_id,
                 "analysis_cached",
                 cached.id,
                 mesh_hash,
                 cached.duration_ms,
                 cached.face_count,
             )
-            return _with_thickness(cached.result_json, _thickness_map)
+            return _with_saved(cached.result_json, cached, _thickness_map)
         # If re-query also fails, just return the computed result
         # (usage event lost but the user still gets their response).
         logger.warning("Re-query after IntegrityError returned None — returning computed result")
 
-    return _with_thickness(result_dict, _thickness_map)
+    if analysis is None:
+        return _with_thickness(result_dict, _thickness_map)
+    return _with_saved(result_dict, analysis, _thickness_map)
 
 
 def _with_thickness(result_dict: dict, thickness_map: dict | None) -> dict:
@@ -477,23 +497,38 @@ def _with_thickness(result_dict: dict, thickness_map: dict | None) -> dict:
     return {**result_dict, "wall_thickness_map": thickness_map}
 
 
-async def get_latest_analysis_id(
+def _with_saved(
+    result_dict: dict,
+    analysis: Analysis,
+    thickness_map: dict | None = None,
+) -> dict:
+    """Attach response-only pointers without mutating persisted ``result_json``."""
+    return {
+        **_with_thickness(result_dict, thickness_map),
+        "saved": {
+            "id": analysis.ulid,
+            "url": f"/api/v1/analyses/{analysis.ulid}",
+        },
+    }
+
+
+async def get_analysis_id_by_ulid(
     session: AsyncSession,
     user_id: int,
-    mesh_hash: str,
+    analysis_ulid: str,
+    org_id: str | None = None,
 ) -> int | None:
-    """Return the most-recent analysis.id for a given user + mesh_hash.
+    """Resolve one exact public analysis ULID to its internal id.
 
-    Used by the async SAM-3D submit path to link the job to the just-persisted
-    analysis row without changing run_analysis's return signature.
+    Async jobs use the ``saved.id`` returned by ``run_analysis`` so identical
+    geometry analyzed with another process or rule pack can never be linked by
+    an ambiguous "latest mesh" lookup.
     """
-    from sqlalchemy import desc
-
-    stmt = (
-        select(Analysis.id)
-        .where(Analysis.user_id == user_id, Analysis.mesh_hash == mesh_hash)
-        .order_by(desc(Analysis.created_at))
-        .limit(1)
+    org_scope = org_id if org_id is not None else caller_org_subquery(user_id)
+    stmt = select(Analysis.id).where(
+        Analysis.user_id == user_id,
+        Analysis.org_id == org_scope,
+        Analysis.ulid == analysis_ulid,
     )
     return (await session.execute(stmt)).scalar_one_or_none()
 
@@ -518,10 +553,11 @@ async def run_quick_analysis(
     mesh_hash = compute_mesh_hash(file_bytes)
     process_set_hash = compute_process_set_hash(["quick"])
     analysis_version = _app_version
+    org_id = await resolve_org(session, user.user_id)
 
     # Cache check
     cached = await _check_cache(
-        session, user.user_id, mesh_hash, process_set_hash, analysis_version
+        session, user.user_id, org_id, mesh_hash, process_set_hash, analysis_version
     )
 
     if cached is not None:
@@ -533,6 +569,7 @@ async def run_quick_analysis(
         await _write_usage_event(
             session,
             user,
+            org_id,
             "analysis_cached",
             cached.id,
             mesh_hash,
@@ -577,6 +614,7 @@ async def run_quick_analysis(
         analysis = await _persist_analysis(
             session=session,
             user=user,
+            org_id=org_id,
             mesh_hash=mesh_hash,
             process_set_hash=process_set_hash,
             analysis_version=analysis_version,
@@ -591,6 +629,7 @@ async def run_quick_analysis(
         await _write_usage_event(
             session,
             user,
+            org_id,
             "analysis_complete",
             analysis.id,
             mesh_hash,
@@ -604,12 +643,13 @@ async def run_quick_analysis(
             user.user_id,
         )
         cached = await _check_cache(
-            session, user.user_id, mesh_hash, process_set_hash, analysis_version
+            session, user.user_id, org_id, mesh_hash, process_set_hash, analysis_version
         )
         if cached is not None:
             await _write_usage_event(
                 session,
                 user,
+                org_id,
                 "analysis_cached",
                 cached.id,
                 mesh_hash,

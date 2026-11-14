@@ -12,6 +12,7 @@ services:
     environment:
       - PORT=8000
       - RATE_LIBRARY_ENABLED=1
+      - DESIGN_INTELLIGENCE_ENABLED=1
     healthcheck:
       test:
         - CMD-SHELL
@@ -32,6 +33,7 @@ services:
         condition: service_started
     environment:
       - RATE_LIBRARY_ENABLED=1
+      - DESIGN_INTELLIGENCE_ENABLED=1
 
   postgres:
     image: postgres:16-alpine
@@ -55,12 +57,19 @@ services:
       - "6379:6379"
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_BASE: http://localhost:8000
+        NEXT_PUBLIC_VERIFY_UI: "1"
+        NEXT_PUBLIC_DESIGN_INTELLIGENCE: "1"
+        NEXT_PUBLIC_SHOW_DEV_TOOLS: "0"
     ports:
       - "3000:3000"
     environment:
       - API_BASE=http://backend:8000
       - NEXT_PUBLIC_API_BASE=http://localhost:8000
+      - NEXT_PUBLIC_DESIGN_INTELLIGENCE=1
     healthcheck:
       test:
         - CMD-SHELL

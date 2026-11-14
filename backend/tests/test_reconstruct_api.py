@@ -19,6 +19,7 @@ from src.api.reconstruct_router import router
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_db_session
 from src.db.models import Job
+from src.services import reconstruction_service
 
 # ---------------------------------------------------------------------------
 # Test app setup
@@ -128,6 +129,31 @@ class TestReconstructEndpoint:
         assert body["status"] == "queued"
         assert "poll_url" in body
         assert body["estimated_seconds"] == 30
+
+    def test_reconstruct_queue_failure_is_stable_503(self):
+        test_app = FastAPI()
+        test_app.include_router(router)
+        test_app.dependency_overrides[require_api_key] = _override_auth
+        test_app.dependency_overrides[get_db_session] = _override_session
+
+        with patch(
+            "src.services.reconstruction_service.check_reconstruction_availability",
+            return_value={"available": True},
+        ), patch(
+            "src.services.reconstruction_service.create_reconstruction_job",
+            new_callable=AsyncMock,
+            side_effect=reconstruction_service.ReconstructionQueueError(
+                "Reconstruction could not be queued. Retry the upload."
+            ),
+        ):
+            client = TestClient(test_app)
+            resp = client.post(
+                "/api/v1/reconstruct",
+                files=[("images", ("test.png", _make_test_image_bytes(), "image/png"))],
+            )
+
+        assert resp.status_code == 503
+        assert resp.json()["detail"]["code"] == "RECONSTRUCTION_QUEUE_UNAVAILABLE"
 
     def test_reconstruct_announces_unavailable_no_local_no_optin(self, monkeypatch):
         """No local model + no remote opt-in => honest 501, NO silent egress, NO job.
@@ -242,6 +268,57 @@ class TestReconstructEndpoint:
         assert resp.status_code == 401
 
 
+@pytest.mark.asyncio
+async def test_create_reconstruction_job_commits_before_enqueue():
+    session = AsyncMock()
+    session.add = MagicMock()
+    pool = AsyncMock()
+
+    async def eager_enqueue(*args, **kwargs):
+        assert session.commit.await_count == 1
+
+    pool.enqueue_job.side_effect = eager_enqueue
+    with (
+        patch("src.services.reconstruction_service.validate_image"),
+        patch("src.auth.org_context.resolve_org", new_callable=AsyncMock, return_value="org-a"),
+        patch("src.services.reconstruction_service.save_reconstruction_images", new_callable=AsyncMock),
+        patch("src.jobs.arq_backend.get_arq_pool", new_callable=AsyncMock, return_value=pool),
+    ):
+        job = await reconstruction_service.create_reconstruction_job(
+            session, _TEST_USER, [(b"image", "image/png")], None, None
+        )
+
+    assert job.status == "queued"
+    assert job.org_id == "org-a"
+    session.commit.assert_awaited_once()
+    pool.enqueue_job.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_create_reconstruction_job_marks_queue_failure():
+    session = AsyncMock()
+    session.add = MagicMock()
+    pool = AsyncMock()
+    pool.enqueue_job.side_effect = RuntimeError("redis unavailable")
+
+    with (
+        patch("src.services.reconstruction_service.validate_image"),
+        patch("src.auth.org_context.resolve_org", new_callable=AsyncMock, return_value="org-a"),
+        patch("src.services.reconstruction_service.save_reconstruction_images", new_callable=AsyncMock),
+        patch("src.jobs.arq_backend.get_arq_pool", new_callable=AsyncMock, return_value=pool),
+        pytest.raises(reconstruction_service.ReconstructionQueueError),
+    ):
+        await reconstruction_service.create_reconstruction_job(
+            session, _TEST_USER, [(b"image", "image/png")], None, None
+        )
+
+    job = session.add.call_args.args[0]
+    assert job.status == "failed"
+    assert job.completed_at is not None
+    assert job.result_json["error"]["code"] == "RECONSTRUCTION_QUEUE_UNAVAILABLE"
+    assert session.commit.await_count == 2
+
+
 # ---------------------------------------------------------------------------
 # Tests: GET /api/v1/reconstructions/{id}/mesh.stl
 # ---------------------------------------------------------------------------
@@ -350,6 +427,7 @@ class TestAutoFeed:
         mock_job = MagicMock(spec=Job)
         mock_job.ulid = job_ulid
         mock_job.user_id = 42
+        mock_job.org_id = "org-a"
         mock_job.status = "queued"
         mock_job.params_json = {
             "image_count": 1,
@@ -360,19 +438,10 @@ class TestAutoFeed:
         mock_job.started_at = None
         mock_job.completed_at = None
 
-        # Mock analysis row
-        mock_analysis = MagicMock()
-        mock_analysis.id = 10
-        mock_analysis.ulid = "01ANALYSIS000000000001"
-
         # Build mock session
         mock_session = AsyncMock()
         exec_result = MagicMock()
-        exec_result.scalars.return_value.first.side_effect = [
-            mock_job,  # first call: load job
-            mock_analysis,  # for analysis row lookup
-        ]
-        exec_result.scalar_one_or_none.return_value = 10  # analysis id
+        exec_result.scalars.return_value.first.return_value = mock_job
         mock_session.execute.return_value = exec_result
 
         mock_session_factory = MagicMock()
@@ -389,9 +458,14 @@ class TestAutoFeed:
             patch("src.services.reconstruction_service.get_reconstruction_engine", return_value=mock_engine),
             patch("src.services.reconstruction_service.save_reconstruction_mesh", new_callable=AsyncMock, return_value=str(tmp_path / "mesh.stl")),
             patch("src.reconstruction.preprocessing.remove_background", side_effect=lambda img: img),
-            patch("src.services.analysis_service.run_analysis", new_callable=AsyncMock, return_value={"verdict": "pass"}),
-            patch("src.services.analysis_service.get_latest_analysis_id", new_callable=AsyncMock, return_value=10),
-            patch("src.services.analysis_service.compute_mesh_hash", return_value="fakehash"),
+            patch(
+                "src.services.analysis_service.run_analysis",
+                new_callable=AsyncMock,
+                return_value={
+                    "verdict": "pass",
+                    "saved": {"id": "01ANALYSIS000000000001"},
+                },
+            ) as run_analysis,
         ):
             from src.jobs.reconstruction_tasks import run_reconstruction_job
 
@@ -402,3 +476,4 @@ class TestAutoFeed:
         assert "reconstruction" in result
         assert result["reconstruction"]["method"] == "triposr_remote"
         assert mock_job.status == "done"
+        assert run_analysis.await_args.kwargs["org_id"] == "org-a"

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { VERIFY_UI } from "@/lib/verify-flag";
 import { verifySession } from "@/lib/dal";
+import { AuthProvider } from "@/components/ui/auth-provider";
 
 export const metadata: Metadata = {
   robots: { index: false, follow: false },
@@ -23,6 +24,6 @@ export default async function VerifyLayout({
   children: React.ReactNode;
 }) {
   if (!VERIFY_UI) notFound();
-  await verifySession();
-  return children;
+  const user = await verifySession();
+  return <AuthProvider user={user}>{children}</AuthProvider>;
 }

@@ -37,12 +37,19 @@ export interface BatchProgress {
   completed_at: string | null;
 }
 
+export interface BatchArtifactLink {
+  id: string;
+  url: string;
+}
+
 export interface BatchItem {
   item_ulid: string;
   filename: string;
   status: string;
   priority: string;
   analysis_id: number | null;
+  analysis: BatchArtifactLink | null;
+  cost_decision: BatchArtifactLink | null;
   error_message: string | null;
   duration_ms: number | null;
   created_at: string | null;

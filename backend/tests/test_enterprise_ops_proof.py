@@ -89,7 +89,11 @@ def test_compose_configs_have_smokeable_frontend_and_backend():
     enterprise = load_yaml("cadverify-enterprise/docker-compose.yml")
 
     assert local["services"]["backend"]["build"] == "./backend"
-    assert local["services"]["frontend"]["build"] == "./frontend"
+    assert local["services"]["frontend"]["build"]["context"] == "./frontend"
+    assert (
+        local["services"]["frontend"]["build"]["args"]["NEXT_PUBLIC_DESIGN_INTELLIGENCE"]
+        == "1"
+    )
     assert enterprise["services"]["backend"]["image"] == "cadverify-backend:latest"
     assert enterprise["services"]["frontend"]["image"] == "cadverify-frontend:latest"
 
@@ -106,6 +110,7 @@ def test_compose_configs_have_smokeable_frontend_and_backend():
         assert "redis" in compose["services"]
         assert "pgdata" in compose["volumes"]
         assert "RATE_LIBRARY_ENABLED=1" in service_env(backend)
+        assert "DESIGN_INTELLIGENCE_ENABLED=1" in service_env(backend)
 
     assert "blobs" in enterprise["volumes"]
     assert "redis-data" in enterprise["volumes"]
@@ -132,6 +137,7 @@ def test_fly_configs_describe_deploy_surface_without_external_proof_claims():
             "ARQ_HEALTH_KEY = \"arq:queue:health-check\"",
             "WORKER_STRICT_HEALTH = \"1\"",
             "RATE_LIBRARY_ENABLED = \"1\"",
+            "DESIGN_INTELLIGENCE_ENABLED = \"1\"",
             "ANALYSIS_TIMEOUT_SEC = \"60\"",
             "[deploy]",
             "alembic upgrade head",
@@ -146,6 +152,7 @@ def test_fly_configs_describe_deploy_surface_without_external_proof_claims():
             "[env]",
             'API_BASE = "https://cadvrfy-api.fly.dev"',
             'NEXT_PUBLIC_API_BASE = "https://cadvrfy-api.fly.dev"',
+            'NEXT_PUBLIC_DESIGN_INTELLIGENCE = "1"',
             "[http_service]",
             "internal_port = 3000",
             "force_https = true",

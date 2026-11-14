@@ -28,12 +28,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
-from src.auth.org_context import caller_org_subquery
+from src.auth.org_context import caller_org_subquery, resolve_org
 from src.auth.require_api_key import AuthedUser
 from src.db.models import CostDecision, UsageEvent
 from src.services.share_service import generate_short_id
 
 logger = logging.getLogger("cadverify.cost_decision_service")
+
+_UNRESOLVED_ORG = object()
 
 APPROVAL_UNREVIEWED = "unreviewed"
 APPROVAL_APPROVED = "approved"
@@ -63,11 +65,15 @@ def compute_params_hash(
     material_class: str,
     shop: Optional[str],
     overrides: Optional[dict],
+    engine_version: str | None = None,
+    result_json: dict | None = None,
 ) -> str:
-    """SHA-256 of the canonical cost parameters.
+    """SHA-256 of the canonical inputs and exact decision artifact.
 
-    Two cost runs on the same file with the same parameters produce the same
-    decision, so this is the second half of the (user, mesh, params) dedup key.
+    The result captures every decision-affecting dynamic input (environment,
+    inventory, governed libraries and calibration) without maintaining a second,
+    drift-prone list beside the engine. Exact reruns still dedup; a materially
+    different fresh response never points at an older row.
     """
     canonical = json.dumps(
         {
@@ -78,6 +84,8 @@ def compute_params_hash(
             "material_class": material_class,
             "shop": shop or "",
             "overrides": overrides or {},
+            "engine_version": engine_version or "",
+            "result_json": result_json,
         },
         sort_keys=True,
         separators=(",", ":"),
@@ -100,10 +108,15 @@ def _denormalize(result_json: dict) -> tuple[Optional[str], Optional[float], lis
 
 
 async def _lookup_dedup(
-    session: AsyncSession, user_id: int, mesh_hash: str, params_hash: str
+    session: AsyncSession,
+    user_id: int,
+    org_id: str | None,
+    mesh_hash: str,
+    params_hash: str,
 ) -> Optional[CostDecision]:
     stmt = select(CostDecision).where(
         CostDecision.user_id == user_id,
+        CostDecision.org_id == org_id,
         CostDecision.mesh_hash == mesh_hash,
         CostDecision.params_hash == params_hash,
     )
@@ -121,6 +134,7 @@ async def persist_cost_decision(
     file_type: str,
     result_json: dict,
     label: Optional[str] = None,
+    org_id: str | None | object = _UNRESOLVED_ORG,
 ) -> CostDecision:
     """Insert (or return the deduped) CostDecision row and flush to get its ulid.
 
@@ -128,7 +142,16 @@ async def persist_cost_decision(
     file with the same params returns the existing row instead of duplicating.
     Race-safe via IntegrityError re-query (mirrors analysis_service).
     """
-    existing = await _lookup_dedup(session, user.user_id, mesh_hash, params_hash)
+    request_org_id = (
+        await resolve_org(session, user.user_id)
+        if org_id is _UNRESOLVED_ORG
+        else org_id
+    )
+    if request_org_id is not None and not isinstance(request_org_id, str):
+        raise TypeError("org_id must be a string or None")
+    existing = await _lookup_dedup(
+        session, user.user_id, request_org_id, mesh_hash, params_hash
+    )
     if existing is not None:
         logger.info(
             "Cost-decision dedup hit for user=%s mesh=%.12s…", user.user_id, mesh_hash
@@ -141,12 +164,10 @@ async def persist_cost_decision(
 
     make_now, crossover, quantities = _denormalize(result_json)
 
-    from src.auth.org_context import resolve_org
-
     decision = CostDecision(
         ulid=str(ULID()),
         user_id=user.user_id,
-        org_id=await resolve_org(session, user.user_id),
+        org_id=request_org_id,
         api_key_id=user.api_key_id or None,
         mesh_hash=mesh_hash,
         params_hash=params_hash,
@@ -169,7 +190,7 @@ async def persist_cost_decision(
             user.user_id,
         )
         existing = await _lookup_dedup(
-            session, user.user_id, mesh_hash, params_hash
+            session, user.user_id, request_org_id, mesh_hash, params_hash
         )
         if existing is not None:
             await _refresh_summary_for(session, existing)
@@ -215,6 +236,7 @@ async def persist_cost_decision(
     _actor_email = await _lookup_email(user.user_id)
     asyncio.create_task(fire_and_forget_audit(
         user_id=user.user_id, user_email=_actor_email,
+        org_id=request_org_id,
         action="decision.created", resource_type="cost_decision",
         resource_id=decision.ulid,
         detail={
@@ -250,6 +272,7 @@ async def record_persist_failure(
     *,
     mesh_hash: Optional[str],
     error: BaseException,
+    org_id: str | None | object = _UNRESOLVED_ORG,
 ) -> None:
     """Best-effort observability for a failed cost-decision persist.
 
@@ -276,12 +299,14 @@ async def record_persist_failure(
     )
     try:
         await session.rollback()
-        from src.auth.org_context import resolve_org
-
         session.add(
             UsageEvent(
                 user_id=user.user_id,
-                org_id=await resolve_org(session, user.user_id),
+                org_id=(
+                    await resolve_org(session, user.user_id)
+                    if org_id is _UNRESOLVED_ORG
+                    else org_id
+                ),
                 api_key_id=user.api_key_id or None,
                 event_type="cost_persist_failed",
                 mesh_hash=mesh_hash,

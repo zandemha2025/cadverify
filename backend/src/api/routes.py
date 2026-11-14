@@ -35,6 +35,7 @@ from src.api.upload_validation import (
     validate_magic,
 )
 from src.auth.kill_switch import require_kill_switch_open
+from src.auth.org_context import resolve_org
 from src.auth.rate_limit import limiter
 from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
@@ -210,9 +211,9 @@ def _run_cost_engine(mesh, filename: str):
     if dec_issue is not None:
         universal.append(dec_issue)
     scores = [
-        score_process(get_analyzer(p).analyze(ctx), geometry, p)
+        score_process(analyzer.analyze(ctx), geometry, p)
         for p in pbase._REGISTRY
-        if get_analyzer(p)
+        if (analyzer := get_analyzer(p)) is not None
     ]
     result = AnalysisResult(
         filename=filename,
@@ -238,6 +239,7 @@ _SOURCE_UNITS = {"mm", "inch"}
 _MAX_QTYS = 6
 _MAX_QTY = 10_000_000
 _MAX_OVERRIDES = 64  # cap ad-hoc rate/driver overrides per request
+_MAX_SERVICE_ENV_BYTES = 4_096
 
 
 def _parse_owned_processes(raw: Optional[str]) -> frozenset:
@@ -275,23 +277,9 @@ def _available_shops() -> list[dict]:
     Each entry carries the slug `id` (what callers pass back as ?shop=), the
     display `name`, the shop's `region`, and a short provenance `source`.
     """
-    from src.costing import list_profiles
-    from src.costing.shop_profile import load_profile
+    from src.services.cost_context_service import available_shops
 
-    out: list[dict] = []
-    for slug in list_profiles():
-        try:
-            p = load_profile(slug)
-        except Exception:
-            logger.warning("shop profile %r failed to load; skipping", slug)
-            continue
-        out.append({
-            "id": slug,
-            "name": p.name,
-            "region": p.region,
-            "source": p.source or None,
-        })
-    return out
+    return available_shops()
 
 
 def _resolve_shop_param(shop: Optional[str]) -> Optional[str]:
@@ -302,23 +290,12 @@ def _resolve_shop_param(shop: Optional[str]) -> Optional[str]:
     (matched by slug or case-insensitive display name) — never an arbitrary
     filesystem path — so this cannot be turned into a path-traversal read.
     """
-    if not shop or not shop.strip():
-        return None
-    from src.costing.shop_profile import _slug
+    from src.services.cost_context_service import resolve_local_shop
 
-    req = shop.strip()
-    req_slug = _slug(req)
-    for s in _available_shops():
-        if req == s["id"] or req_slug == s["id"] or req.lower() == s["name"].lower():
-            return s["id"]
-    raise HTTPException(
-        status_code=400,
-        detail=(f"Unknown shop {req!r}. Available: "
-                f"{[s['id'] for s in _available_shops()] or '(none)'}"),
-    )
+    return resolve_local_shop(shop)
 
 
-async def _resolve_governed_shop(session, user_id, shop):
+async def _resolve_governed_shop(session, org_id, shop):
     """Governed (DB) shop binding for the caller's org + slug, or None (W4 slice 2).
 
     When ``SHOP_LIBRARY_ENABLED`` is on AND the caller's org has a PUBLISHED shop
@@ -328,28 +305,9 @@ async def _resolve_governed_shop(session, user_id, shop):
     flat-file ``resolve_shop`` allowlist, byte-identical to pre-W4. The flag is
     checked FIRST so an off flag adds no DB work and no behaviour change.
     """
-    raw = (shop or "").strip()
-    if not raw:
-        return None
-    from src.services.shop_library_service import (
-        governed_shop_profile,
-        resolve_shop_overrides_for,
-        shop_library_enabled,
-    )
+    from src.services.cost_context_service import resolve_governed_shop
 
-    if not shop_library_enabled():
-        return None
-    from src.auth.org_context import resolve_org
-    from src.costing.shop_profile import _slug
-
-    org_id = await resolve_org(session, user_id)
-    if not isinstance(org_id, str) or not org_id:
-        return None
-    slug = _slug(raw)
-    payload = await resolve_shop_overrides_for(session, org_id, slug)
-    if payload is None:
-        return None
-    return governed_shop_profile(slug, payload)
+    return await resolve_governed_shop(session, org_id, shop)
 
 
 def _parse_overrides(overrides: Optional[str]) -> dict:
@@ -391,6 +349,31 @@ def _parse_overrides(overrides: Optional[str]) -> dict:
             raise HTTPException(status_code=400, detail=f"override {k!r} must be finite")
         out[k.strip()] = float(v)
     return out
+
+
+def _parse_service_environment(raw: Optional[str]) -> tuple[bool, dict | None]:
+    """Validate an optional request-local environment override.
+
+    The boolean distinguishes omission from explicit ``{}``, which intentionally
+    means ambient and must override an older stored declaration.
+    """
+    if raw is None:
+        return False, None
+    if len(raw.encode("utf-8")) > _MAX_SERVICE_ENV_BYTES:
+        raise HTTPException(status_code=400, detail="service_environment is too large")
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            status_code=400, detail="service_environment must be valid JSON"
+        ) from exc
+    from src.services.part_context_service import validate_service_environment
+
+    try:
+        validate_service_environment(value)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return True, value
 
 
 def _validate_overrides(overrides: dict) -> None:
@@ -484,6 +467,7 @@ async def validate_file(
                 detail=f"Unknown rule pack '{rule_pack}'. Available: {available_rule_packs()}",
             )
 
+    request_org_id = await resolve_org(session, user.user_id)
     data = await _read_capped(file)
     result = await analysis_service.run_analysis(
         file_bytes=data,
@@ -493,6 +477,7 @@ async def validate_file(
         user=user,
         session=session,
         include_thickness=include_thickness,
+        org_id=request_org_id,
     )
 
     if segmentation == "sam3d":
@@ -504,15 +489,19 @@ async def validate_file(
         # Compute mesh hash (same algorithm as analysis_service)
         mesh_hash = analysis_service.compute_mesh_hash(data)
 
-        # Look up the just-persisted analysis row
-        analysis_id = await analysis_service.get_latest_analysis_id(
-            session, user.user_id, mesh_hash,
+        saved = result.get("saved")
+        analysis_ulid = saved.get("id") if isinstance(saved, dict) else None
+        analysis_id = (
+            await analysis_service.get_analysis_id_by_ulid(
+                session, user.user_id, analysis_ulid, org_id=request_org_id,
+            )
+            if isinstance(analysis_ulid, str) and analysis_ulid
+            else None
         )
         if analysis_id is None:
-            # Defensive: analysis should have been persisted by run_analysis
             raise HTTPException(
                 status_code=500,
-                detail="Analysis row not found after persist -- cannot enqueue SAM-3D job.",
+                detail="Exact saved analysis not found -- cannot enqueue SAM-3D job.",
             )
 
         # Save mesh blob for worker retrieval
@@ -520,7 +509,7 @@ async def validate_file(
 
         # Create job (idempotent by analysis_id + sam3d)
         job = await job_service.create_sam3d_job(
-            session, analysis_id, user.user_id, mesh_hash,
+            session, analysis_id, user.user_id, mesh_hash, request_org_id,
         )
         await session.commit()
 
@@ -698,6 +687,7 @@ async def _run_cost_decision(
     owned_processes: Optional[str] = None,
     tolerance_class: Optional[str] = None,
     units: Optional[str] = None,
+    service_environment: Optional[str] = None,
     user: Optional[AuthedUser] = None,
     session: Optional[AsyncSession] = None,
 ) -> dict:
@@ -723,6 +713,15 @@ async def _run_cost_decision(
     import asyncio
 
     t0 = time.perf_counter()
+
+    # Resolve the active organization once. Every org-scoped read, write and
+    # failure event in this request is pinned to this value even if the user
+    # switches organizations while the expensive CAD computation is running.
+    request_org_id: str | None = None
+    if user is not None and session is not None:
+        resolved_org = await resolve_org(session, user.user_id)
+        if isinstance(resolved_org, str):
+            request_org_id = resolved_org
 
     # ---- validate options (fail fast, before reading bytes) --------------
     quantities = _parse_qty_list(qty)
@@ -766,21 +765,22 @@ async def _run_cost_decision(
             detail=f"Unknown units '{units}'. Use one of {sorted(_SOURCE_UNITS)}",
         )
     effective_units = units or "mm"
+    service_environment_supplied, request_service_environment = (
+        _parse_service_environment(service_environment)
+    )
     # ── Shop binding: governed (DB) profile first, else the flat-file allowlist ──
     # W4 slice 2: when SHOP_LIBRARY_ENABLED and the caller's org has a PUBLISHED
     # shop profile for this slug in effect now, bind its DECLARED overrides as
     # SHOP provenance (the slug need not exist as a flat file). Flag off / no
     # governed profile for the slug => byte-identical: the flat-file resolve_shop
     # path (and its 400 on an unknown shop) is used unchanged.
-    governed_shop = None
-    if user is not None and session is not None:
-        governed_shop = await _resolve_governed_shop(session, user.user_id, shop)
-    if governed_shop is not None:
-        shop_slug = governed_shop.slug           # string slug for logging / params_hash
-        shop_binding = governed_shop             # ShopProfile-like object bound to engine
-    else:
-        shop_slug = _resolve_shop_param(shop)    # 400 on unknown shop
-        shop_binding = shop_slug
+    from src.services.cost_context_service import resolve_cost_shop
+
+    shop_slug, shop_binding = await resolve_cost_shop(
+        session if user is not None else None,
+        request_org_id,
+        shop,
+    )
     rate_overrides = _parse_overrides(overrides)  # 400 on bad JSON/value
     _validate_overrides(rate_overrides)           # 400 on unknown key (fail fast)
     owned = _parse_owned_processes(owned_processes)  # 400 on unknown process id
@@ -821,144 +821,27 @@ async def _run_cost_decision(
         units_is_user=units_is_user,
     )
 
-    # ---- MEASURED confidence band from a persisted org calibration (W5) ----
-    # When the caller's org has a tuned calibration bundle built from REAL
-    # held-out residuals, bind its ResidualModel so every estimate carries the
-    # MEASURED empirical CI (validated=True comes ONLY from real residuals — the
-    # honesty seam is inside the costing layer, unchanged). No bundle => the
-    # residual_model stays None => the CI is the stated assumption band,
-    # byte-identical to pre-W5 behaviour. Pure local disk read (no network); the
-    # only added work is the org lookup, which never touches the response bytes.
-    # The demo route passes no user/session, so it stays untouched and IP-local.
-    # ── P1 analogy feed (loaded below only when the ensemble is on) ──────────
-    # The caller org's ground-truth records, passed to ``ensemble_estimate`` so
-    # the analogy-to-quote k-NN member can measure geometric distance to THIS
-    # part. None => the analogy is never engaged and the band is byte-identical
-    # (demo route, flag off, or an unprovisioned session).
-    analogy_records = None
-    if user is not None and session is not None:
-        from src.auth.org_context import resolve_org
-        from src.services.groundtruth_service import load_served_calibration
+    # Bind every dynamic org input through the same seam the batch worker uses.
+    # The org id was frozen at request entry; the mesh hash is also reused by
+    # persistence below, so context lookup and the saved artifact name one part.
+    from src.costing.ensemble import ensemble_enabled, ensemble_estimate
+    from src.services.cost_context_service import bind_cost_org_context
 
-        cal_org_id = await resolve_org(session, user.user_id)
-        # resolve_org's contract is Optional[str]; guard on the concrete type so
-        # a mocked/unprovisioned session (no real org_id) is treated as "no
-        # calibration" — leaving behaviour byte-identical to pre-W5.
-        if isinstance(cal_org_id, str) and cal_org_id:
-            # ── Phase C: machine-inventory verification feed ─────────────────
-            # Resolve the caller org's DECLARED owned machines + shop-level
-            # secondary ops + THIS part's DECLARED service environment, and thread
-            # them into the estimate so the decision report carries a machine-
-            # grounded §0 makeability verdict and a PASSING owned machine re-costs
-            # its process at its OWN marginal rate. An org with NO declared
-            # machines AND NO declared environment leaves options.inventory ()
-            # + service_environment None → the served response is BYTE-IDENTICAL
-            # (the only added work is org-scoped SELECTs that never touch the
-            # response bytes). Best-effort: a load failure must never break the
-            # live decision — the machine lens simply stays absent.
-            try:
-                from src.services.analysis_service import (
-                    compute_mesh_hash as _compute_mesh_hash,
-                )
-                from src.services.machine_inventory_service import (
-                    load_org_inventory,
-                    load_shop_caps,
-                )
-                from src.services.part_context_service import get_context
-
-                _inventory = await load_org_inventory(session, cal_org_id)
-                if _inventory:
-                    options.inventory = tuple(_inventory)
-                    options.shop_caps = await load_shop_caps(session, cal_org_id)
-                _ctx = await get_context(
-                    session, cal_org_id, _compute_mesh_hash(data)
-                )
-                _env = (
-                    getattr(_ctx, "service_environment", None)
-                    if _ctx is not None else None
-                )
-                if _env:
-                    options.service_environment = _env
-            except Exception:
-                logger.warning(
-                    "machine-inventory feed failed for org %s; decision proceeds "
-                    "without the machine lens", cal_org_id, exc_info=True,
-                )
-
-            residual_model, calibration = load_served_calibration(cal_org_id)
-            if residual_model is not None:
-                options.residual_model = residual_model
-            # Correct the served point by the per-process calibration factor so
-            # the MEASURED band is centred coherently with its residuals (they
-            # were measured on the CORRECTED prediction). None (no real ground
-            # truth) => point stays uncorrected => byte-identical to pre-W5.
-            if calibration is not None:
-                options.calibration = calibration
-
-            # ── W4 governed rate library ────────────────────────────────────
-            # If RATE_LIBRARY_ENABLED is on AND the org has a PUBLISHED rate card
-            # in effect now, use it as the base DEFAULT table under shop/user
-            # overrides. Flag off / no published card => None => hardcoded
-            # RATE_CARD_V0 => byte-identical to pre-W4. A governed card is a table
-            # of DEFAULT assumptions — provenance stays DEFAULT, never validated.
-            from src.services.rate_library_service import (
-                resolve_rate_table_for_org,
-            )
-
-            base_table = await resolve_rate_table_for_org(session, cal_org_id)
-            if base_table is not None:
-                options.base_rate_table = base_table
-
-            # ── W4 governed materials library ───────────────────────────────
-            # If MATERIAL_LIBRARY_ENABLED is on AND the org has a PUBLISHED
-            # materials catalog in effect now, OVERLAY its DECLARED per-kg prices
-            # onto the base table's ``material_prices`` (the governed catalog wins
-            # per material key). Flag off / no published catalog / empty catalog
-            # => no overlay => the base table's own material_prices are used
-            # unchanged => byte-identical to pre-W4. A governed catalog is DECLARED
-            # default prices — provenance stays DEFAULT, never validated.
-            import copy as _copy
-
-            from src.costing.rates import RATE_CARD_V0 as _RATE_CARD_V0
-            from src.services.material_library_service import (
-                resolve_material_overrides_for,
-            )
-
-            mat_payload = await resolve_material_overrides_for(session, cal_org_id)
-            mat_prices = (mat_payload or {}).get("material_prices") or {}
-            mat_defs = (mat_payload or {}).get("materials") or {}
-            if mat_prices or mat_defs:
-                # Deep-copy before mutating: base_table may be the rate-library
-                # cache's shared payload (returned by reference) — never corrupt it.
-                base = _copy.deepcopy(
-                    options.base_rate_table
-                    if options.base_rate_table is not None
-                    else _RATE_CARD_V0
-                )
-                if mat_prices:
-                    merged = dict(base.get("material_prices") or {})
-                    merged.update(mat_prices)
-                    base["material_prices"] = merged
-                if mat_defs:
-                    merged_defs = dict(base.get("materials") or {})
-                    merged_defs.update(mat_defs)
-                    base["materials"] = merged_defs
-                options.base_rate_table = base
-
-            # ── P1 analogy-to-quote k-NN feed (org-scoped, cheap query) ──────
-            # When the ensemble is enabled, load THIS org's ground-truth records
-            # so the independent analogy member can contribute to the POINT via
-            # BLUE. Loaded here (off the compute executor) as a single org-scoped
-            # SELECT; the analogy itself filters to REAL (stand_in=False)
-            # same-process neighbours that carry geometry and ABSTAINS otherwise,
-            # so an org with no usable records leaves the band byte-identical.
-            from src.costing.ensemble import ensemble_enabled as _ens_on
-            if _ens_on():
-                from src.services.groundtruth_service import (
-                    load_org_ground_truth,
-                )
-
-                analogy_records = await load_org_ground_truth(session, cal_org_id)
+    run_ensemble = ensemble_enabled() and user is not None
+    mesh_hash = (
+        analysis_service.compute_mesh_hash(data)
+        if user is not None and session is not None
+        else ""
+    )
+    analogy_records = await bind_cost_org_context(
+        session if user is not None else None,
+        request_org_id,
+        mesh_hash,
+        options,
+        service_environment_supplied=service_environment_supplied,
+        request_service_environment=request_service_environment,
+        include_analogy=run_ensemble,
+    )
 
     # ---- OPT-IN assumption-ensemble uncertainty band (Moat P1) -------------
     # Behind COST_ENSEMBLE_ENABLED (default OFF). When on, we ALSO run the same
@@ -969,12 +852,9 @@ async def _run_cost_decision(
     # executor as the point estimate, so the (opt-in) latency never blocks the
     # event loop. It rides the RESPONSE only; the persisted result_json and the
     # dedup params_hash are untouched (the band is derived, not an input).
-    from src.costing.ensemble import ensemble_enabled, ensemble_estimate
-
     # Gated on an authenticated caller too: the public demo route (no user) is
     # IP-local + ephemeral by contract and stays byte-identical regardless of
     # the flag — the band is an authed-product feature.
-    run_ensemble = ensemble_enabled() and user is not None
 
     def _run():
         result, m, features = _run_cost_engine(mesh, file.filename or "unknown")
@@ -1103,7 +983,6 @@ async def _run_cost_decision(
 
         if cost_persist_enabled():
             from src import __version__ as _cv_version
-            from src.services.analysis_service import compute_mesh_hash
 
             params_hash = compute_params_hash(
                 quantities=quantities,
@@ -1113,8 +992,9 @@ async def _run_cost_decision(
                 material_class=material_class,
                 shop=shop_slug,
                 overrides=rate_overrides,
+                engine_version=_cv_version,
+                result_json=result_dict,
             )
-            mesh_hash = compute_mesh_hash(data)
             try:
                 saved = await persist_cost_decision(
                     session,
@@ -1125,6 +1005,7 @@ async def _run_cost_decision(
                     filename=file.filename or "unknown",
                     file_type=suffix.lstrip("."),
                     result_json=result_dict,
+                    org_id=request_org_id,
                 )
                 # Non-destructive: the decision JSON is unchanged; we only add a
                 # pointer to the saved artifact so the caller can open/export it.
@@ -1138,7 +1019,11 @@ async def _run_cost_decision(
                 # sees (graceful degrade, unchanged) — but the failure must
                 # be observable, not silent: warning log + usage_events row.
                 await record_persist_failure(
-                    session, user, mesh_hash=mesh_hash, error=exc
+                    session,
+                    user,
+                    mesh_hash=mesh_hash,
+                    error=exc,
+                    org_id=request_org_id,
                 )
 
     # RESPONSE-ONLY: attach the ensemble band (when the flag produced one) after
@@ -1206,6 +1091,11 @@ async def validate_cost(
                     "decision reads the real part. STATED input; a plausibility WARNING "
                     "still fires if the mm-interpreted size looks wrong.",
     ),
+    service_environment: Optional[str] = Form(
+        None,
+        description="Request-local JSON service environment. This exact declaration "
+        "wins over stored part context for this cost computation.",
+    ),
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
 ):
@@ -1236,6 +1126,7 @@ async def validate_cost(
         owned_processes=owned_processes,
         tolerance_class=tolerance_class,
         units=units,
+        service_environment=service_environment,
         user=user,
         session=session,
     )
@@ -1278,6 +1169,10 @@ async def validate_cost_demo(
                     "Inch-authored meshes are scaled ×25.4 into mm ONCE before costing; "
                     "otherwise an inch part read as mm mis-costs by ~16,000×.",
     ),
+    service_environment: Optional[str] = Form(
+        None,
+        description="Optional request-local JSON service environment.",
+    ),
 ):
     """Public demo of the should-cost / make-vs-buy decision — NO auth.
 
@@ -1301,6 +1196,7 @@ async def validate_cost_demo(
         overrides=overrides,
         tolerance_class=tolerance_class,
         units=units,
+        service_environment=service_environment,
     )
 
 
@@ -1330,6 +1226,7 @@ async def validate_repair(
                 detail=f"Unknown rule pack '{rule_pack}'. Available: {available_rule_packs()}",
             )
 
+    request_org_id = await resolve_org(session, user.user_id)
     data = await _read_capped(file)
     return await repair_service.repair_mesh(
         file_bytes=data,
@@ -1338,6 +1235,7 @@ async def validate_repair(
         rule_pack=rule_pack,
         user=user,
         session=session,
+        org_id=request_org_id,
     )
 
 

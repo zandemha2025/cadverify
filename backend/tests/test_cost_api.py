@@ -9,6 +9,8 @@ no Redis/Postgres/network.
 from __future__ import annotations
 
 import importlib
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -137,6 +139,124 @@ def test_cost_rejects_bad_extension(client):
     r = _post(client, "foo.txt", b"bad")
     assert r.status_code == 400
     assert "Unsupported" in r.json()["message"]
+
+
+def test_cost_request_local_environment_is_validated_and_applied(
+    client, cube_10mm, stl_bytes_of
+):
+    data = stl_bytes_of(cube_10mm)
+    invalid = _post(
+        client,
+        "cube.stl",
+        data,
+        service_environment='{"sour_service":"yes"}',
+    )
+    assert invalid.status_code == 400
+    assert "sour_service must be a boolean" in invalid.text
+
+    valid = _post(
+        client,
+        "cube.stl",
+        data,
+        service_environment='{"sour_service":true}',
+    )
+    assert valid.status_code == 200, valid.text
+    assert valid.json()["verification"]["environment_declared"] is True
+
+
+@pytest.mark.parametrize("constant", ["NaN", "Infinity", "-Infinity"])
+def test_cost_rejects_non_finite_service_environment(
+    client, cube_10mm, stl_bytes_of, constant
+):
+    response = _post(
+        client,
+        "cube.stl",
+        stl_bytes_of(cube_10mm),
+        service_environment=f'{{"max_temp_c":{constant}}}',
+    )
+    assert response.status_code == 400
+    assert "max_temp_c must be finite" in response.text
+
+
+def test_request_local_environment_wins_over_racing_stored_context(
+    client, cube_10mm, stl_bytes_of, monkeypatch
+):
+    """A cost request carries its own world; another tab's stored PUT cannot win."""
+    monkeypatch.setenv("COST_PERSIST_ENABLED", "false")
+    monkeypatch.setattr(
+        "src.api.routes.resolve_org",
+        AsyncMock(return_value="org-a"),
+    )
+    monkeypatch.setattr(
+        "src.services.machine_inventory_service.load_org_inventory",
+        AsyncMock(return_value=[]),
+    )
+    monkeypatch.setattr(
+        "src.services.part_context_service.get_context",
+        AsyncMock(
+            return_value=SimpleNamespace(
+                service_environment={"sour_service": True}
+            )
+        ),
+    )
+    data = stl_bytes_of(cube_10mm)
+
+    stored = _post(client, "cube.stl", data)
+    ambient = _post(client, "cube.stl", data, service_environment="{}")
+
+    assert stored.status_code == 200, stored.text
+    assert stored.json()["verification"]["environment_declared"] is True
+    assert ambient.status_code == 200, ambient.text
+    assert "verification" not in ambient.json()
+
+
+def test_inventory_failure_does_not_skip_stored_service_environment(
+    client, cube_10mm, stl_bytes_of, monkeypatch
+):
+    monkeypatch.setenv("COST_PERSIST_ENABLED", "false")
+    monkeypatch.setattr(
+        "src.api.routes.resolve_org",
+        AsyncMock(return_value="org-a"),
+    )
+    monkeypatch.setattr(
+        "src.services.machine_inventory_service.load_org_inventory",
+        AsyncMock(side_effect=RuntimeError("inventory unavailable")),
+    )
+    stored = AsyncMock(
+        return_value=SimpleNamespace(
+            service_environment={"sour_service": True, "max_temp_c": 200}
+        )
+    )
+    monkeypatch.setattr("src.services.part_context_service.get_context", stored)
+
+    response = _post(client, "cube.stl", stl_bytes_of(cube_10mm))
+
+    assert response.status_code == 200, response.text
+    assert response.json()["verification"]["environment_declared"] is True
+    stored.assert_awaited_once()
+
+
+def test_stored_service_environment_read_failure_refuses_cost_decision(
+    client, cube_10mm, stl_bytes_of, monkeypatch
+):
+    monkeypatch.setenv("COST_PERSIST_ENABLED", "false")
+    monkeypatch.setattr(
+        "src.api.routes.resolve_org",
+        AsyncMock(return_value="org-a"),
+    )
+    monkeypatch.setattr(
+        "src.services.machine_inventory_service.load_org_inventory",
+        AsyncMock(return_value=[]),
+    )
+    monkeypatch.setattr(
+        "src.services.part_context_service.get_context",
+        AsyncMock(side_effect=RuntimeError("context unavailable")),
+    )
+
+    response = _post(client, "cube.stl", stl_bytes_of(cube_10mm))
+
+    assert response.status_code == 503
+    assert "not computed" in response.text
 
 
 def test_cost_user_provenance_on_overrides(client, cube_10mm, stl_bytes_of):

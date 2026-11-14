@@ -122,6 +122,7 @@ async def repair_mesh(
     rule_pack: str | None,
     user,
     session,
+    org_id: str | None,
 ) -> dict:
     """Parse mesh, enforce limits, run repair, re-analyze, return combined result."""
     from fastapi import HTTPException
@@ -145,7 +146,7 @@ async def repair_mesh(
 
     # Run original analysis
     original_result = await analysis_service.run_analysis(
-        file_bytes, filename, processes, rule_pack, user, session
+        file_bytes, filename, processes, rule_pack, user, session, org_id=org_id
     )
 
     # Run repair with timeout (T-05A-01)
@@ -195,6 +196,7 @@ async def repair_mesh(
         rule_pack,
         user,
         session,
+        org_id=org_id,
     )
 
     repair_details = {

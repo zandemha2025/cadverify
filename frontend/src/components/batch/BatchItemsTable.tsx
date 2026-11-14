@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { ColumnDef } from "@tanstack/react-table";
 import { getBatchItems, type BatchItem } from "@/lib/api/batch";
@@ -41,37 +41,56 @@ export default function BatchItemsTable({ batchId, refreshKey }: Props) {
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [expandedErrors, setExpandedErrors] = useState<Set<string>>(new Set());
+  const requestGeneration = useRef(0);
 
   const fetchItems = useCallback(
-    async (cursor?: string) => {
+    async (generation: number, cursor?: string) => {
       try {
         const resp = await getBatchItems(batchId, {
           status: statusFilter === "all" ? undefined : statusFilter,
           cursor,
           limit: 50,
         });
+        if (generation !== requestGeneration.current) return;
         setItems((prev) => (cursor ? [...prev, ...resp.items] : resp.items));
         setNextCursor(resp.next_cursor);
         setHasMore(resp.has_more);
       } catch (err) {
+        if (generation !== requestGeneration.current) return;
         setError(err instanceof Error ? err.message : "Failed to load items");
       }
     },
     [batchId, statusFilter],
   );
 
-  // Initial load + filter change
-  useEffect(() => {
+  const startFresh = useCallback(() => {
+    const generation = ++requestGeneration.current;
+    setItems([]);
+    setNextCursor(null);
+    setHasMore(false);
+    setExpandedErrors(new Set());
+    setLoadingMore(false);
     setLoading(true);
     setError(null);
-    fetchItems().finally(() => setLoading(false));
-  }, [fetchItems, refreshKey]);
+    void fetchItems(generation).finally(() => {
+      if (generation === requestGeneration.current) setLoading(false);
+    });
+  }, [fetchItems]);
+
+  // Initial load + filter change
+  useEffect(() => {
+    startFresh();
+    return () => {
+      requestGeneration.current += 1;
+    };
+  }, [startFresh, refreshKey]);
 
   const loadMore = async () => {
-    if (!nextCursor) return;
+    if (!nextCursor || loadingMore) return;
+    const generation = requestGeneration.current;
     setLoadingMore(true);
-    await fetchItems(nextCursor);
-    setLoadingMore(false);
+    await fetchItems(generation, nextCursor);
+    if (generation === requestGeneration.current) setLoadingMore(false);
   };
 
   const toggleError = useCallback((itemId: string) => {
@@ -137,9 +156,16 @@ export default function BatchItemsTable({ batchId, refreshKey }: Props) {
           const item = row.original;
           return (
             <div className="flex items-center justify-end gap-1">
-              {item.analysis_id != null && (
+              {item.analysis != null && (
                 <Button asChild variant="ghost" size="sm">
-                  <Link href={`/analyses/${item.analysis_id}`}>View</Link>
+                  <Link href={`/analyses/${item.analysis.id}`}>View</Link>
+                </Button>
+              )}
+              {item.cost_decision != null && (
+                <Button asChild variant="ghost" size="sm">
+                  <Link href={`/cost-decisions/${item.cost_decision.id}`}>
+                    View
+                  </Link>
                 </Button>
               )}
               {item.error_message && (
@@ -184,11 +210,7 @@ export default function BatchItemsTable({ batchId, refreshKey }: Props) {
       {error && (
         <ErrorState
           message={error}
-          onRetry={() => {
-            setError(null);
-            setLoading(true);
-            fetchItems().finally(() => setLoading(false));
-          }}
+          onRetry={startFresh}
         />
       )}
 
@@ -210,6 +232,7 @@ export default function BatchItemsTable({ batchId, refreshKey }: Props) {
             variant="secondary"
             size="sm"
             loading={loadingMore}
+            disabled={loadingMore}
             onClick={loadMore}
           >
             Load more

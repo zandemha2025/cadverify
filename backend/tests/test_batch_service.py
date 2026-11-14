@@ -1,9 +1,11 @@
 """Unit tests for batch_service module."""
 from __future__ import annotations
 
+import asyncio
 import io
 import os
 import zipfile
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -12,9 +14,27 @@ from src.services.batch_service import (
     BATCH_MAX_ITEMS,
     DEFAULT_BATCH_CONCURRENCY,
     MAX_COMPRESSION_RATIO,
+    create_batch,
     extract_zip_to_items,
     parse_csv_manifest,
 )
+
+
+@pytest.mark.asyncio
+async def test_create_batch_freezes_audit_org_and_ignores_dashboard_key_sentinel():
+    session = AsyncMock()
+    session.add = MagicMock()
+    with (
+        patch("src.auth.org_context.resolve_org", new_callable=AsyncMock, return_value="org-a"),
+        patch("src.services.audit_service._lookup_email", new_callable=AsyncMock, return_value="owner@example.com"),
+        patch("src.services.audit_service.fire_and_forget_audit", new_callable=AsyncMock) as audit,
+    ):
+        batch = await create_batch(session, 7, "zip", api_key_id=0)
+        await asyncio.sleep(0)
+
+    assert batch.org_id == "org-a"
+    assert batch.api_key_id is None
+    assert audit.await_args.kwargs["org_id"] == "org-a"
 
 
 # ---------------------------------------------------------------------------

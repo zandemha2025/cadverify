@@ -222,6 +222,7 @@ class TestIdempotentJobCreation:
             analysis_id=1,
             user_id=42,
             mesh_hash="abc123",
+            org_id="org-a",
         )
 
         assert result.ulid == "01EXISTING0000000000001"
@@ -251,12 +252,14 @@ class TestIdempotentJobCreation:
             analysis_id=1,
             user_id=42,
             mesh_hash="abc123",
+            org_id="org-a",
         )
 
         assert result.job_type == "sam3d"
         assert result.status == "queued"
         assert result.analysis_id == 1
         assert result.user_id == 42
+        assert result.org_id == "org-a"
         assert len(added_objects) == 1
 
 

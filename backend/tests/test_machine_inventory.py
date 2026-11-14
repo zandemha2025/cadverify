@@ -252,10 +252,12 @@ def test_add_from_catalog_unknown_raises():
         svc.add_from_catalog("Nonexistent 9000")
 
 
-def test_catalog_options_nonempty():
+def test_catalog_options_are_nonempty_valid_declarations():
     opts = svc.catalog_options()
     assert len(opts) >= 10
     assert all("process" in o for o in opts)
+    for option in opts:
+        svc.validate_machine(option)
 
 
 # ── pure: shop-op validation ──────────────────────────────────────────────────

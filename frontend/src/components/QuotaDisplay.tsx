@@ -3,6 +3,7 @@
 import type { RateLimits } from "@/lib/api";
 import { Progress } from "@/components/ui/progress";
 import { usageTone } from "@/lib/status";
+import { formatRateLimitReset } from "@/lib/history-format";
 
 interface Props {
   rateLimits?: RateLimits;
@@ -39,14 +40,13 @@ export default function QuotaDisplay({ rateLimits }: Props) {
   }
 
   const used = rateLimits.limit - rateLimits.remaining;
+  const resetLabel = formatRateLimitReset(rateLimits.reset);
 
   return (
     <div className="space-y-3">
       <QuotaBar used={used} total={rateLimits.limit} label="Rate limit usage" />
-      {rateLimits.reset > 0 && (
-        <p className="text-xs text-muted-foreground">
-          Resets in {Math.ceil(rateLimits.reset / 60)} min
-        </p>
+      {resetLabel && (
+        <p className="text-xs text-muted-foreground">{resetLabel}</p>
       )}
     </div>
   );

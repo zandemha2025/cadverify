@@ -18,25 +18,26 @@ export const C = {
   hair: "#e2e2e6",
   hair2: "#e7e7ea",
   ink: "#17181a",
-  ink70: "rgba(23,24,26,0.7)",
-  ink60: "rgba(23,24,26,0.6)",
-  ink55: "rgba(23,24,26,0.55)",
-  ink50: "rgba(23,24,26,0.5)",
-  ink45: "rgba(23,24,26,0.45)",
-  ink40: "rgba(23,24,26,0.4)",
-  ink35: "rgba(23,24,26,0.35)",
+  // Every foreground clears WCAG AA on both panel (#fff) and sunken (#f6f6f7).
+  ink70: "#303134",
+  ink60: "#3f4043",
+  ink55: "#454649",
+  ink50: "#4c4d50",
+  ink45: "#525356",
+  ink40: "#595a5d",
+  ink35: "#5f6063",
   sunken: "#f6f6f7",
 
   // provenance (light)
-  measured: "#3b7bb8",
-  shop: "#b06a35",
-  user: "#7a63c9",
-  def: "#6b7280", // DEFAULT + MODEL share slate; MODEL renders "○ MODEL"
+  measured: "#2d6598",
+  shop: "#8a4e25",
+  user: "#624aa8",
+  def: "#5f6063", // DEFAULT + MODEL share slate; MODEL renders "○ MODEL"
 
   // status
-  pass: "#1f8a5b",
-  cond: "#b07818",
-  fail: "#c2453a",
+  pass: "#176a46",
+  cond: "#7a5100",
+  fail: "#a8322a",
 } as const;
 
 export const MONO =

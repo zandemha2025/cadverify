@@ -172,7 +172,10 @@ async def test_same_file_same_processes_cache_hit(db_session, authed_user, _pipe
         # Set up cache hit for second call
         cached_analysis = MagicMock()
         cached_analysis.id = 1
-        cached_analysis.result_json = result1
+        cached_analysis.ulid = result1["saved"]["id"]
+        cached_analysis.result_json = {
+            key: value for key, value in result1.items() if key != "saved"
+        }
         cached_analysis.duration_ms = 50.0
         cached_analysis.face_count = 12
         cached_analysis.mesh_hash = compute_mesh_hash(b"file_A_content")
@@ -315,6 +318,7 @@ async def test_cache_hit_under_200ms(db_session, authed_user, _pipeline_patches)
     # Pre-configure cache hit
     cached_analysis = MagicMock()
     cached_analysis.id = 1
+    cached_analysis.ulid = "01FAST0000000000000000001"
     cached_analysis.result_json = {"verdict": "pass", "fast": True}
     cached_analysis.duration_ms = 10.0
     cached_analysis.face_count = 12
@@ -336,41 +340,36 @@ async def test_cache_hit_under_200ms(db_session, authed_user, _pipeline_patches)
         )
         elapsed_ms = (time.monotonic() - t0) * 1000
 
-    assert result == {"verdict": "pass", "fast": True}
+    assert result == {
+        "verdict": "pass",
+        "fast": True,
+        "saved": {
+            "id": cached_analysis.ulid,
+            "url": f"/api/v1/analyses/{cached_analysis.ulid}",
+        },
+    }
     assert elapsed_ms < 200, f"Cache hit took {elapsed_ms:.1f}ms, expected < 200ms"
 
 
 @pytest.mark.asyncio
 async def test_concurrent_duplicate_upload(db_session, authed_user, _pipeline_patches):
     """Concurrent duplicate uploads: IntegrityError handled, both return same result."""
-    from unittest.mock import PropertyMock
-
     from sqlalchemy.exc import IntegrityError
 
     from src.services.analysis_service import run_analysis
 
     helpers = _make_mock_route_helpers()
-    call_count = 0
-
     # After IntegrityError, the re-query should find the winning row
     cached_analysis = MagicMock()
     cached_analysis.id = 1
+    cached_analysis.ulid = "01RACE0000000000000000001"
     cached_analysis.result_json = {"verdict": "pass", "concurrent": True}
     cached_analysis.duration_ms = 50.0
     cached_analysis.face_count = 12
     cached_analysis.mesh_hash = compute_mesh_hash(b"concurrent_file")
 
-    original_flush = db_session.flush
-
-    async def _flush_that_fails_once():
-        nonlocal call_count
-        call_count += 1
-        if call_count == 1:
-            # First flush succeeds (assigns IDs)
-            await original_flush()
-        else:
-            # Second would raise IntegrityError in real DB
-            raise IntegrityError("duplicate key", params={}, orig=Exception())
+    async def _flush_duplicate():
+        raise IntegrityError("duplicate key", params={}, orig=Exception())
 
     with patch("src.services.analysis_service._get_route_helpers", return_value=helpers):
         # First call: normal success
@@ -384,19 +383,23 @@ async def test_concurrent_duplicate_upload(db_session, authed_user, _pipeline_pa
         )
 
         # Second call: flush raises IntegrityError, then re-query finds cached row
-        db_session.flush = _flush_that_fails_once
+        db_session.flush = _flush_duplicate
 
         # After rollback, execute should return the cached row
         exec_hit = MagicMock()
         exec_hit.scalars.return_value.first.return_value = cached_analysis
 
         # Sequence of execute() calls in the persist path:
-        #   1. cache check -> None (miss)
-        #   2. W1 resolve_org read (stamps org_id on the new row) -> None here
+        #   1. resolve active org once for the whole request
+        #   2. cache check -> None (miss)
         #   3. re-query after the IntegrityError -> cached row
         db_session.execute.side_effect = [
-            MagicMock(scalars=MagicMock(return_value=MagicMock(first=MagicMock(return_value=None)))),
-            MagicMock(scalar_one_or_none=MagicMock(return_value=None)),  # resolve_org
+            MagicMock(scalar_one_or_none=MagicMock(return_value="org-a")),
+            MagicMock(
+                scalars=MagicMock(
+                    return_value=MagicMock(first=MagicMock(return_value=None))
+                )
+            ),
             exec_hit,  # re-query after IntegrityError
         ]
 
@@ -412,3 +415,7 @@ async def test_concurrent_duplicate_upload(db_session, authed_user, _pipeline_pa
     # Both should return valid results
     assert result1 is not None
     assert result2 is not None
+    assert result2["saved"] == {
+        "id": cached_analysis.ulid,
+        "url": f"/api/v1/analyses/{cached_analysis.ulid}",
+    }

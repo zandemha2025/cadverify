@@ -6,6 +6,7 @@ import { History } from "lucide-react";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { AnalysisSummary, AnalysesPage, RateLimits } from "@/lib/api";
 import { fetchAnalyses } from "@/lib/api";
+import { formatDurationMs } from "@/lib/history-format";
 import { DataTable } from "@/components/ui/data-table";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
@@ -98,10 +99,10 @@ export default function AnalysisHistoryTable({ onRateLimitsUpdate }: Props) {
         ),
       },
       {
-        accessorKey: "overall_verdict",
+        accessorKey: "verdict",
         header: "Verdict",
         cell: ({ row }) => (
-          <StatusBadge verdict={row.original.overall_verdict} size="sm" />
+          <StatusBadge verdict={row.original.verdict} size="sm" />
         ),
       },
       {
@@ -111,10 +112,10 @@ export default function AnalysisHistoryTable({ onRateLimitsUpdate }: Props) {
         cell: ({ row }) => row.original.face_count.toLocaleString(),
       },
       {
-        accessorKey: "analysis_time_ms",
+        accessorKey: "duration_ms",
         header: "Duration",
         meta: { numeric: true },
-        cell: ({ row }) => `${row.original.analysis_time_ms} ms`,
+        cell: ({ row }) => formatDurationMs(row.original.duration_ms),
       },
       {
         accessorKey: "created_at",
@@ -161,7 +162,7 @@ export default function AnalysisHistoryTable({ onRateLimitsUpdate }: Props) {
         columns={columns}
         data={analyses}
         loading={loading && analyses.length === 0}
-        onRowClick={(row) => router.push(`/analyses/${row.ulid}`)}
+        onRowClick={(row) => router.push(`/analyses/${row.id}`)}
         emptyState={
           initialized && !error ? (
             <EmptyState

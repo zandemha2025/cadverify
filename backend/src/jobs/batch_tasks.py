@@ -266,7 +266,6 @@ async def _run_cost_item(session, batch, item) -> dict:
     import time
 
     from src import __version__ as _cv_version
-    from src.auth.org_context import resolve_org
     from src.auth.require_api_key import AuthedUser
     from src.costing import EstimateOptions, report_to_dict
     from src.services import batch_service, cost_decision_service
@@ -289,6 +288,7 @@ async def _run_cost_item(session, batch, item) -> dict:
         raise ValueError(f"Unknown input_mode: {batch.input_mode}")
 
     filename = item.filename
+    mesh_hash = compute_mesh_hash(file_bytes)
 
     # ---- build EstimateOptions (mirror _run_cost_decision) ------------------
     # is_user is True ONLY for manifest-supplied values (parity rule); missing
@@ -298,15 +298,27 @@ async def _run_cost_item(session, batch, item) -> dict:
     quantities = _parse_item_quantities(item.quantities)
     region = item.region                       # None => unset (DEFAULT US)
     material_class = item.material_class or "polymer"
-    shop_slug = item.shop                       # a validated slug (or None)
+    from src.services.cost_context_service import (
+        bind_cost_org_context,
+        resolve_cost_shop,
+    )
+
+    # Re-resolve against the batch's frozen org at execution time.  This makes a
+    # governed profile win exactly as it does on the live route, while retaining
+    # the same local allow-list fallback for manifest-validated slugs.
+    shop_slug, shop_binding = await resolve_cost_shop(
+        session,
+        batch.org_id,
+        item.shop,
+    )
 
     options = EstimateOptions(
         quantities=quantities,
         material_class=material_class,
-        material_class_is_user=item.material_class is not None,
+        material_class_is_user=material_class != "polymer",
         region=region or "US",
         region_is_user=region is not None,
-        shop=shop_slug,
+        shop=shop_binding,
         rate_overrides={},
         n_cavities=1,
         n_cavities_is_user=False,
@@ -314,24 +326,21 @@ async def _run_cost_item(session, batch, item) -> dict:
         complexity_is_user=False,
     )
 
-    # ---- bind org calibration EXACTLY like _run_cost_decision ---------------
-    # user = the batch owner; resolve_org gives the same org persist_cost_decision
-    # will stamp, so calibration-org and decision-org stay coherent. No bundle =>
-    # residual_model stays None => byte-identical to an uncalibrated run.
+    # The batch's immutable org owns every dynamic input even if the owner
+    # switches active org before this background job runs.  This is the same
+    # binder used by POST /validate/cost (inventory, part environment,
+    # calibration, governed rate card, and governed material overlay).
     user = AuthedUser(
         user_id=batch.user_id,
         api_key_id=batch.api_key_id or 0,
         key_prefix="batch",
     )
-    cal_org_id = await resolve_org(session, user.user_id)
-    if isinstance(cal_org_id, str) and cal_org_id:
-        from src.services.groundtruth_service import load_served_calibration
-
-        residual_model, calibration = load_served_calibration(cal_org_id)
-        if residual_model is not None:
-            options.residual_model = residual_model
-        if calibration is not None:
-            options.calibration = calibration
+    await bind_cost_org_context(
+        session,
+        batch.org_id,
+        mesh_hash,
+        options,
+    )
 
     # ---- parse + cost, bounded by the same timeout the route uses -----------
     timeout = _cost_timeout_sec()
@@ -380,8 +389,9 @@ async def _run_cost_item(session, batch, item) -> dict:
         material_class=material_class,
         shop=shop_slug,
         overrides={},
+        engine_version=_cv_version,
+        result_json=result_dict,
     )
-    mesh_hash = compute_mesh_hash(file_bytes)
     saved = await cost_decision_service.persist_cost_decision(
         session,
         user,
@@ -391,6 +401,7 @@ async def _run_cost_item(session, batch, item) -> dict:
         filename=filename,
         file_type=suffix.lstrip("."),
         result_json=result_dict,
+        org_id=batch.org_id,
     )
 
     # ---- success: link + counters + heartbeat (same shape as the DFM path) --
@@ -416,6 +427,10 @@ async def _run_cost_item(session, batch, item) -> dict:
     )
     return {
         "cost_decision_id": saved.ulid,
+        "cost_decision": {
+            "id": saved.ulid,
+            "url": f"/api/v1/cost-decisions/{saved.ulid}",
+        },
         "make_now_process": decision.get("make_now_process"),
         "unit_cost_usd": unit_cost_usd,
         "crossover_qty": decision.get("crossover_qty"),
@@ -506,14 +521,32 @@ async def run_batch_item(ctx: dict, item_ulid: str) -> None:
                     rule_pack=item.rule_pack,
                     user=user,
                     session=session,
+                    org_id=batch.org_id,
                 )
-
                 duration_ms = round((time.time() - start) * 1000, 1)
 
-                # Get analysis ID for linking
-                analysis_id = await analysis_service.get_latest_analysis_id(
-                    session, batch.user_id, analysis_service.compute_mesh_hash(file_bytes)
+                saved = result.get("saved")
+                if not isinstance(saved, dict):
+                    raise RuntimeError("Analysis did not return an exact saved artifact")
+                analysis_ulid = saved.get("id")
+                if not isinstance(analysis_ulid, str) or not analysis_ulid:
+                    raise RuntimeError("Analysis did not return an exact saved artifact")
+                analysis_id = await analysis_service.get_analysis_id_by_ulid(
+                    session, batch.user_id, analysis_ulid, org_id=batch.org_id,
                 )
+                if analysis_id is None:
+                    raise RuntimeError("Exact saved analysis could not be resolved")
+                analysis_url = saved.get("url")
+                if not isinstance(analysis_url, str) or not analysis_url:
+                    analysis_url = f"/api/v1/analyses/{analysis_ulid}"
+                webhook_extra = {
+                    "saved": saved,
+                    "analysis": saved,
+                    # External identifiers are always public ULIDs/URLs.  The
+                    # integer analysis_id below is only the BatchItem FK.
+                    "analysis_id": analysis_ulid,
+                    "analysis_url": analysis_url,
+                }
 
                 # Success
                 item.status = "completed"
@@ -555,7 +588,6 @@ async def run_batch_item(ctx: dict, item_ulid: str) -> None:
                     "item_ulid": item.ulid,
                     "filename": item.filename,
                     "status": item.status,
-                    "analysis_id": item.analysis_id,
                     "error_message": item.error_message,
                 }
                 # Cost items add cost_decision_id + engine numbers (copied

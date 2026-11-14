@@ -136,6 +136,32 @@ def _override(app, session, user_id=42):
 # ---------------------------------------------------------------------------
 
 
+def test_params_hash_tracks_the_exact_fresh_artifact():
+    from src.services.cost_decision_service import compute_params_hash
+
+    base = {
+        "quantities": [50],
+        "region": "US",
+        "cavities": 1,
+        "complexity": "moderate",
+        "material_class": "polymer",
+        "shop": None,
+        "overrides": {},
+        "engine_version": "1",
+    }
+    first = compute_params_hash(**base, result_json={"unit_cost": 10, "env": "ambient"})
+    same = compute_params_hash(**base, result_json={"env": "ambient", "unit_cost": 10})
+    changed_context = compute_params_hash(
+        **base, result_json={"unit_cost": 12, "env": "sour"}
+    )
+    changed_engine = compute_params_hash(
+        **{**base, "engine_version": "2"},
+        result_json={"unit_cost": 10, "env": "ambient"},
+    )
+    assert first == same
+    assert len({first, changed_context, changed_engine}) == 3
+
+
 def _post_cost(client, path, name, data, **form):
     return client.post(
         path,

@@ -193,6 +193,7 @@ def test_auth_mode_saml_disables_google():
 
 
 @patch("src.auth.oauth.oauth.google.authorize_redirect", new_callable=AsyncMock)
+@patch("src.auth.oauth.ip_signup_limit_enabled", new=lambda: False)
 @patch("src.auth.saml._build_auth")
 def test_auth_mode_hybrid_enables_both(mock_build_auth, mock_authorize_redirect):
     """When AUTH_MODE=hybrid, both SAML metadata and Google start are available."""
@@ -203,13 +204,8 @@ def test_auth_mode_hybrid_enables_both(mock_build_auth, mock_authorize_redirect)
         "https://accounts.google.com/mock-authorize", status_code=302
     )
     app = _make_app("hybrid")
-    # Hermetic: without a live REDIS_URL, /auth/google/start would 500 on the
-    # unconditional per_ip_signup_limit KeyError; with REDIS_URL live it would
-    # reach authlib's authorize_redirect, which performs a REAL network GET to
-    # Google's OIDC discovery endpoint. Mock authorize_redirect (patched above)
-    # so the route is exercised with zero network access either way, and
-    # disable follow_redirects as defense in depth against ever dereferencing
-    # a 302 to a real external host.
+    # Hermetic: the route-wiring check must not consume or inherit live Redis
+    # signup-limit state, and Authlib must not fetch Google's OIDC metadata.
     client = TestClient(app, raise_server_exceptions=False, follow_redirects=False)
 
     saml_resp = client.get("/auth/saml/metadata")

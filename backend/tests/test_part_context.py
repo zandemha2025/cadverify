@@ -47,6 +47,13 @@ def test_validate_rejects_non_int(field):
         svc.validate_context({field: True})
 
 
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+@pytest.mark.parametrize("field", ["max_temp_c", "min_temp_c", "pressure_bar"])
+def test_service_environment_rejects_non_finite_numbers(field, value):
+    with pytest.raises(ValueError, match=f"{field} must be finite"):
+        svc.validate_context({"service_environment": {field: value}})
+
+
 # ---------------------------------------------------------------------------
 # annualized_cost — None without a declared volume, product with it
 # ---------------------------------------------------------------------------

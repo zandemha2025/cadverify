@@ -235,10 +235,12 @@ class _Fixture:
 
 async def _persist_an(s, user, mesh, result):
     from src.services import analysis_service as asvc
+    from src.auth.org_context import resolve_org
 
     return await asvc._persist_analysis(
         s,
         user,
+        await resolve_org(s, user.user_id),
         mesh_hash=mesh,
         process_set_hash=f"pset-{uuid.uuid4().hex}",
         analysis_version="0.3.0",

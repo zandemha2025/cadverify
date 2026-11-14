@@ -11,7 +11,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { C, MONO, SANS } from "@/lib/verify/tokens";
 import { runVerification, type VerifyResult } from "@/lib/verify/run";
 import { listMachines } from "@/lib/verify/machine-api";
-import { CAD_ACCEPT } from "@/lib/cad-file";
+import { CAD_ACCEPT, isSupportedCad, supportedCadLabel } from "@/lib/cad-file";
 import { Stage } from "./stage";
 import { VerifyScreen } from "./verify-screen";
 import { MachinesScreen } from "./machines-screen";
@@ -79,6 +79,7 @@ export function VerifyApp() {
   const [result, setResult] = useState<VerifyResult | null>(null);
   const [running, setRunning] = useState(false);
   const [file, setFile] = useState<File | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [notifOpen, setNotifOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   // A REAL signal for the rail footer: are any of the org's machines declaring an
@@ -89,6 +90,10 @@ export function VerifyApp() {
   // The last part the user verified — so a change to the declared world can re-run
   // the verification (re-persist the env + re-cost against it) for the same part.
   const latestFile = useRef<File | null>(null);
+  // Only the newest upload/environment run may update visible state. Older
+  // requests can finish, but cannot replace the user's newer part or clear its
+  // loading indicator.
+  const runGeneration = useRef(0);
 
   const nav = useCallback((s: string) => {
     if (s === "acquisition") return setScreen("acquisition");
@@ -100,6 +105,12 @@ export function VerifyApp() {
 
   const runVerify = useCallback(
     async (f: File) => {
+      if (!isSupportedCad(f.name)) {
+        setUploadError(`Unsupported file. Choose ${supportedCadLabel()}.`);
+        return;
+      }
+      setUploadError(null);
+      const generation = ++runGeneration.current;
       setFile(f);
       latestFile.current = f;
       setScreen("verify");
@@ -107,18 +118,13 @@ export function VerifyApp() {
       setResult(null);
       try {
         const r = await runVerification({ file: f, env, materialClass });
-        setResult(r);
+        if (generation === runGeneration.current) setResult(r);
       } finally {
-        setRunning(false);
+        if (generation === runGeneration.current) setRunning(false);
       }
     },
     [env, materialClass]
   );
-
-  const onReverify = useCallback(() => {
-    if (file) void runVerify(file);
-    else pickFile();
-  }, [file, runVerify, pickFile]);
 
   // The rail footer's bound-rate signal.
   useEffect(() => {
@@ -188,7 +194,16 @@ export function VerifyApp() {
 
   return (
     <ToastProvider>
-    <div className="cv-verify-shell" style={{ height: "100vh", display: "flex", background: C.bg, color: C.ink, fontFamily: SANS, WebkitFontSmoothing: "antialiased", fontSize: 14 }}>
+    <div
+      className="cv-verify-shell"
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={(event) => {
+        event.preventDefault();
+        const dropped = event.dataTransfer.files?.[0];
+        if (dropped) void runVerify(dropped);
+      }}
+      style={{ height: "100vh", display: "flex", background: C.bg, color: C.ink, fontFamily: SANS, WebkitFontSmoothing: "antialiased", fontSize: 14 }}
+    >
       <style>{KEYFRAMES}</style>
       <input
         ref={fileRef}
@@ -201,6 +216,14 @@ export function VerifyApp() {
           e.target.value = "";
         }}
       />
+      {uploadError && (
+        <div
+          role="alert"
+          style={{ position: "fixed", zIndex: 80, top: 62, right: 18, maxWidth: 360, border: `1px solid ${C.fail}`, borderRadius: 10, background: C.panel, padding: "10px 12px", color: C.fail, fontFamily: MONO, fontSize: 11 }}
+        >
+          {uploadError}
+        </div>
+      )}
 
       {/* rail */}
       <nav className="cv-verify-rail" style={{ width: 64, flexShrink: 0, borderRight: `1px solid ${C.hair2}`, background: C.panel, display: "flex", flexDirection: "column", alignItems: "center", padding: "14px 0", gap: 6 }}>
@@ -252,16 +275,16 @@ export function VerifyApp() {
       {/* main */}
       <div className="cv-verify-main" style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
         <header className="cv-verify-header" style={{ height: 52, flexShrink: 0, borderBottom: `1px solid ${C.hair2}`, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 20px", background: C.panel }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: C.ink50 }}>
-            <span>{CRUMB[screen] ?? "CadVerify"}</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flex: "1 1 auto", overflow: "hidden", fontSize: 13, color: C.ink50 }}>
+            <span style={{ flexShrink: 0 }}>{CRUMB[screen] ?? "CadVerify"}</span>
             {onVerify && result?.file && (
               <>
-                <span style={{ color: C.ink35 }}>/</span>
-                <span style={{ color: C.ink, fontFamily: MONO, fontSize: 12.5 }}>{result.file.name}</span>
+                <span style={{ color: C.ink35, flexShrink: 0 }}>/</span>
+                <span title={result.file.name} style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: C.ink, fontFamily: MONO, fontSize: 12.5 }}>{result.file.name}</span>
               </>
             )}
           </div>
-          <div className="cv-verify-header-actions" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div className="cv-verify-header-actions" style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
             <span className="cv-verify-rate-switcher"><CalibrationSwitcher onOpenCalibration={() => setScreen("calibration")} /></span>
             <button className="cv-verify-command-button" type="button" onClick={() => setScreen("palette")} title="Command palette (⌘K)" style={{ display: "inline-flex", alignItems: "center", gap: 6, border: `1px solid ${C.hair}`, background: "#fff", borderRadius: 999, padding: "7px 13px", fontFamily: MONO, fontSize: 11, color: C.ink55, cursor: "pointer" }}>⌘K</button>
             <button className="cv-verify-notification-button" type="button" onClick={() => setNotifOpen((v) => !v)} title="Notifications" aria-label="Notifications" style={{ width: 32, height: 32, borderRadius: "50%", border: `1px solid ${C.hair}`, background: "#fff", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", color: C.ink55 }}>
@@ -312,7 +335,6 @@ export function VerifyApp() {
               materialClass={materialClass}
               setMaterialClass={setMaterialClass}
               onPickFile={pickFile}
-              onReverify={onReverify}
               nav={nav}
             />
           </div>
@@ -353,6 +375,15 @@ const KEYFRAMES = `
 .cv-verify-shell input:focus-visible {
   outline: 2px solid #17181a;
   outline-offset: 2px;
+}
+
+@container (max-width: 560px) {
+  .cv-verify-stage-heading {
+    right: 24px !important;
+  }
+  .cv-verify-stage-context {
+    top: 132px !important;
+  }
 }
 
 @media (max-width: 760px) {

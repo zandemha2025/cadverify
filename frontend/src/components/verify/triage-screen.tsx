@@ -22,7 +22,9 @@ import {
   fetchMakeabilityBucket,
   fetchCapabilityInvestment,
   fetchCapabilityUnlocked,
+  fetchRecurringBlockers,
   importManifestCsv,
+  mergeMakeabilityRows,
   verdictPhrase,
   type MakeabilityRollup,
   type MakeabilitySummary,
@@ -30,6 +32,7 @@ import {
   type MakeabilityRow,
   type CapabilityRanking,
   type CapabilityEntry,
+  type RecurringBlockerRollup,
 } from "@/lib/verify/triage-api";
 
 /** Translucent fill from an opaque hex — the design's soft bucket tint. */
@@ -100,7 +103,26 @@ export function TriageScreen({ nav }: { nav: (s: string) => void }) {
   const [rollup, setRollup] = useState<MakeabilityRollup | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [capability, setCapability] = useState<CapabilityRanking | null>(null);
+  const [blockers, setBlockers] = useState<RecurringBlockerRollup | null>(null);
+  const [blockerError, setBlockerError] = useState<string | null>(null);
   const [open, setOpen] = useState<MakeabilityBucketKey | null>(null);
+  const blockerRequestGeneration = useRef(0);
+
+  const loadRecurringBlockers = useCallback(() => {
+    const generation = ++blockerRequestGeneration.current;
+    setBlockers(null);
+    setBlockerError(null);
+    void fetchRecurringBlockers().then(
+      (value) => {
+        if (generation !== blockerRequestGeneration.current) return;
+        setBlockers(value);
+      },
+      (reason) => {
+        if (generation !== blockerRequestGeneration.current) return;
+        setBlockerError(reason instanceof Error ? reason.message : "Could not load blocker intelligence");
+      }
+    );
+  }, []);
 
   useEffect(() => {
     fetchMakeability().then(
@@ -116,7 +138,11 @@ export function TriageScreen({ nav }: { nav: (s: string) => void }) {
     // The capability ranking is a second cheap GROUP BY; a failure here never
     // blocks the buckets — the panel just stays absent.
     fetchCapabilityInvestment().then(setCapability, () => setCapability(null));
-  }, []);
+    loadRecurringBlockers();
+    return () => {
+      blockerRequestGeneration.current += 1;
+    };
+  }, [loadRecurringBlockers]);
 
   const s = rollup?.summary;
   const total = s?.total ?? 0;
@@ -164,6 +190,8 @@ export function TriageScreen({ nav }: { nav: (s: string) => void }) {
       {rollup && s && total === 0 && (
         <TriageEmpty rollup={rollup} nav={nav} />
       )}
+
+      <RecurringBlockersPanel data={blockers} error={blockerError} onRetry={loadRecurringBlockers} />
 
       {rollup && s && total > 0 && (
         <>
@@ -260,6 +288,115 @@ export function TriageScreen({ nav }: { nav: (s: string) => void }) {
         </>
       )}
     </main>
+  );
+}
+
+function RecurringBlockersPanel({
+  data,
+  error,
+  onRetry,
+}: {
+  data: RecurringBlockerRollup | null;
+  error: string | null;
+  onRetry: () => void;
+}) {
+  const [open, setOpen] = useState<string | null>(null);
+  return (
+    <section
+      aria-label="Recurring blocker intelligence"
+      style={{ marginTop: 18, maxWidth: 1180, border: `1px solid ${C.hair}`, borderRadius: 14, background: C.panel, padding: "17px 20px" }}
+    >
+      <p className="sr-only" aria-live="polite" aria-atomic="true">
+        {error
+          ? "Recurring blocker intelligence unavailable."
+          : data
+            ? `Recurring blocker intelligence loaded with ${data.clusters.length} cluster${data.clusters.length === 1 ? "" : "s"}.`
+            : "Loading recurring blocker intelligence."}
+      </p>
+      <div style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: 9 }}>
+        <Kicker color={C.fail}>RECURRING BLOCKERS · ORGANIZATION MEMORY</Kicker>
+        {data && (
+          <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 9.5, color: C.ink40 }}>
+            exact engine finding clusters · latest saved part only · no LLM inference
+          </span>
+        )}
+      </div>
+      {error ? (
+        <div style={{ marginTop: 9 }}>
+          <p role="alert" style={{ margin: 0, fontFamily: MONO, fontSize: 10.5, color: C.fail }}>
+            blocker intelligence unavailable — {error}
+          </p>
+          <GhostButton onClick={onRetry}>Retry</GhostButton>
+        </div>
+      ) : !data ? (
+        <div style={{ marginTop: 9 }}><Spinner label="clustering saved blockers…" /></div>
+      ) : data.clusters.length === 0 ? (
+        <p style={{ margin: "9px 0 0", fontSize: 12.5, color: C.ink50 }}>
+          No exact blocker recurs across two or more distinct latest parts. Singleton findings stay on their own records.
+        </p>
+      ) : (
+        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 7 }}>
+          {data.clusters.map((cluster) => {
+            const expanded = open === cluster.id;
+            return (
+              <div key={cluster.id} style={{ border: `1px solid ${expanded ? C.fail : C.hair}`, borderRadius: 10, overflow: "hidden" }}>
+                <button
+                  type="button"
+                  aria-expanded={expanded}
+                  onClick={() => setOpen(expanded ? null : cluster.id)}
+                  style={{ width: "100%", display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: 9, border: 0, background: C.sunken, padding: "10px 12px", color: C.ink, cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}
+                >
+                  <span style={{ fontFamily: MONO, fontSize: 10, color: C.fail }}>{cluster.code}</span>
+                  <span style={{ fontFamily: MONO, fontSize: 10, color: C.ink45 }}>
+                    {cluster.process ? procLabel(cluster.process) : "all routes"}
+                  </span>
+                  <span style={{ fontSize: 12.5 }}>{cluster.message}</span>
+                  <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 10, color: C.fail }}>
+                    {NUM(cluster.affected_part_count)} distinct part{cluster.affected_part_count === 1 ? "" : "s"}
+                    {cluster.stale ? ` · ${NUM(cluster.stale_part_count)} stale` : ""}
+                  </span>
+                  <span aria-hidden style={{ color: C.ink35 }}>{expanded ? "▾" : "▸"}</span>
+                </button>
+                {expanded && (
+                  <div style={{ padding: "4px 12px 10px" }}>
+                    {cluster.fix_suggestion && (
+                      <p style={{ margin: "6px 0", fontSize: 11.5, lineHeight: 1.55, color: C.ink55 }}>
+                        engine fix: {cluster.fix_suggestion}
+                      </p>
+                    )}
+                    {cluster.affected_parts.map((part) => (
+                      <div key={part.part_key} style={{ padding: "7px 0", borderTop: `1px solid ${C.hair2}` }}>
+                        <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+                          <a href={`/analyses/${encodeURIComponent(part.analysis.id)}`} style={{ color: C.measured, fontFamily: MONO, fontSize: 11 }}>
+                            {part.filename}
+                          </a>
+                          <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 9.5, color: part.stale ? C.cond : C.ink40 }}>
+                            {cluster.process ? procLabel(cluster.process) : "all routes"} · {part.stale ? "STALE — reverify" : "current"}
+                          </span>
+                        </div>
+                        <p style={{ margin: "4px 0 0", fontSize: 11.5, color: C.ink55 }}>
+                          {part.message}{part.fix_suggestion ? ` · fix: ${part.fix_suggestion}` : ""}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {data && data.summary.malformed_analysis_count > 0 && (
+        <p style={{ margin: "9px 0 0", fontFamily: MONO, fontSize: 9.5, color: C.cond }}>
+          {NUM(data.summary.malformed_analysis_count)} saved result{data.summary.malformed_analysis_count === 1 ? " contained" : "s contained"} malformed finding data; invalid entries were excluded.
+        </p>
+      )}
+      {data?.summary.truncated && (
+        <p style={{ margin: "9px 0 0", fontFamily: MONO, fontSize: 9.5, color: C.cond }}>
+          BOUNDED VIEW · recurring blockers are computed over the {NUM(data.provenance.candidate_limit)} most recent latest-part analyses.
+        </p>
+      )}
+    </section>
   );
 }
 
@@ -661,25 +798,81 @@ function RankRow({
   const [rows, setRows] = useState<MakeabilityRow[] | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const requestGeneration = useRef(0);
+  const targetKey = `${entry.acquisition.process}\u001f${entry.acquisition.gate ?? ""}`;
+
+  useEffect(() => {
+    requestGeneration.current += 1;
+    setRows(null);
+    setCursor(null);
+    setErr(null);
+    setLoadingMore(false);
+    return () => {
+      requestGeneration.current += 1;
+    };
+  }, [targetKey]);
 
   useEffect(() => {
     if (!open || rows !== null) return;
-    fetchCapabilityUnlocked(entry.acquisition.process, entry.acquisition.gate).then(
+    const generation = ++requestGeneration.current;
+    void fetchCapabilityUnlocked(entry.acquisition.process, entry.acquisition.gate).then(
       (p) => {
-        setRows(p.rows);
+        if (generation !== requestGeneration.current) return;
+        setRows(mergeMakeabilityRows([], p.rows));
         setCursor(p.next_cursor);
+        setErr(null);
       },
       (e) => {
+        if (generation !== requestGeneration.current) return;
         setErr(e instanceof Error ? e.message : "load failed");
         setRows([]);
       }
     );
+    return () => {
+      if (generation === requestGeneration.current) {
+        requestGeneration.current += 1;
+      }
+    };
   }, [open, rows, entry.acquisition.process, entry.acquisition.gate]);
+
+  const loadMore = useCallback(async () => {
+    if (!cursor || loadingMore) return;
+    const requestedCursor = cursor;
+    const generation = ++requestGeneration.current;
+    setLoadingMore(true);
+    setErr(null);
+    try {
+      const page = await fetchCapabilityUnlocked(
+        entry.acquisition.process,
+        entry.acquisition.gate,
+        requestedCursor
+      );
+      if (generation !== requestGeneration.current) return;
+      setRows((current) => mergeMakeabilityRows(current ?? [], page.rows));
+      setCursor(page.next_cursor);
+    } catch (e) {
+      if (generation !== requestGeneration.current) return;
+      setErr(e instanceof Error ? e.message : "load failed");
+    } finally {
+      if (generation === requestGeneration.current) {
+        setLoadingMore(false);
+      }
+    }
+  }, [cursor, loadingMore, entry.acquisition.process, entry.acquisition.gate]);
+
+  const retryFirstPage = useCallback(() => {
+    requestGeneration.current += 1;
+    setCursor(null);
+    setErr(null);
+    setRows(null);
+  }, []);
 
   return (
     <div style={{ borderRadius: 10, border: `1px solid ${open ? tint(C.cond, 0.4) : "transparent"}`, background: open ? C.panel : "transparent" }}>
       <button
         type="button"
+        aria-expanded={open}
         onClick={onToggle}
         style={{
           width: "100%",
@@ -716,7 +909,12 @@ function RankRow({
 
       {open && (
         <div style={{ padding: "0 10px 10px" }}>
-          {err && <p style={{ margin: "4px 0 0", fontFamily: MONO, fontSize: 11, color: C.fail }}>{err}</p>}
+          {err && (
+            <div style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 10 }}>
+              <p role="alert" style={{ margin: 0, fontFamily: MONO, fontSize: 11, color: C.fail }}>{err}</p>
+              {rows?.length === 0 && <GhostButton onClick={retryFirstPage}>Retry</GhostButton>}
+            </div>
+          )}
           {rows === null && !err && (
             <div style={{ marginTop: 6 }}>
               <Spinner label="loading unlocked parts…" />
@@ -732,9 +930,14 @@ function RankRow({
           <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 12 }}>
             <GhostButton onClick={() => nav("acquisition")}>Open acquisition consideration →</GhostButton>
             {cursor && (
-              <span style={{ fontFamily: MONO, fontSize: 10, color: C.ink40 }}>
-                more unlocked parts beyond the {rows?.length} shown — cursor-paged
-              </span>
+              <>
+                <GhostButton onClick={() => void loadMore()} disabled={loadingMore}>
+                  {loadingMore ? "Loading…" : err ? "Retry loading more" : "Load more unlocked parts"}
+                </GhostButton>
+                <span style={{ fontFamily: MONO, fontSize: 10, color: C.ink40 }}>
+                  more unlocked parts beyond the {rows?.length} shown — cursor-paged
+                </span>
+              </>
             )}
           </div>
         </div>

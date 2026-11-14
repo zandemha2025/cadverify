@@ -44,6 +44,8 @@ from src.api.part_context import router as part_context_router
 from src.api.groundtruth import router as groundtruth_router
 from src.api.manifest import router as manifest_router
 from src.api.machine_inventory import router as machine_inventory_router
+from src.api.design_intelligence import router as design_intelligence_router
+from src.api.portfolio_intelligence import router as portfolio_intelligence_router
 from src.api.org_routes import router as org_router
 from src.api.share import public_share_router, share_router
 from src.auth.keys_api import router as keys_router
@@ -303,6 +305,19 @@ app.include_router(
     machine_inventory_router,
     prefix="/api/v1/machine-inventory",
     tags=["machine-inventory"],
+)
+# Advisory design-intent precedents for existing deterministic findings plus
+# append-only user feedback/decision memory. Retrieval is feature-gated and can
+# never mutate analyses/verdicts; feedback persists separately in the audit log.
+app.include_router(
+    design_intelligence_router,
+    prefix="/api/v1/design-intelligence",
+    tags=["design-intelligence"],
+)
+app.include_router(
+    portfolio_intelligence_router,
+    prefix="/api/v1/portfolio-intelligence",
+    tags=["portfolio-intelligence"],
 )
 # Org membership lifecycle (§32): create/invite/accept/members/role/switch — the
 # multi-user seam on top of 0009's tenancy isolation. Org-scoped; single-org

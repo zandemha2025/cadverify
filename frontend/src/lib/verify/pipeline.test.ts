@@ -16,6 +16,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { pipelineModelFrom } from "./pipeline.ts";
+import { serializeVerificationRun } from "./run-queue.ts";
 import type { VerifyResult, CostGeometryInvalid } from "./run";
 import type { CostEstimate, CostReport, CostGeometry, ValidationResult } from "@/lib/api";
 import type { VerificationBlock } from "./verification";
@@ -38,6 +39,26 @@ function est(process: string, quantity: number, unit_cost_usd: number): CostEsti
     lead_time: { low_days: 5, high_days: 10, mid_days: 7, components: {}, capacity: {} },
   };
 }
+
+test("verification side effects complete in request order", async () => {
+  const events: string[] = [];
+  let releaseFirst!: () => void;
+  const gate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+  const first = serializeVerificationRun(async () => {
+    events.push("A:start");
+    await gate;
+    events.push("A:end");
+  });
+  const second = serializeVerificationRun(async () => {
+    events.push("B:start");
+    events.push("B:end");
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(events, ["A:start"]);
+  releaseFirst();
+  await Promise.all([first, second]);
+  assert.deepEqual(events, ["A:start", "A:end", "B:start", "B:end"]);
+});
 
 const GEOM: CostGeometry = {
   volume_cm3: 4.63,
