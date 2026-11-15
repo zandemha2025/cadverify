@@ -2308,18 +2308,28 @@ def check_undercuts_machining(
     if normals is None or centroids is None or areas is None or not len(normals):
         return []
     try:
+        from scipy.spatial import cKDTree  # pyright: ignore[reportAttributeAccessIssue]
         from trimesh.proximity import ProximityQuery
 
         hull = ctx.mesh.convex_hull
-        # distance from each face centroid to the nearest point on the hull's
-        # SURFACE (not its vertices): zero on the outer skin, growing under an
-        # overhang or inside a pocket. Quantized to 0.5 mm so a finely
-        # tessellated part pays one proximity query per distinct location, not
-        # one per triangle (bounded cost on 200k-face parts).
-        _q = np.round(centroids / 0.5).astype(np.int64)
-        _uniq, _inv = np.unique(_q, axis=0, return_inverse=True)
-        _d_uniq = np.abs(ProximityQuery(hull).signed_distance(_uniq.astype(np.float64) * 0.5))
-        d_hull = np.nan_to_num(_d_uniq[_inv], nan=0.0)
+        # Unsigned distance from each face centroid to the nearest point on the
+        # hull's SURFACE: ~0 on the outer skin, growing under an overhang or
+        # inside a pocket. Cost stays bounded on 200k-face parts: the exact
+        # query runs on a strided sample (<= 8k centroids) and every other
+        # centroid reads its nearest sample's distance (faces within half the
+        # sample spacing of an outer surface read as outer — the conservative
+        # side: fewer flags, never a false one).
+        n = len(centroids)
+        step = max(1, n // 8000)
+        sample = centroids[::step]
+        _pq = ProximityQuery(hull)
+        _pts, d_sample, _tid = _pq.on_surface(sample)
+        # Lipschitz lower bound: |d(x) − d(s)| ≤ |x − s|, so d(x) ≥ d(s) − |x−s|;
+        # never overstates interiority (a face can only read MORE interior with
+        # the exact query, so the check never false-flags).
+        _tree = cKDTree(sample)
+        _dist_to_sample, _idx = _tree.query(centroids)
+        d_hull = np.maximum(d_sample[_idx] - _dist_to_sample, 0.0)
     except Exception:
         return []
     interior_tol = max(0.05 * float(max(np.ptp(centroids, axis=0))), 0.5)
