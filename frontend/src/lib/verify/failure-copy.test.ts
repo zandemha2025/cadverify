@@ -89,3 +89,11 @@ test("rolling quota copy preserves allowance timing and remains retryable", () =
   assert.match(copy.explanation, /rolling ~24h window/);
   assert.doesNotMatch(copy.title, /busy/);
 });
+
+test("an empty upload says the file is empty, never 'Check interrupted'", () => {
+  const copy = analysisFailureCopy("Empty file uploaded");
+  assert.equal(copy.kind, "unreadable");
+  assert.equal(copy.title, "That file is empty.");
+  assert.match(copy.explanation, /0 bytes/);
+  assert.match(copy.action, /Re-export/);
+});

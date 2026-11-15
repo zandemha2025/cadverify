@@ -189,7 +189,12 @@ def test_separate_bodies_are_priced_body_by_body_never_as_one_block():
     one = design["by_quantity"]["1"]
     # at 1 file there are 2 of this body to make
     assert one["quantity_each"] == 2 and one["per_file_usd"] == pytest.approx(2 * one["unit_cost_usd"], abs=0.01)
-    assert r["total"]["per_file_usd"]["1"] == pytest.approx(one["per_file_usd"], abs=0.01)
+    # the shop's order minimum floors the ORDER once (audit fix: never per
+    # body — two small cubes are not 2 x the minimum), and says so.
+    assert r["total"]["per_file_usd"]["1"] == max(
+        one["per_file_usd"], r["total"]["order_min_applied"]["1"]
+    ) if r["total"]["order_min_applied"] else r["total"]["per_file_usd"]["1"] == pytest.approx(one["per_file_usd"], abs=0.01)
+    assert r["total"]["per_file_usd"]["1"] >= one["per_file_usd"] - 0.01
     assert r["total"]["complete"] is True and r["checks_used"] == 0
     # the whole file as one block would be priced on the box around both cubes; per body it isn't
     assert design["processes"]["can_make"] >= 1

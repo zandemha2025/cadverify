@@ -77,7 +77,12 @@ def test_near_threshold_evidence_survives_analysis_cost_and_heatmap_serializatio
     assert wall["measured_value"] < wall["required_value"] == 0.6
     assert "0.59999mm" in wall["message"]
     assert min(response["wall_thickness_map"]["values"]) < 0.6
-    report = estimate_decision(result, mesh, ctx.features, EstimateOptions(quantities=[100]))
+    # The plate is constant-gauge sheet, so the engine would now INFER a metal
+    # default (audit fix 5) and drop the polymer routes; this test exercises
+    # THIN_WALL evidence, so the printable scenario is pinned explicitly.
+    report = estimate_decision(result, mesh, ctx.features,
+                               EstimateOptions(quantities=[100], material_class="polymer",
+                                   material_class_is_user=True))
     fdm_estimates = [e for e in report.estimates if e["process"] == "fdm"]
     assert fdm_estimates
     for estimate in fdm_estimates:
@@ -107,8 +112,12 @@ def _thin_plate(subdivisions: int = 3) -> trimesh.Trimesh:
 
 
 def _analyze(mesh):
+    from src.analysis.features import detect_all
+
     geometry = analyze_geometry(mesh)
     ctx = GeometryContext.build(mesh, geometry)
+    # production order (routes._run_cost_engine_ctx): analyzers read features
+    ctx.features = detect_all(ctx.mesh)
     scores = [
         score_process(get_analyzer(p).analyze(ctx), geometry, p)
         for p in pbase._REGISTRY if get_analyzer(p)

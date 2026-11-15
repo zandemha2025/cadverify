@@ -68,6 +68,10 @@ spec:
               value: /tmp
             - name: API_BASE
               value: {{ include "cadverify.internalApiBase" . | quote }}
+            {{- with .Values.frontend.publicApiOrigin }}
+            - name: API_ORIGIN
+              value: {{ . | quote }}
+            {{- end }}
             - name: AUTH_MODE
               value: {{ .Values.auth.mode | quote }}
             {{- if .Values.frontend.ssoLoginPath }}

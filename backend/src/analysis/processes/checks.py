@@ -2180,7 +2180,17 @@ def check_hole_depth_ratio(
     ctx: GeometryContext,
     max_ratio: float,
     process: ProcessType,
+    severe_ratio: "float | None" = None,
 ) -> list[Issue]:
+    """Hole depth-to-diameter against ``max_ratio`` (peck-cycle territory), with
+    an optional ``severe_ratio`` above which the bore needs gun drilling or EDM.
+
+    Both tiers stay WARNING on purpose: a deep bore is expensive and slow, not
+    impossible — the costing layer carries the economics (a peck/gun-drill
+    cycle-time penalty scaled by this ratio) while the DFM panel carries the
+    flag. An ERROR here would drop an otherwise-turnable part off the lathe
+    entirely, which is the wrong manufacturing call.
+    """
     issues: list[Issue] = []
     for f in ctx.features:
         if f.kind != FeatureKind.CYLINDER_HOLE:
@@ -2190,13 +2200,16 @@ def check_hole_depth_ratio(
         diameter = f.radius * 2
         ratio = f.depth / diameter
         if ratio > max_ratio:
+            severe = severe_ratio is not None and ratio > severe_ratio
             issues.append(Issue(
                 code="DEEP_HOLE",
                 measurement_unit="ratio",
                 severity=Severity.WARNING,
                 message=(
                     f"Hole depth/diameter {format_measurement(ratio, max_ratio)}:1 exceeds {max_ratio}:1 "
-                    f"for {process_phrase(process)} at ({f.centroid[0]:.0f}, {f.centroid[1]:.0f}, {f.centroid[2]:.0f})."
+                    f"for {process_phrase(process)} at ({f.centroid[0]:.0f}, {f.centroid[1]:.0f}, {f.centroid[2]:.0f})"
+                    + (f" and {severe_ratio}:1 — beyond standard tooling: this bore needs gun drilling "
+                       f"or EDM, with peck cycles that dominate its machine time." if severe else ".")
                 ),
                 process=process,
                 measured_value=ratio,
@@ -2205,6 +2218,156 @@ def check_hole_depth_ratio(
                 fix_suggestion="Reduce depth, widen hole, or use specialized tooling.",
             ))
     return issues
+
+
+# ──────────────────────────────────────────────────────────────
+# Internal shoulders / grooving (CNC turning)
+# ──────────────────────────────────────────────────────────────
+def check_internal_shoulders(
+    ctx: GeometryContext,
+    process: ProcessType,
+    min_relief_radius_mm: float = 0.5,
+    *,
+    cite: str = "",
+) -> list[Issue]:
+    """Stepped bores on a turned part where a lathe insert leaves its nose
+    radius. A single straight through-bore meeting the end face is routine
+    turning (drill + bore) and is NOT flagged; two or more distinct bore radii
+    along one axis are internal steps — a sharp step needs a grooving insert or
+    a relief undercut, not a straight turn. OD steps are normal facing work and
+    never flagged here.
+
+    Reads the same cylinder features the hole checks use (``ctx.features``).
+    """
+    feats = getattr(ctx, "features", None) or []
+    hole_radii = []
+    for f in feats:
+        if getattr(f, "kind", None) != FeatureKind.CYLINDER_HOLE:
+            continue
+        r = getattr(f, "radius", None)
+        if r is None or r <= 0:
+            continue
+        hole_radii.append(round(float(r), 3))
+    steps = sorted(set(hole_radii))
+    shoulders = len(steps) - 1
+    if shoulders <= 0:
+        return []
+    return [Issue(
+        code="SHARP_INTERNAL_SHOULDER",
+        severity=Severity.WARNING,
+        message=(
+            f"{shoulders} stepped-bore shoulder(s) on {process_phrase(process)} "
+            f"(bore radii {steps} mm along one axis): a lathe insert leaves its "
+            f"nose radius, so these internal steps need a grooving tool or a "
+            f"relief undercut rather than a straight turn."
+        ),
+        process=process,
+        measured_value=float(shoulders),
+        required_value=0,
+        fix_suggestion=(
+            f"Add a relief groove or an internal radius ≥ {min_relief_radius_mm:g} mm at each shoulder."
+        ),
+        citation=parse_citation(cite),
+    )]
+
+
+# ──────────────────────────────────────────────────────────────
+# Machining undercuts / multi-setup (CNC 3-axis)
+# ──────────────────────────────────────────────────────────────
+def check_undercuts_machining(
+    ctx: GeometryContext,
+    process: ProcessType,
+    min_area_fraction: float = 0.002,
+) -> list[Issue]:
+    """Interior overhang surfaces a 3-axis setup cannot reach, measured
+    orientation-invariantly.
+
+    A T-slot's roof or a dovetail's overhang is a ceiling no straight end mill
+    cuts; it needs a flip setup, a T-slot/side cutter, or 5-axis access — and
+    the costing layer adds the second setup when this fires. The predicate is
+    invariant to how the file was uploaded (a milled part's price must not
+    follow its upload axes):
+
+    * candidates are faces strictly INSIDE the part's convex hull (a hull face
+      is always presentable to the tool by SOME setup — the outer surface is
+      never an undercut);
+    * drilled bores are exempt — faces of a detected CYLINDER_HOLE — since a
+      cross-drilled bar is routine re-fixtured 3-axis work;
+    * the unreachable area is the LARGEST over the six axis tool directions of
+      interior area facing AWAY from that tool — an overhang-topology signal
+      that is invariant to how the file was uploaded (the six directions span
+      every axis setup). An open pocket reads small (its floor faces some
+      tool); a true overhang keeps faces no single setup can present.
+
+    Falls back to no-finding (never a false claim) when the hull or adjacency
+    machinery is unavailable.
+    """
+    normals = ctx.normals
+    centroids = ctx.centroids
+    areas = ctx.face_areas
+    if normals is None or centroids is None or areas is None or not len(normals):
+        return []
+    try:
+        from trimesh.proximity import ProximityQuery
+
+        hull = ctx.mesh.convex_hull
+        # distance from each face centroid to the nearest point on the hull's
+        # SURFACE (not its vertices): zero on the outer skin, growing under an
+        # overhang or inside a pocket. Quantized to 0.5 mm so a finely
+        # tessellated part pays one proximity query per distinct location, not
+        # one per triangle (bounded cost on 200k-face parts).
+        _q = np.round(centroids / 0.5).astype(np.int64)
+        _uniq, _inv = np.unique(_q, axis=0, return_inverse=True)
+        _d_uniq = np.abs(ProximityQuery(hull).signed_distance(_uniq.astype(np.float64) * 0.5))
+        d_hull = np.nan_to_num(_d_uniq[_inv], nan=0.0)
+    except Exception:
+        return []
+    interior_tol = max(0.05 * float(max(np.ptp(centroids, axis=0))), 0.5)
+    interior = d_hull > interior_tol
+    if not interior.any():
+        return []
+    # Drilled bores are NOT milling undercuts (a cross-drilled bar is routine
+    # re-fixtured 3-axis work): faces of a detected CYLINDER_HOLE are exempt.
+    # Feature detection runs on every analyzer path in production; without it
+    # the check still works, just without the bore exemption.
+    for f in (getattr(ctx, "features", None) or []):
+        if getattr(f, "kind", None) is not None and f.kind.name == "CYLINDER_HOLE":
+            idx = getattr(f, "face_indices", None)
+            if idx:
+                interior[list(idx)] = False
+    if not interior.any():
+        return []
+    total_area = float(np.sum(areas))
+    if total_area <= 0:
+        return []
+    # the worst tool direction: interior area facing away from it is what no
+    # single 3-axis setup can present (invariant over the six directions)
+    best_area, best_dir, best_mask = None, None, None
+    for t in ((0, 0, 1), (0, 0, -1), (1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0)):
+        away = interior & (normals @ np.asarray(t) < -0.7)
+        a = float(np.sum(areas[away])) if away.any() else 0.0
+        if a > (best_area or 0.0):
+            best_area, best_dir, best_mask = a, t, away
+    if best_area is None or best_area / total_area < min_area_fraction or not best_mask.any():
+        return []
+    uc_faces = np.flatnonzero(best_mask)
+    share = 100.0 * best_area / total_area
+    return [Issue(
+        code="UNDERCUT_3AXIS",
+        severity=Severity.WARNING,
+        message=(
+            f"{len(uc_faces)} interior faces ({share:.1f}% of surface area) are overhang "
+            f"ceilings no straight 3-axis tool reaches in any orientation (measured on "
+            f"{process_phrase(process)}): T-slot/undercut ceilings need a flip setup, a side "
+            f"cutter, or 5-axis access."
+        ),
+        process=process,
+        affected_faces=uc_faces.tolist()[:200],
+        fix_suggestion=(
+            "Open the feature from the top, plan a second setup, "
+            "or let the 5-axis route (priced in one setup) carry it."
+        ),
+    )]
 
 
 # ──────────────────────────────────────────────────────────────

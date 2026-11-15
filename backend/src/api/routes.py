@@ -2138,6 +2138,30 @@ async def _cost_decision(
     def _run():
         _otel_tok = tracing.attach_context(_otel_ctx)
         try:
+            # ── audit fix 1: the file's own PMI zones feed the costing engine ──
+            # Same extractor the analysis response uses, run once here (in the
+            # executor) so estimate_decision can derive the effective tolerance
+            # class and capability findings from MEASURED zones. Best-effort: a
+            # parse failure prices on geometry only, exactly as before.
+            if (suffix or "").lstrip(".") in ("step", "stp") and options.pmi_tolerances is None:
+                try:
+                    from src.parsers.step_ap242_parser import is_ap242_supported
+
+                    if is_ap242_supported():
+                        from src.analysis.models import ProcessType as _PT
+                        from src.services.tolerance_service import (
+                            analyze_tolerances,
+                            tolerance_report_to_dict,
+                        )
+
+                        options.pmi_tolerances = tolerance_report_to_dict(
+                            analyze_tolerances(data, file.filename or "unknown", list(_PT))
+                        )
+                except Exception:
+                    logger.exception(
+                        "PMI tolerance analysis failed for %s -- pricing on geometry only",
+                        file.filename,
+                    )
             if reused is not None:
                 # The analysed part this account just produced from these bytes.
                 with reused.lock:

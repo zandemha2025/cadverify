@@ -87,7 +87,7 @@ BAND_PCT = {"additive": 40.0, "subtractive": 50.0, "formative": 60.0,
 # Ordered loosest → tightest. The caller DECLARES how tight the part is; there
 # is no real GD&T/PMI extraction here (that needs OCP), so this is an honest
 # STATED input, not a measured one. "standard" is the neutral no-op class.
-TOLERANCE_CLASSES = ("standard", "precision", "tight")
+TOLERANCE_CLASSES = ("standard", "precision", "tight", "ultra")
 
 
 def normalize_tolerance_class(value) -> str:
@@ -509,6 +509,12 @@ RATE_CARD_V0: dict = {
         "standard":  {"cost_mult": 1.00, "band_add_pct": 0.0},
         "precision": {"cost_mult": 1.20, "band_add_pct": 8.0},
         "tight":     {"cost_mult": 1.50, "band_add_pct": 18.0},
+        # DERIVED-ONLY tier (measured PMI zones ≤ ±0.025 mm): grinding/EDM
+        # territory — finish passes, gauging and scrap all step up again, and
+        # the estimate also carries the tight-tolerance lead-time adder. Not
+        # accepted as a caller-declared class (the public form stays at the
+        # three documented tiers).
+        "ultra":     {"cost_mult": 1.90, "band_add_pct": 30.0},
     },
     # Tooling lead time (days), applied once regardless of qty.
     "tooling_lead_days": {PT.INJECTION_MOLDING: 25, PT.DIE_CASTING: 35,

@@ -101,6 +101,18 @@ class EstimateOptions:
     # DECLARATION is USER; the factor magnitudes are DEFAULT assumptions.
     tolerance_class: str = "standard"
     tolerance_class_is_user: bool = False
+    # ── measured PMI tolerances (audit fix: PMI → costing) ────────────────────
+    # The serialized tolerance report (src.services.tolerance_service
+    # .tolerance_report_to_dict) from the file's own AP242 PMI, when the caller
+    # ran it. When present and the caller did NOT declare a tolerance class, the
+    # engine DERIVES the effective class from the tightest measured zone (see
+    # _derive_tolerance_class) and prices with it, MEASURED-tagged; a USER
+    # declaration always wins. None (default) => byte-identical behaviour.
+    pmi_tolerances: "dict | None" = None
+    # Shop-order minimums per estimate ("per_part", the single-part default)
+    # or once per ORDER ("order_once" — multi-body checks floor the order total,
+    # never each body: five dowels are not 5 × the shop minimum).
+    min_charge_mode: str = "per_part"
     # ── machine-inventory verification (Phase C, spec §7) ────────────────────
     # The org's DECLARED owned machines, hydrated to the pure-matcher capability
     # dataclasses (``makeability.MachineCap``). When non-empty, the decision
@@ -168,6 +180,154 @@ class DecisionReport:
     # Declared part specs block (costing.part_specs.SpecSession.block). None =>
     # no specs declared => report_to_dict adds NO key => byte-identical.
     specs: Optional[dict] = None
+    # Audit fixes (PMI causality + material inference): what the engine itself
+    # derived, so the response can say so plainly. None => nothing derived =>
+    # no key in the serialized report (byte-identical).
+    tolerance_derivation: Optional[dict] = None
+    material_inference: Optional[dict] = None
+
+
+# ── audit fix 1: measured PMI → effective tolerance class ────────────────────
+# The tightest linear zone in the file's own PMI picks the class the costing
+# engine runs with (a USER declaration still wins). Thresholds are DEFAULT
+# assumptions mapped to the existing cost multipliers (standard 1.0×,
+# precision 1.2×, tight 1.5×); zones at or under 0.025 mm are grinding/EDM
+# territory and derive the "ultra" tier (1.9×, +30pts band, lead-time adder).
+PMI_CLASS_THRESHOLDS = ((0.4, "standard"), (0.1, "precision"),
+                        (0.025, "tight"), (0.0, "ultra"))
+PMI_ULTRA_TIGHT_MM = 0.025
+
+
+def _pmi_tightest_zone_mm(pmi: dict) -> "tuple[float | None, str]":
+    """(tightest linear half-zone in mm, a human label for it) from a serialized
+    tolerance report. Dimensional ± deviations and ISO 1101 zone widths both
+    count (a zone width w is a ±w/2 band). Angular entries are skipped."""
+    best: "float | None" = None
+    label = ""
+    for e in pmi.get("entries") or []:
+        if e.get("unit") not in (None, "mm"):
+            continue
+        # Each deviation is its own capability demand (a +0.005/−0.1 zone needs
+        # 0.005, not 0.1), and an ISO 1101 zone of width w is a ±w/2 band.
+        cands = [abs(float(x)) for x in (e.get("upper_deviation"), e.get("lower_deviation"))
+                 if x is not None]
+        try:
+            v = float(e.get("value_mm") or 0.0)
+            if v > 0:
+                cands.append(v / 2.0)
+        except (TypeError, ValueError):
+            pass
+        cands = [c for c in cands if c > 0]
+        if not cands:
+            continue
+        t = min(cands)
+        if best is None or t < best:
+            best = t
+            kind = (e.get("tolerance_type") or "").replace("_", " ")
+            try:
+                nom = float(e.get("value_mm") or 0.0)
+            except (TypeError, ValueError):
+                nom = 0.0
+            label = (f"±{t:g} mm {'⌀' if 'diameter' in kind else ''}{nom:g} {kind}".strip())
+    return best, label
+
+
+def _derive_tolerance_class(tightest_mm: float) -> str:
+    for threshold, cls in PMI_CLASS_THRESHOLDS:
+        if tightest_mm > threshold:
+            return cls
+    return "tight"
+
+
+def _pmi_capability_findings(pmi: dict, process_value: str) -> list[dict]:
+    """Per-process capability conflicts from the PMI: tolerances this process
+    cannot hold. Geometric (ISO 1101) zones use the achievability rows the
+    tolerance service already computed; dimensional ± zones (which carry no
+    ISO 1101 row) are compared against SIZE_ZONE_CAPABILITY_MM."""
+    findings = []
+    for e in pmi.get("entries") or []:
+        verdicts = [v for v in (e.get("process_verdicts") or [])
+                    if v.get("process") == process_value and v.get("verdict") != "achievable"]
+        kind = (e.get("tolerance_type") or "").replace("_", " ")
+        u, l = e.get("upper_deviation"), e.get("lower_deviation")
+        devs = (f" +{float(u):g}/−{abs(float(l)):g} mm"
+                if u is not None and l is not None else "")
+        for v in verdicts:
+            findings.append({
+                "code": ("PMI_TOLERANCE_NOT_ACHIEVABLE"
+                         if v.get("verdict") == "not_achievable" else "PMI_TOLERANCE_MARGINAL"),
+                "tolerance_id": e.get("tolerance_id"),
+                "severity": "warning" if v.get("verdict") == "not_achievable" else "info",
+                "message": (f"{kind}{devs} is beyond {process_value} capability "
+                            f"(holds ±{float(v.get('process_capability_mm') or 0):g} mm): "
+                            f"needs grinding, EDM, or a tighter process."),
+            })
+        if verdicts:
+            continue
+        # Dimensional zone vs the process's size-tolerance capability.
+        cap = SIZE_ZONE_CAPABILITY_MM.get(process_value)
+        if cap is None or u is None and l is None:
+            continue
+        zone = max((abs(float(x)) for x in (u, l) if x is not None), default=0.0)
+        if zone <= 0:
+            continue
+        if zone < cap * 0.5:
+            sev, code = "warning", "PMI_TOLERANCE_NOT_ACHIEVABLE"
+        elif zone < cap:
+            sev, code = "info", "PMI_TOLERANCE_MARGINAL"
+        else:
+            continue
+        findings.append({
+            "code": code,
+            "tolerance_id": e.get("tolerance_id"),
+            "severity": sev,
+            "message": (f"{kind}{devs} is {'beyond' if sev == 'warning' else 'at the edge of'} "
+                        f"{process_value} size capability (holds about ±{cap:g} mm): "
+                        f"{'needs grinding, EDM, or a tighter process.' if sev == 'warning' else 'plan extra gauging.'}"),
+        })
+    return findings
+
+
+# Typical SIZE-tolerance capability per process (± mm on a linear/diameter
+# dimension). DEFAULT assumptions for the capability findings only — they never
+# move a price, they name when a drawing asks more than the route holds.
+SIZE_ZONE_CAPABILITY_MM = {
+    "cnc_turning": 0.013, "cnc_3axis": 0.025, "cnc_5axis": 0.02,
+    "wire_edm": 0.005, "sheet_metal": 0.2, "injection_molding": 0.1,
+    "sand_casting": 0.5, "investment_casting": 0.1, "die_casting": 0.1,
+    "forging": 0.3, "fdm": 0.2, "sla": 0.05, "dls": 0.05,
+    "sls": 0.1, "mjf": 0.1, "dmls": 0.05, "slm": 0.05, "ebm": 0.1,
+    "binder_jet": 0.1, "ded": 0.2, "waam": 0.5,
+}
+
+
+def _geometry_penalties(process, process_score) -> dict:
+    """Cycle/setup consequences of MEASURED geometry findings on one process.
+    Deep bores slow the whole cycle (peck/gun-drill chip evacuation); a 3-axis
+    undercut needs a second setup. {} when the analyzer found neither."""
+    out: dict = {}
+    if process_score is None:
+        return out
+    for issue in getattr(process_score, "issues", ()) or ():
+        code = getattr(issue, "code", "")
+        if code == "DEEP_HOLE":
+            ratio = float(getattr(issue, "measured_value", 0.0) or 0.0)
+            if ratio > 20.0:
+                mult = 2.5
+            elif ratio > 8.0:
+                mult = 1.5
+            else:
+                continue
+            # A second deep bore of the same tier stacks, bounded (3.0×): a
+            # Swiss part with two gun-drilled cross-bores is slow, not infinite.
+            mult = min(3.0, out.get("cycle_time_multiplier", 1.0) + (mult - 1.0))
+            out["cycle_time_multiplier"] = mult
+            out["cycle_penalty_note"] = (f"bore L/D {ratio:.1f}:1 "
+                                         + ("needs gun drilling/EDM" if ratio > 20.0
+                                            else "peck-drill chip evacuation"))
+        elif code == "UNDERCUT_3AXIS":
+            out["n_setups_override"] = 2.0
+    return out
 
 
 def _geo_summary(g) -> dict:
@@ -358,6 +518,59 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
 
     # ── drivers → routing → cost/leadtime → decision ───────────────────
     drivers = extract_drivers(g, mesh, features)
+
+    # ── audit fix 1: measured PMI tolerances drive the effective class ────
+    # The file's own AP242 zones pick the tolerance class the engine prices
+    # with (MEASURED-tagged), unless the caller declared one. Ultra-tight zones
+    # (≤ ±0.025 mm) additionally carry the grinding/EDM lead-time adder.
+    tolerance_derivation = None
+    tightest_pmi_mm = None
+    if options.pmi_tolerances and options.pmi_tolerances.get("has_pmi"):
+        tightest_pmi_mm, tlabel = _pmi_tightest_zone_mm(options.pmi_tolerances)
+        if tightest_pmi_mm is not None:
+            ultra = tightest_pmi_mm <= PMI_ULTRA_TIGHT_MM
+            if options.tolerance_class_is_user:
+                tolerance_derivation = {
+                    "source": "user", "class": options.tolerance_class,
+                    "tightest_mm": round(tightest_pmi_mm, 4), "label": tlabel,
+                }
+            else:
+                derived = _derive_tolerance_class(tightest_pmi_mm)
+                options = replace(options, tolerance_class=derived)
+                tolerance_derivation = {
+                    "source": "pmi", "class": derived,
+                    "tightest_mm": round(tightest_pmi_mm, 4), "label": tlabel,
+                    "ultra_tight": ultra,
+                    "note": (f"tolerance class '{derived}' derived from the file's PMI "
+                             f"(tightest zone {tlabel})"
+                             + ("; zones ≤ ±0.025 mm need grinding/EDM finish operations "
+                                "and their lead time" if ultra else "")),
+                }
+
+    # ── audit fix 5: honest material default from strong geometry ─────────
+    # Polymer is only the app's fallback answer. A constant-gauge bent sheet is
+    # a sheet-metal part (metal stock), and a drawing with real PMI zones is a
+    # machined part (6061 aluminum, the default machine-shop answer). A USER
+    # pick or a material read from the CAD always wins; the response badges the
+    # inference so it can be changed deliberately.
+    material_inference = None
+    if (not options.material_class_is_user
+            and not getattr(options, "material_class_from_cad", False)
+            and options.material_class == "polymer"):
+        infer_reason = None
+        if drivers.sheet_like:
+            infer_reason = ("constant-gauge bent/flat sheet: sheet metal is the route, "
+                            "and sheet stock is metal")
+        elif tightest_pmi_mm is not None and tightest_pmi_mm <= 0.1:
+            infer_reason = (f"a dimensioned drawing (PMI read, tightest ±{tightest_pmi_mm:g} mm): "
+                            "a machined metal part, not polymer")
+        if infer_reason:
+            options = replace(options, material_class="aluminum")
+            material_inference = {
+                "material_class": "aluminum",
+                "reason": infer_reason,
+                "badge": "Inferred material: Aluminum (change)",
+            }
     # Processes the engine's own DFM hard-fails (ERROR-level blocker) on THIS
     # part — routing must never headline a process the panel marks FAIL (F2).
     # dfm_clean is the DFM-clean fallback for the headline, ordered costed-first
@@ -421,6 +634,12 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
         process = item["process"]
         material = item["material"]
         ps = item["score"]
+        # Audit fixes 2+3: MEASURED geometry findings carry their economics —
+        # deep bores slow the cycle (peck/gun-drill), 3-axis undercuts add a
+        # setup — and the PMI derivation labels the tolerance driver MEASURED.
+        pen = _geometry_penalties(process, ps)
+        tol_detail = (tolerance_derivation or {}).get("label", "") \
+            if (tolerance_derivation or {}).get("source") == "pmi" else ""
         try:
             # Wire-arc and metal deposition are large near-net routes: a 20 mm block
             # gets no price from them (its reason is the exclusion), like a part
@@ -438,7 +657,12 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
                                      owned=process in options.owned_processes,
                                      tolerance_class=options.tolerance_class,
                                      machine_override=machine_override_by_pv.get(
-                                         process.value))
+                                         process.value),
+                                     cycle_time_multiplier=pen.get("cycle_time_multiplier", 1.0),
+                                     cycle_penalty_note=pen.get("cycle_penalty_note", ""),
+                                     n_setups_override=pen.get("n_setups_override"),
+                                     min_charge_mode=options.min_charge_mode,
+                                     tolerance_detail=tol_detail)
             except BuildEnvelopeError as exc:
                 # Fit is independent of quantity; never offer an impossible price
                 # or feed it into recommendation/crossover/lead-time calculations.
@@ -449,6 +673,16 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
             cycle_hr = next((d.value for d in est.drivers if d.name == "cycle_time"), 0.0)
             lt = lead_time(process, cycle_hr, q, rates,
                            in_house=in_house_by_pv.get(process.value))
+            if tolerance_derivation and tolerance_derivation.get("ultra_tight"):
+                # Zones ≤ ±0.025 mm leave the lathe/mill for grinding or EDM and
+                # a careful inspection bench: add their days, stated as such.
+                for attr in ("low_days", "mid_days", "high_days"):
+                    setattr(lt, attr, round(getattr(lt, attr) + {"low_days": 3.0, "mid_days": 5.0, "high_days": 7.0}[attr], 2))
+                lt.components = {**lt.components, "tight_tolerance": {
+                    "days": 5.0,
+                    "basis": "grinding/EDM finish + careful inspection for measured zones "
+                             "≤ ±0.025 mm (read from this file's PMI)",
+                }}
             if specs:
                 est, lt = specs.price(est, lt, process, material, options.material_class)
             leadtimes_by_key[(process.value, q)] = lt
@@ -521,7 +755,16 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
                              owned=item["process"] in options.owned_processes,
                              tolerance_class=options.tolerance_class,
                              machine_override=machine_override_by_pv.get(
-                                 item["process"].value))
+                                 item["process"].value),
+                             cycle_time_multiplier=_geometry_penalties(
+                                 item["process"], item["score"]).get("cycle_time_multiplier", 1.0),
+                             cycle_penalty_note=_geometry_penalties(
+                                 item["process"], item["score"]).get("cycle_penalty_note", ""),
+                             n_setups_override=_geometry_penalties(
+                                 item["process"], item["score"]).get("n_setups_override"),
+                             min_charge_mode=options.min_charge_mode,
+                             tolerance_detail=(tolerance_derivation or {}).get("label", "")
+                             if (tolerance_derivation or {}).get("source") == "pmi" else "")
         if specs:
             est = specs.price(est, None, item["process"], item["material"],
                               options.material_class)[0]
@@ -614,6 +857,18 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
         notes.append("Decision: no route meets the declared specs; " + spec_note + ".")
 
     geo = _geo_summary(g)
+    # PMI capability conflicts, attached to the priced estimates they belong to
+    # (a warning, never a drop: the process still prices, with its finding said).
+    if options.pmi_tolerances and options.pmi_tolerances.get("has_pmi"):
+        for e in estimates_serialized:
+            findings = _pmi_capability_findings(options.pmi_tolerances, e["process"])
+            if findings:
+                e["pmi_findings"] = findings
+    if tolerance_derivation and tolerance_derivation.get("source") == "pmi":
+        notes.append(tolerance_derivation["note"] + ".")
+    if material_inference:
+        notes.append("Inferred material: " + material_inference["material_class"].title()
+                     + " (" + material_inference["reason"] + "); change it if you know better.")
     return DecisionReport(
         filename=result.filename,
         status="OK",
@@ -629,6 +884,8 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
         verification=verification,
         unit_warnings=_unit_plausibility_warnings(g, options),
         specs=specs.block(estimates_serialized) if specs else None,
+        tolerance_derivation=tolerance_derivation,
+        material_inference=material_inference,
     )
 
 

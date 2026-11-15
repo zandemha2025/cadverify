@@ -12,6 +12,7 @@ from src.analysis.processes.checks import (
     check_tool_reach,
     check_sealed_voids,
     check_setup_access,
+    check_undercuts_machining,
     check_wall_thickness,
 )
 
@@ -36,6 +37,10 @@ class CNC3AxisAnalyzer:
         i.extend(check_wall_thickness(ctx, 0.8, self.process,
                  cite="Thin walls vibrate; 0.8mm min metals."))
         i.extend(check_hole_depth_ratio(ctx, 10.0, self.process))
+        # Faces a straight 3-axis tool cannot reach (overhung pockets, T-slots,
+        # dovetails). The costing layer adds a second setup when this fires, so
+        # an undercut part stops being quoted as a single-setup 3-axis job.
+        i.extend(check_undercuts_machining(ctx, self.process))
         i.extend(check_build_volume(ctx, common_envelope(self.process), self.process,
                  cite="Common size; e.g. Haas VF-2 (30x16x20 in)."))
         i.extend(check_fixture_surfaces(ctx, 15.0, self.process))

@@ -408,10 +408,13 @@ async def test_w4_cross_tenant_isolation_matrix():
             )
 
             # ---- part context (get + upsert do not cross the org) ----
-            await _assert_no_oracle(
-                f"/api/v1/part-context/{seed['context_a']}",
-                f"/api/v1/part-context/{ghost_ulid}",
-            )
+            # part-context's "no declared context" standing is a 204 (not the
+            # 404 the other by-id routes use): cross-org and a ghost hash must
+            # read IDENTICALLY, which is the no-oracle property in 204 form.
+            r_ctx_cross = await ac.get(f"/api/v1/part-context/{seed['context_a']}")
+            r_ctx_ghost = await ac.get(f"/api/v1/part-context/{ghost_ulid}")
+            assert r_ctx_cross.status_code == 204, r_ctx_cross.status_code
+            assert r_ctx_ghost.status_code == r_ctx_cross.status_code
             # A PUT on A's mesh_hash from org B must create a SEPARATE org-B row,
             # never mutate A's. It returns 200 (upsert) but stays in org B.
             r = await ac.put(

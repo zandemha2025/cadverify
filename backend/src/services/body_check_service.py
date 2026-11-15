@@ -110,6 +110,7 @@ def _check_design(body: part_types.Body, copies: int, *, stem: str, quantities: 
     row: dict[str, Any] = {
         "design": body.design,
         "copies": copies,
+        "name": body.name or f"Body {body.index}",
         "stock": body.stock,
         "stock_material": _stock_material(body, material_class, rates),
     }
@@ -125,6 +126,10 @@ def _check_design(body: part_types.Body, copies: int, *, stem: str, quantities: 
         quantities=cost_qtys, material_class=material_class,
         material_class_is_user=material_class_is_user, region=region,
         region_is_user=region != "US", owned_processes=owned_processes,
+        # A body is one line of ONE order: the shop minimum floors the order
+        # total (_totals applies it once), never each body separately — five
+        # dowels must not read as 5 × the shop minimum.
+        min_charge_mode="order_once",
     )
     rd = report_to_dict(estimate_decision(result, m, ctx.features, options))
     dec = rd.get("decision") or {}
@@ -177,11 +182,23 @@ def _check_design(body: part_types.Body, copies: int, *, stem: str, quantities: 
     return row
 
 
-def _totals(designs: list[dict], quantities: list[int], key: str = "per_file_usd") -> dict:
+def _totals(designs: list[dict], quantities: list[int], key: str = "per_file_usd") -> "tuple[dict, dict]":
+    """(per-file totals, {qty: the once-per-order shop minimum that floored it}).
+
+    A multi-body file is ONE order: each body prices without its own shop
+    minimum (``min_charge_mode='order_once'`` in ``_check_design``) and the
+    ORDER total is floored once by the largest minimum among the chosen routes.
+    """
+    from src.costing.rates import build_rate_card
+    from src.analysis.models import ProcessType as _PT
+
     out: dict[str, Any] = {}
+    floored: dict[str, float] = {}
     priced = [d for d in designs if d.get("status") == "ok"]
+    rates = build_rate_card()
     for q in quantities:
         vals = []
+        floor = 0.0
         for d in priced:
             cots = d.get("cots")
             if cots and _num(cots.get("buy_price_usd")) is not None:
@@ -190,8 +207,22 @@ def _totals(designs: list[dict], quantities: list[int], key: str = "per_file_usd
             r = (d.get("by_quantity") or {}).get(str(q))
             if r and r.get(key) is not None:
                 vals.append(float(r[key]))
-        out[str(q)] = round(sum(vals), 2) if vals and len(vals) == len(designs) else None
-    return out
+                try:
+                    pv = r.get("process")
+                    if pv:
+                        floor = max(floor, float(rates.min_charge(_PT(pv))))
+                except Exception:
+                    pass
+        if vals and len(vals) == len(priced):
+            total = round(sum(vals), 2)
+            if floor > total:
+                out[str(q)] = round(floor, 2)
+                floored[str(q)] = round(floor, 2)
+            else:
+                out[str(q)] = total
+        else:
+            out[str(q)] = None
+    return out, floored
 
 
 def resolve_bodies(mesh, model=None) -> tuple[Any, list[part_types.Body], dict]:
@@ -334,9 +365,12 @@ def check_bodies_sync(
         }
         out["total"] = None
     else:
+        per_file, floored = _totals(designs, quantities)
         out["total"] = {
-            "per_file_usd": _totals(designs, quantities),
-            "basis": "the sum of the bodies, each made as its own part by its cheapest route at that quantity",
+            "per_file_usd": per_file,
+            "basis": ("the sum of the bodies, each made as its own part by its cheapest route at that "
+                      "quantity; the shop's order minimum applies once to the whole order, never per body"),
+            "order_min_applied": floored or None,
             "complete": all(d.get("status") == "ok" for d in designs),
         }
     if pt["kind"] == "assembly":

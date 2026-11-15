@@ -295,6 +295,24 @@ def split_bodies(mesh: trimesh.Trimesh, *, with_meshes: bool = True) -> tuple[li
     return bodies, info
 
 
+# STEP writers that don't set product names export the CAD kernel's own
+# boilerplate ("Open CASCADE STEP translator 7.8 3.2") as every part's name.
+# That is not a name a person wrote; keep it off every surface (the body list,
+# the summary words) — the geometry-derived labels ("Body 3 — round bar Ø8")
+# carry the meaning instead. The original string stays in extra['product_name']
+# for traceability.
+import re as _re
+
+_BOILERPLATE_PRODUCT_NAME = _re.compile(
+    r"open\s*cascade|step\s*translator|translator\s*\d", _re.I)
+
+
+def _clean_product_name(name: "str | None") -> "str | None":
+    if name and _BOILERPLATE_PRODUCT_NAME.search(name):
+        return None
+    return name
+
+
 def bodies_from_parts(
     parts: list[tuple[trimesh.Trimesh, Optional[str], Optional[tuple], dict]],
     view_mesh: Optional[trimesh.Trimesh] = None,
@@ -332,8 +350,11 @@ def bodies_from_parts(
         centroid = (combined.triangles_center[idx] * w[:, None]).sum(axis=0) / max(float(w.sum()), 1e-12)
         shell = Shell(faces=idx, closed=closed, volume=vol, lo=pts.min(axis=0), hi=pts.max(axis=0))
         bodies.append(Body(index=0, shells=[shell], faces=idx, closed=closed, volume=vol, area=float(w.sum()),
-                           lo=shell.lo, hi=shell.hi, centroid=centroid, voids=0, mesh=m, name=name,
-                           extra=dict(extra or {}), key=key))
+                           lo=shell.lo, hi=shell.hi, centroid=centroid, voids=0, mesh=m,
+                           name=_clean_product_name(name),
+                           extra=dict(extra or {}, **({"product_name": name}
+                                                      if name and _clean_product_name(name) is None else {})),
+                           key=key))
         offset += n
         voffset += len(m.vertices)
     if view_mesh is not None and len(view_mesh.faces):

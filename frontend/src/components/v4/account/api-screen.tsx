@@ -438,7 +438,7 @@ export function ApiScreen({ apiOrigin, docsEnabled }: { apiOrigin: string | null
   -H "Authorization: Bearer cv_live_…" \\
   -F file=@bracket.step`}</pre>
           <p style={{ margin: 0, padding: "0 16px 14px", color: "var(--ink2)", fontSize: 13.5 }}>
-            {apiOrigin ? "Same results as the app. " : "This deployment hasn’t published a public API address; ask your ScaleCAD contact for it. "}
+            {apiOrigin ? "Same results as the app. " : "This deployment hasn’t published a public API address (set API_ORIGIN on the web service to publish it here); until then, use the address your ScaleCAD contact gives you. "}
             Costs: <span className="a-mono">/api/v1/validate/cost</span>. A check needs a read-and-write key.
           </p>
         </Panel>

@@ -26,7 +26,7 @@ export function MaterialAsk({ session }: { session: CheckSession }) {
   if (session.status !== "running" && session.status !== "done") return null;
   const current = picked ?? null;
   const done = session.status === "done";
-  const copy = askCopy(current, session.pricedWith, done);
+  const copy = askCopy(current, session.pricedWith, done, session.inferredMaterial);
   const state = current && session.costRetrying ? `Re-pricing in ${MATERIALS.find(([k]) => k === current)?.[1].toLowerCase()}` : copy.state;
   const focusIdx = current ? Math.max(0, MATERIALS.findIndex(([k]) => k === current)) : 0;
 

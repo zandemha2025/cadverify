@@ -45,7 +45,11 @@ def _x1c(count=1, materials=("PLA", "PETG")):
 
 def _report(inventory=(), owned=frozenset({ProcessType.FDM})):
     result, mesh, feats = _analyze(_bracket())
-    opts = EstimateOptions(quantities=list(QTYS), inventory=tuple(inventory),
+    # The bracket is a constant-gauge bent sheet, so the engine now INFERs a
+    # metal default (audit fix 5) and drops the polymer routes; these tests
+    # exercise owned-printer mechanics, so the printable scenario is pinned.
+    opts = EstimateOptions(quantities=list(QTYS), material_class="polymer",
+                           material_class_is_user=True, inventory=tuple(inventory),
                            owned_processes=owned if inventory else frozenset())
     return report_to_dict(estimate_decision(result, mesh, feats, opts))
 
@@ -162,7 +166,7 @@ def test_an_owned_x1c_that_fits_puts_both_sides_on_the_answer():
 
 def test_an_owned_route_far_dearer_than_outside_goes_outside():
     result, mesh, feats = _analyze(_bracket())
-    opts = EstimateOptions(quantities=[100], inventory=(_x1c(),),
+    opts = EstimateOptions(quantities=[100], material_class="polymer", material_class_is_user=True, inventory=(_x1c(),),
                            rate_overrides={"machine_rate.FDM": 400.0})
     dec = report_to_dict(estimate_decision(result, mesh, feats, opts))["decision"]
     opt = dec["options"][100]
