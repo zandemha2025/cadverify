@@ -73,8 +73,11 @@ deploy_one worker "$WORKER_SERVICE"
 deploy_one api    "$API_SERVICE"
 deploy_one web    "$WEB_SERVICE"
 
-log "verifying API /health build parity (up to 5 min)..."
-deadline=$((SECONDS + 300))
+log "verifying API /health build parity (up to 15 min)..."
+# Render keeps the previous build serving until the new one flips, and the
+# flip can lag the deploy "Finished" timestamp by several minutes; 15 min
+# avoids crying FAIL on a healthy deploy that is still flipping.
+deadline=$((SECONDS + 900))
 while (( SECONDS < deadline )); do
   body="$(curl -fs --max-time 20 "$API_HEALTH" 2>/dev/null || true)"
   if [ -n "$body" ]; then
@@ -100,7 +103,7 @@ PY
   sleep 10
 done
 if (( SECONDS >= deadline )); then
-  die "API /health did not report build ${SHA:0:9} within 5 minutes"
+  die "API /health did not report build ${SHA:0:9} within 15 minutes — check 'render deploys list ${API_SERVICE}' before rolling back; the previous build keeps serving until the new one flips"
 fi
 
 log "verifying web answers..."
