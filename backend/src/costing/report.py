@@ -53,6 +53,16 @@ def report_to_dict(report) -> dict:
     specs = getattr(report, "specs", None)
     if specs:
         d["specs"] = specs
+    # Audit fixes: what the engine DERIVED itself — the tolerance class from the
+    # file's measured PMI zones, and the material class from strong geometry.
+    # Same tail-append + truthiness guard: nothing derived → no key → the
+    # serialized output stays byte-identical.
+    tolerance_derivation = getattr(report, "tolerance_derivation", None)
+    if tolerance_derivation:
+        d["tolerance_derivation"] = tolerance_derivation
+    material_inference = getattr(report, "material_inference", None)
+    if material_inference:
+        d["material_inference"] = material_inference
     return d
 
 

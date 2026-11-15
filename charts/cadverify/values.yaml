@@ -176,6 +176,10 @@ rbac:
 frontend:
   # Server-side URL used by the Next.js proxy inside the cluster.
   apiBase: ""
+  # The PUBLIC API origin scripts and identity providers reach from outside the
+  # cluster; empty leaves the API-keys screen saying no public address is
+  # published.
+  publicApiOrigin: ""
   # Optional explicit same-origin SSO initiation path. Empty derives the
   # standard SAML/OIDC path from auth.mode.
   ssoLoginPath: ""

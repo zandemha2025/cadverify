@@ -112,11 +112,21 @@ async def get_part_context(
     user: AuthedUser = Depends(require_role(Role.viewer)),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """The declared context for a part in the caller's org, or 404 when none."""
+    """The declared context for a part in the caller's org.
+
+    200 with the context when one is declared; **204 No Content** when the org
+    is resolved but this part has none — "no home yet" is a standing, not an
+    error, and a 204 keeps it out of the browser console's error feed. 404 only
+    when there is no resolved org to scope the read to. The lookup stays
+    org-scoped either way, so no cross-tenant existence signal is added.
+    """
     org_id = await resolve_org(session, user.user_id)
-    row = await svc.get_context(session, org_id, mesh_hash) if org_id else None
-    if row is None or not org_id:
+    if not org_id:
         raise HTTPException(status_code=404, detail="no declared context for part")
+    row = await svc.get_context(session, org_id, mesh_hash)
+    if row is None:
+        response.status_code = 204
+        return None
     return await _context_payload(session, org_id, row)
 
 

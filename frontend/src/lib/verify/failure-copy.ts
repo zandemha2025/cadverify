@@ -14,6 +14,16 @@ export interface AnalysisFailureCopy {
 export function analysisFailureCopy(reason: string | null | undefined): AnalysisFailureCopy {
   const value = reason?.trim() ?? "";
 
+  if (/empty file uploaded/i.test(value)) {
+    return {
+      kind: "unreadable",
+      title: "That file is empty.",
+      explanation: "The upload contained 0 bytes — there is no CAD in it to check.",
+      action: "Re-export the part from your CAD tool and upload that export.",
+      toast: "Could not analyze — the file is empty",
+    };
+  }
+
   if (isQuotaErrorMessage(value)) {
     return {
       kind: isLifetimeQuotaErrorMessage(value) ? "quota" : "quota-window",

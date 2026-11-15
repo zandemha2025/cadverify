@@ -81,8 +81,14 @@ export interface CheckSession {
   sample: boolean;
   /** The material to price in: the answer to "What will it be made of?", else plastic. */
   materialClass: string;
-  /** The material the latest price request was sent with (null before pricing starts). */
+  /** The material the latest price request was sent with (null before pricing starts).
+   * When the engine INFERRED a material from the part's own shape/drawing and
+   * nobody picked one, this carries the material the price actually used, so
+   * the panel can badge it instead of claiming the plastic default. */
   pricedWith: string | null;
+  /** The engine's material inference behind a defaulted price (null when the
+   * material was picked or read from the CAD, or not inferred). */
+  inferredMaterial: { material_class: string; reason: string } | null;
   /** Started without a material (a new upload, not the sample or a re-check): the progress panel asks for one (N1). */
   askMaterial: boolean;
   /** The orientation this check turns the part to ("rotation:…"); null for the file's own. */
@@ -454,6 +460,7 @@ async function run(id: number) {
   // Several bodies are checked body by body, not stopped as an open shell.
   const open = !readsAsBodies(result.validation, file.name) && (!result.validation.geometry.is_watertight || !!result.costGeometryInvalid);
   patch(id, { result, validation: result.validation, key: result.meshHash ?? key, status: open ? "stopped" : "done", finishedAt: Date.now() });
+  _syncInferredMaterial(id);
   // The material changed while the first price ran: price again in it.
   const s1 = sessions.get(id);
   if (!open && s1 && s1.pricedWith != null && s1.materialClass !== s1.pricedWith) void retryPrices(id);
@@ -470,6 +477,7 @@ export function startCheck(file: File, opts: { sample?: boolean; materialClass?:
     sample: !!opts.sample,
     materialClass: opts.materialClass ?? "polymer",
     pricedWith: null,
+    inferredMaterial: null,
     askMaterial: !opts.sample && opts.materialClass == null,
     orientation: opts.orientation ?? null,
     quantity: opts.quantity ?? null,
@@ -491,6 +499,25 @@ export function startCheck(file: File, opts: { sample?: boolean; materialClass?:
   emit();
   void run(id);
   return id;
+}
+
+/** The engine may price a defaulted check in a material it INFERRED from the
+ * part's own shape (constant-gauge sheet) or drawing (PMI zones) — not the
+ * plastic default the request was sent with. Keep the panel's "priced in"
+ * line truthful to the price that actually ran, and carry the inference so the
+ * UI can badge it. A picked material or a CAD annotation suppresses both. */
+function _syncInferredMaterial(id: number) {
+  const s = sessions.get(id);
+  const cost = s?.result?.cost;
+  if (!s || !cost) return;
+  const inferred = cost.material_inference ?? null;
+  const actually = cost.material_class;
+  if (s.materialClass === actually && !inferred) {
+    if (s.pricedWith === actually && s.inferredMaterial === null) return;
+    patch(id, { pricedWith: actually, inferredMaterial: null });
+    return;
+  }
+  patch(id, { pricedWith: actually, inferredMaterial: inferred });
 }
 
 /** Retry only the prices; methods, findings and machine fit stay as they are. */
@@ -516,6 +543,7 @@ export async function retryPrices(id: number) {
     patch(id, (x) => ({ costRetrying: false, result: x.result ? { ...x.result, costError: e instanceof Error ? e.message : "Prices didn’t finish." } : x.result }));
   } finally {
     window.dispatchEvent(new Event("proofshape:usage-changed"));
+    _syncInferredMaterial(id);
   }
   // Picked another material while this price ran: price in that one too.
   const after = sessions.get(id);

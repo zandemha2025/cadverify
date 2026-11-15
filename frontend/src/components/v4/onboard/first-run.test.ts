@@ -42,6 +42,18 @@ test("the material question says plainly what skipping does", () => {
   assert.match(askCopy(null, "polymer", true).note, /plastic, the default/);
 });
 
+test("an engine-inferred material is badged, not passed off as a choice", () => {
+  const inferred = { material_class: "aluminum", reason: "constant-gauge bent/flat sheet" };
+  const c = askCopy(null, "aluminum", true, inferred);
+  assert.equal(c.state, "Priced in aluminum (inferred)");
+  assert.match(c.note, /Inferred from the part's own shape/);
+  assert.match(c.note, /without another check/);
+  // a picked material always wins; the badge disappears
+  assert.equal(askCopy("steel", "aluminum", true, inferred).state, "Re-pricing in steel");
+  // a polymer inference is not a badge worth showing
+  assert.equal(askCopy(null, "polymer", true, { material_class: "polymer", reason: "x" }).state, "Priced in plastic");
+});
+
 test("tips show once: not after they're done, not on a later visit", () => {
   const now = 1_000_000_000;
   assert.equal(tipsDue(parseTips(null), now), true);

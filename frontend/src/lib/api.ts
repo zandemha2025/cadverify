@@ -1169,6 +1169,27 @@ export interface CostReport {
   unit_warnings?: CostUnitWarning[];
   /** The part specs this check was priced with (present only when declared). */
   specs?: CostSpecsBlock | null;
+  /** How the effective tolerance class was set: derived from the file's own
+   * measured PMI zones (source "pmi", with the tightest zone + label, and
+   * ultra_tight when it is grinding/EDM territory) or the user's declaration.
+   * Present only when the file carried PMI. */
+  tolerance_derivation?: {
+    source: "pmi" | "user";
+    class: string;
+    tightest_mm: number;
+    label: string;
+    ultra_tight?: boolean;
+    note?: string;
+  };
+  /** The material class the engine INFERRED from strong geometry (a constant-
+   * gauge sheet, a dimensioned drawing) when nobody picked one and the CAD
+   * carried no annotation. Present only when an inference was made; a user
+   * pick or a CAD annotation always wins and suppresses this. */
+  material_inference?: {
+    material_class: string;
+    reason: string;
+    badge: string;
+  };
   decision: CostDecision | null;
   /** The org's published rate card this check was priced at; absent when priced at typical rates (v0). */
   rate_card?: { version: number; changed: Record<string, number>; source: string };

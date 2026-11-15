@@ -227,7 +227,9 @@ def test_setup_is_once_per_order_on_a_machine():
     totals = {q: _driver(_est(report, "cnc_3axis", q), "setup_cost")["value"] * q for q in (100, 200, 1000)}
     # (each value is rounded to 4 decimals a part, so allow that times the quantity)
     assert abs(totals[200] - totals[100]) < 0.02 and abs(totals[1000] - totals[100]) < 0.1, totals
-    assert "once for the order" in _driver(_est(report, "cnc_3axis", 1000), "setup_cost")["source"]
+    # the source names the setup count explicitly ("× 1 for the order"),
+    # which is the once-per-order honesty this test locks in.
+    assert "× 1 for the order" in _driver(_est(report, "cnc_3axis", 1000), "setup_cost")["source"]
 
 
 def test_region_split_material_not_labor_scaled():

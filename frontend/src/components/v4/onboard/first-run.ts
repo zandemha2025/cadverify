@@ -32,9 +32,24 @@ export function materialWord(cls: string | null | undefined): string {
   return hit ? hit[1].toLowerCase() : cls ? cls : "plastic";
 }
 
-/** The question's state line and note, from what was picked and whether a price exists yet. */
-export function askCopy(picked: string | null, pricedWith: string | null, done: boolean): { state: string; note: string } {
+/** The question's state line and note, from what was picked and whether a price
+ * exists yet. `inferred` carries the engine's own material inference behind a
+ * defaulted price (a constant-gauge sheet reads as sheet metal; a drawing with
+ * real PMI zones reads as machined metal) — the badge says so, and a pick still
+ * overrides it. */
+export function askCopy(
+  picked: string | null,
+  pricedWith: string | null,
+  done: boolean,
+  inferred: { material_class: string; reason: string } | null = null,
+): { state: string; note: string } {
   if (!picked && done) {
+    if (inferred && inferred.material_class !== "polymer") {
+      return {
+        state: `Priced in ${materialWord(inferred.material_class)} (inferred)`,
+        note: "Inferred from the part's own shape; not a promise. Pick one to re-price this part without another check.",
+      };
+    }
     return { state: "Priced in plastic", note: "Not chosen, so prices use plastic, the default. Pick one to re-price this part without another check." };
   }
   if (!picked) {

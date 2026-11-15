@@ -67,7 +67,9 @@ export async function fetchPartContext(meshHash: string): Promise<PartContextRes
   } catch (e) {
     return { context: null, error: e instanceof Error ? e.message : "Network error" };
   }
-  if (res.status === 404) return { context: null, error: null };
+  // 204 (org resolved, nothing declared) and the legacy 404 are the same
+  // standing to this reader: no context, not an error.
+  if (res.status === 404 || res.status === 204) return { context: null, error: null };
   if (!res.ok) {
     const body: Record<string, unknown> = await res.json().catch(() => ({}));
     const detail =
@@ -82,3 +84,4 @@ export async function fetchPartContext(meshHash: string): Promise<PartContextRes
   const context = (await res.json()) as PartContext;
   return { context, error: null };
 }
+

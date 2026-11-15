@@ -19,8 +19,12 @@ PT_5AXIS = "cnc_5axis"
 
 
 def _analyze(mesh):
+    from src.analysis.features import detect_all
+
     geometry = analyze_geometry(mesh)
     ctx = GeometryContext.build(mesh, geometry)
+    # production order (routes._run_cost_engine_ctx): analyzers read features
+    ctx.features = detect_all(ctx.mesh)
     universal = run_universal_checks(mesh)
     scores = [score_process(get_analyzer(p).analyze(ctx), geometry, p)
               for p in pbase._REGISTRY if get_analyzer(p)]

@@ -8,7 +8,9 @@ against the live DB. Proves:
   * Upsert-then-read — PUT declares a context, GET returns it (provenance user).
   * Re-declare — a second PUT updates the SAME (org, mesh) row in place.
   * Validation — a non-positive annual_volume is a 400.
-  * Cross-tenant isolation — org B's GET of org A's mesh_hash is a 404.
+  * Cross-tenant isolation — org B's GET of org A's mesh_hash never returns
+ * A's row: it reads as 204 no-content, indistinguishable from a hash org B
+ * never declared (no existence oracle either way).
 
 Skipped unless DATABASE_URL is Postgres at schema head (``alembic upgrade head``). Run:
 
@@ -100,10 +102,10 @@ async def test_part_context_upsert_read_and_isolation():
     app = _build_app()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://t") as c:
-        # --- org A: no context yet -> 404 -----------------------------------
+        # --- org A: no context yet -> 204 (a standing, not an error) --------
         _act_as(app, uid_a)
         r = await c.get(f"/api/v1/part-context/{mesh}")
-        assert r.status_code == 404
+        assert r.status_code == 204
 
         # --- PUT declares a context -----------------------------------------
         r = await c.put(
@@ -193,9 +195,10 @@ async def test_part_context_upsert_read_and_isolation():
 
         # --- cross-tenant isolation -----------------------------------------
         _act_as(app, uid_b)
-        # org B cannot read org A's declared context for the same mesh_hash
+        # org B cannot read org A's declared context for the same mesh_hash:
+        # 204 no-content — indistinguishable from a mesh org B never declared
         r = await c.get(f"/api/v1/part-context/{mesh}")
-        assert r.status_code == 404
+        assert r.status_code == 204
 
     # --- cleanup -------------------------------------------------------------
     async with eng.get_session_factory()() as s:

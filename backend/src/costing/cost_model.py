@@ -538,7 +538,12 @@ def cost_breakdown(process, drivers, material, material_class, qty,
                    rates: RateCard, region: str, n_cavities: int = 1,
                    complexity: str = "moderate", process_score=None,
                    owned: bool = False, tolerance_class: str = "standard",
-                   machine_override: "dict | None" = None) -> CostEstimate:
+                   machine_override: "dict | None" = None,
+                   cycle_time_multiplier: float = 1.0,
+                   cycle_penalty_note: str = "",
+                   n_setups_override: "float | None" = None,
+                   min_charge_mode: str = "per_part",
+                   tolerance_detail: str = "") -> CostEstimate:
     family = process_family(process)
     labor_rate = rates.g("labor_rate")
     margin = rates.g("margin")
@@ -799,6 +804,24 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         machine_hr, cycle_src = _formative_cycle(process, drivers, rates)
         n = 1
 
+    # ---- geometry-driven cycle penalty (deep bores, severe peck/gun-drill) --
+    # MEASURED on the mesh by the DFM layer (e.g. a ⌀2×55 mm bore at 27:1 L/D
+    # cannot clear chips at the roughing feed): the whole cycle — roughing and
+    # finish share alike — slows by this factor. 1.0 (default) ⇒ no driver, no
+    # change, byte-identical.
+    if cycle_time_multiplier != 1.0 and machine_hr > 0:
+        machine_hr *= cycle_time_multiplier
+        finish_hr *= cycle_time_multiplier
+        drivers_out.append(Driver(
+            name="cycle_penalty", value=round(cycle_time_multiplier, 3), unit="×",
+            provenance=Provenance.MEASURED,
+            source=(f"{cycle_penalty_note or 'geometry-driven cycle penalty'}: "
+                    f"machine time ×{cycle_time_multiplier:g} (the ratio was measured on "
+                    f"this part's geometry; the factor magnitude is a typical value, "
+                    f"not confirmed by a shop)"),
+            error_band_pct=band,
+        ))
+
     # ---- lot model (weakness #8) + volume/learning economics (S1) -------
     # lot_size is the first production lot; it is the learning-curve anchor and
     # the per-lot setup basis, so compute it before machine/labor cost.
@@ -816,6 +839,14 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     # sets up each plate: setups follow the plates the order fills.
     per_plate = lot_raw == "build"
     n_setups = max(1.0, qty / lot_size) if per_plate else 1.0
+    # Geometry-driven extra setups (undercuts a straight 3-axis tool cannot
+    # reach ⇒ flip setup). MEASURED trigger (the DFM layer found the faces);
+    # the setup count is the honest consequence. None (default) ⇒ unchanged.
+    setups_note = ""
+    if n_setups_override is not None and n_setups_override > n_setups:
+        n_setups = float(n_setups_override)
+        setups_note = (f" × {n_setups_override:.4g} setups (undercut faces need a flip or "
+                       f"side access — measured on this part's geometry)")
     learn_anchor = learning_first_lot(rates)
     learn_mult, learn_src = _learning_multiplier(family, qty, learn_anchor, rates)
     qm["learning"] = _learning_params(family, learn_anchor, rates)
@@ -1050,10 +1081,11 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         name="setup_cost", value=round(setup_scaled, 4), unit="$",
         provenance=rates.prov_tag("labor_rate"),
         source=((f"setup {setup_hr:g}hr × ${labor_rate:g}/hr per plate × {qty}/{lot_size} parts a plate "
-                 f"= {n_setups:.4g} plates (at least one) ÷ {qty} × region-labor ×{rl:g}{conversion_note}")
+                 f"= {n_setups:.4g} plates (at least one) ÷ {qty} × region-labor ×{rl:g}{conversion_note}"
+                 + setups_note)
                 if per_plate else
-                (f"setup {setup_hr:g}hr × ${labor_rate:g}/hr once for the order ÷ {qty} "
-                 f"× region-labor ×{rl:g}{conversion_note}")),
+                (f"setup {setup_hr:g}hr × ${labor_rate:g}/hr × {n_setups:.4g} for the order ÷ {qty} "
+                 f"× region-labor ×{rl:g}{conversion_note}" + setups_note)),
         error_band_pct=20.0,
     ))
 
@@ -1277,31 +1309,52 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     if family == "subtractive" and tol_cost_mult != 1.0:
         finish_machine_scaled = (machine_scaled * (finish_hr / machine_hr)
                                  if machine_hr > 0 else 0.0)
-        tol_base = finish_machine_scaled + inspection_scaled + finishing_scaled
-        tolerance_surcharge = tol_base * (tol_cost_mult - 1.0)
+        # The tolerance-sensitive terms: the finish pass, inspection and
+        # finishing (their per-quantity premiums already flow EXACTLY through
+        # the ``_tol_terms`` bucket entries scaled by the factor below), plus
+        # setup care (once per order, amortizing like setup itself) and a
+        # tight-fit scrap allowance (per-part) — a marginal bore is a scrapped
+        # part. G3 (the qty model reproduces the engine at every quantity)
+        # holds exactly: each premium lands in the bucket of its own shape.
+        tol_base = (finish_machine_scaled + inspection_scaled + finishing_scaled
+                    + setup_scaled)
+        scrap_extra = material_scaled * 0.10 * (tol_cost_mult - 1.0) / 0.5
+        tolerance_surcharge = tol_base * (tol_cost_mult - 1.0) + scrap_extra
         extra_variable += tolerance_surcharge          # per-unit conversion cost
-        qm["per_part_usd"] += finish_machine_scaled * (tol_cost_mult - 1.0)
+        qm["per_part_usd"] += finish_machine_scaled * (tol_cost_mult - 1.0) + scrap_extra
+        qm["once_usd"] += setup_hr * labor_rate * rl * mgn * burden * (tol_cost_mult - 1.0)
+        tol_prov = Provenance.MEASURED if tolerance_detail else Provenance.USER
+        tol_who = (f"measured tolerance: {tolerance_detail} → class '{tolerance_class}'"
+                   if tolerance_detail else f"declared tolerance '{tolerance_class}'")
         drivers_out.append(Driver(
             name="tolerance_class", value=round(tol_cost_mult, 4), unit="×",
-            provenance=Provenance.USER,
-            source=(f"declared tolerance '{tolerance_class}' → ×{tol_cost_mult:g} on the "
-                    f"tolerance-sensitive conversion terms (CNC finish pass "
+            provenance=tol_prov,
+            source=(f"{tol_who} → ×{tol_cost_mult:g} on the "
+                    f"tolerance-sensitive terms (CNC finish pass "
                     f"${finish_machine_scaled:.2f} + inspection ${inspection_scaled:.2f}"
                     + (f" + finishing ${finishing_scaled:.2f}" if finishing_scaled else "")
-                    + f" = ${tol_base:.2f}) = +${tolerance_surcharge:.2f}/unit; band widened "
-                    f"+{tol_band_add:g}pts (uncertainty grows). You set the tolerance; the "
-                    f"factor is a typical value, not confirmed by a shop"),
+                    + f" + setup ${setup_scaled:.2f}"
+                    + f" = ${tol_base:.2f} base ×{tol_cost_mult - 1.0:g}"
+                    + f" + tight-fit scrap ${scrap_extra:.2f}"
+                    + f" = +${tolerance_surcharge:.2f}/unit; band widened "
+                    f"+{tol_band_add:g}pts (uncertainty grows). "
+                    + ("The tightest zone was read from this file's PMI; "
+                       if tolerance_detail else "You set the tolerance; ")
+                    + "the factor is a typical value, not confirmed by a shop"),
             error_band_pct=band,
         ))
     elif tol_cost_mult != 1.0 or tol_band_add != 0.0:
         drivers_out.append(Driver(
             name="tolerance_class", value=1.0, unit="×",
-            provenance=Provenance.USER,
-            source=(f"declared tolerance '{tolerance_class}': band widened +{tol_band_add:g}pts "
+            provenance=Provenance.MEASURED if tolerance_detail else Provenance.USER,
+            source=(f"{'measured tolerance: ' + tolerance_detail + ' → ' if tolerance_detail else 'declared tolerance '}"
+                    f"'{tolerance_class}': band widened +{tol_band_add:g}pts "
                     f"(uncertainty grows), but no per-part machining surcharge applies to a "
                     f"{family} part (its tolerance is set by the tool or process, not by "
-                    f"per-part finishing passes), so the price is unchanged. You set the "
-                    f"tolerance; typical value, not confirmed by a shop"),
+                    f"per-part finishing passes), so the price is unchanged. "
+                    + ("The zone was read from this file's PMI; "
+                       if tolerance_detail else "You set the ")
+                    + "tolerance; typical value, not confirmed by a shop"),
             error_band_pct=band,
         ))
 
@@ -1456,7 +1509,12 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     order_min = rates.min_charge(process)
     qm["order_min_usd"] = float(order_min)
     floor_per_unit = order_min / qty if qty else 0.0
-    if floor_per_unit > unit_cost:
+    if min_charge_mode == "order_once":
+        # A body inside a multi-body file is one line of ONE order: the shop
+        # minimum floors the order total (applied by the body-check totals),
+        # never each body separately — five dowels must not read 5 × $30.
+        qm["order_min_mode"] = "order_once"
+    elif floor_per_unit > unit_cost:
         delta = floor_per_unit - unit_cost
         line_items["min_charge_floor"] = round(delta, 4)
         unit_cost = round(sum(line_items.values()), 4)

@@ -276,6 +276,10 @@ test("only the verified weak-password rejection can classify its exact HTTP cons
 
 test("only the verified no-declared-context read can classify its exact HTTP console error", () => {
   const body = { code: "NOT_FOUND", message: "no declared context for part" };
+  // the modern standing: 204 No Content, empty body, no console error at all
+  assertNoDeclaredPartContext(204, null);
+  assert.throws(() => assertNoDeclaredPartContext(204, { code: "NOT_FOUND" }));
+  // the legacy 404 shape still verifies where an org-less read produced it
   assertNoDeclaredPartContext(404, body);
   for (const status of [200, 401, 403, 500, 503]) {
     assert.throws(() => assertNoDeclaredPartContext(status, body));
@@ -304,6 +308,8 @@ test("a context read sets aside only its own verified 404 console error", async 
   const other = { sourceUrl: "http://localhost:3000/api/proxy/validate/cost", text: notFound };
   const consoleErrors = [earlier, other, own, { ...own }];
   const expectedConsoleErrors = [];
+  const result204 = await checkPartContextRead(response(204, null), { consoleErrors: [own], expectedConsoleErrors: [], consoleStart: 0 });
+  assert.deepEqual(result204, { status: 204, declared: false });
   const result = await checkPartContextRead(response(404, noContext), { consoleErrors, expectedConsoleErrors, consoleStart: 1 });
   assert.deepEqual(result, { status: 404, declared: false });
   assert.deepEqual(expectedConsoleErrors, [own]);
