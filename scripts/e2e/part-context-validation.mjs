@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 
 // A Verify run reads the part's stored context before costing and never writes
 // over it (c485111a). For a part the organization has declared nothing about,
-// GET /api/v1/part-context/{mesh_hash} answers 404 "no declared context for
-// part": the documented "none declared" state, not a failure. The browser still
-// logs that 404 as a console error, so a runner may set aside exactly that one.
+// GET /api/v1/part-context/{mesh_hash} answers 204 No Content: the documented
+// "none declared" standing, not a failure — and, being a 2xx, not even a
+// console error. (Before the audit fix it was a 404 with a body, which the
+// browser logged; the 404 path remains only for org-less reads and keeps the
+// old shape.)
 
 export function isPartContextRead(response, meshHash) {
   return response.request().method() === "GET" &&
@@ -12,6 +14,10 @@ export function isPartContextRead(response, meshHash) {
 }
 
 export function assertNoDeclaredPartContext(status, body) {
+  if (status === 204) {
+    assert.equal(body, null);
+    return;
+  }
   assert.equal(status, 404);
   assert.equal(body?.code, "NOT_FOUND");
   assert.equal(body?.message, "no declared context for part");
@@ -23,17 +29,20 @@ export function isExpectedNoContextConsoleError(error, resourceUrl) {
 }
 
 /**
- * Check the run's context read: a stored context (2xx) or the verified
- * "none declared" 404. For the 404, move at most its one resource error (logged
- * at or after `consoleStart`) from `consoleErrors` to `expectedConsoleErrors`;
- * every other endpoint, status and runtime error stays a failure.
+ * Check the run's context read: a stored context (200) or the verified
+ * "none declared" 204. A 204 needs no console-error bookkeeping (the browser
+ * does not log 2xx); the legacy 404 shape still moves at most its one resource
+ * error out of the failure set.
  */
 export async function checkPartContextRead(response, { consoleErrors, expectedConsoleErrors, consoleStart }) {
+  if (response.status() === 204) {
+    return { status: 204, declared: false };
+  }
   if (response.status() !== 404) {
     assert(response.ok(), `GET /part-context returned ${response.status()}`);
     return { status: response.status(), declared: true };
   }
-  assertNoDeclaredPartContext(response.status(), await response.json());
+  assertNoDeclaredPartContext(response.status(), await response.json().catch(() => null));
   const index = consoleErrors.findIndex((error, i) =>
     i >= consoleStart && isExpectedNoContextConsoleError(error, response.url()),
   );

@@ -846,11 +846,14 @@ class EnterpriseDomainQA {
         excludedCostResponse.json(),
         excludedValidationResponse.json(),
       ]);
-      // Before anything is declared about cube.step the read is the documented 404
-      // "no declared context for part"; only that verified response is expected.
+      // Before anything is declared about cube.step the read is the documented
+      // "none declared" standing: 204 No Content (a 2xx — nothing to set aside).
+      // The legacy 404 shape is still accepted where an org-less read produced it.
       const contextRead = await contextReadPromise;
-      if (contextRead.status() === 404) {
-        assertNoDeclaredPartContext(contextRead.status(), await contextRead.json());
+      if (contextRead.status() === 204) {
+        assertNoDeclaredPartContext(204, await contextRead.json().catch(() => null));
+      } else if (contextRead.status() === 404) {
+        assertNoDeclaredPartContext(404, await contextRead.json());
         const contextReadEntry = this.httpErrorResponses.find((entry) =>
           !entry.verified && entry.method === "GET" && entry.status === 404 && entry.path === responsePath(contextRead),
         );
