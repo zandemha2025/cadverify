@@ -97,5 +97,12 @@ def test_a_db_connect_under_parse_load_is_prompt_with_the_worker_executor():
             await asyncio.gather(*held)
             await eng.dispose_engine()
 
-    assert asyncio.run(scenario(False)) >= 1.5  # waits for a parse to give a thread back
-    assert asyncio.run(scenario(True)) < 1.5
+    no_executor = asyncio.run(scenario(False))
+    with_executor = asyncio.run(scenario(True))
+    assert no_executor >= 1.5  # waits for a parse to give a thread back
+    # Prompt in absolute terms — or, when the runner itself is congested (a
+    # GitHub Actions host late in the 32-minute suite measured 2.37s here on
+    # 2026-11-14 with the executor working correctly), demonstrably faster
+    # than the starved baseline, which is the property the worker executor
+    # guarantees and this test guards.
+    assert with_executor < 1.5 or with_executor < no_executor - 0.5
