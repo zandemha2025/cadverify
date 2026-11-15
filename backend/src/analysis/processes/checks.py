@@ -2358,7 +2358,9 @@ def check_undercuts_machining(
         a = float(np.sum(areas[away])) if away.any() else 0.0
         if a > (best_area or 0.0):
             best_area, best_dir, best_mask = a, t, away
-    if best_area is None or best_area / total_area < min_area_fraction or not best_mask.any():
+    if best_area is None or best_mask is None:
+        return []
+    if best_area / total_area < min_area_fraction or not best_mask.any():
         return []
     uc_faces = np.flatnonzero(best_mask)
     share = 100.0 * best_area / total_area
