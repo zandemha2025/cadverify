@@ -105,6 +105,27 @@ def _sleep_worker(seconds: float):
     return seconds
 
 
+def _apply_rlimit(cap_mb: int) -> None:
+    """Set RLIMIT_AS in the CALLING process (Linux). Factored out of the pool
+    initializer so a submission can pin its own cap — the deterministic way
+    tests exercise the runaway-allocation containment."""
+    try:
+        import resource
+
+        if hasattr(resource, "RLIMIT_AS") and os.uname().sysname == "Linux":
+            cap = int(cap_mb) * 1024 * 1024
+            resource.setrlimit(resource.RLIMIT_AS, (cap, cap))
+    except Exception:
+        pass
+
+
+def _rlimit_worker(cap_mb: int, fn, /, *args):
+    """Run ``fn`` under an explicit RLIMIT_AS cap in this child. Test/
+    diagnostic entry: production uses the pool-level initializer."""
+    _apply_rlimit(cap_mb)
+    return fn(*args)
+
+
 def _memory_bomb_worker(mb: int):
     """Test-only worker: allocate ~mb megabytes and HOLD them, so the RSS
     watchdog has sampling windows to observe the breach (a bare allocation

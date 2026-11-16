@@ -80,17 +80,19 @@ def test_memory_bomb_is_contained_not_fatal():
     the parent observes AnalysisBudgetExceeded and keeps running."""
     from src.analysis import bounded
 
-    # Deterministic trip: the bomb worker imports nothing heavy (no embree
-    # thread stacks), so a low RLIMIT_AS turns its 1GB allocation into a
-    # catchable MemoryError inside the child — the exact mechanism that
-    # protects the instance from the audit's runaway-allocation class.
-    os.environ.update(_env(mem_mb="320"))
+    # Deterministic trip, no env/plumbing sensitivity: the submission pins
+    # its own RLIMIT_AS (320MB) inside the child, and the bomb's 1GB
+    # allocation becomes a catchable MemoryError THERE — the exact mechanism
+    # that protects the instance from the audit's runaway-allocation class.
+    os.environ.update(_env())
     try:
         with pytest.raises(bounded.AnalysisBudgetExceeded) as ei:
-            bounded._run_bounded(bounded._memory_bomb_worker, 1024)
+            bounded._run_bounded(bounded._rlimit_worker, 320,
+                                 bounded._memory_bomb_worker, 1024)
         assert ei.value.stage in ("memory", "died")
-        # recovery on the recycled pool
-        assert bounded._run_bounded(bounded._memory_bomb_worker, 8) == 8
+        # recovery on the recycled pool, uncapped submission
+        assert bounded._run_bounded(bounded._rlimit_worker, 4096,
+                                    bounded._memory_bomb_worker, 8) == 8
     finally:
         os.environ.pop("CADVERIFY_ANALYSIS_POOL", None)
 
