@@ -26,6 +26,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+
+import numpy as np
 import signal
 import threading
 import time
@@ -105,6 +107,36 @@ def _sleep_worker(seconds: float):
     return seconds
 
 
+def _mesh_to_payload(mesh):
+    """Picklable primitives for a trimesh (whose cache can embed a
+    threading.Lock — pickling the object itself is unreliable across
+    versions/paths; vertices+faces+plain metadata never are)."""
+    meta = {k: v for k, v in (getattr(mesh, "metadata", None) or {}).items()
+            if isinstance(v, (str, int, float, bool, list, dict, tuple))}
+    return {
+        "vertices": np.asarray(mesh.vertices, dtype=np.float64),
+        "faces": np.asarray(mesh.faces, dtype=np.int64),
+        "metadata": meta,
+    }
+
+
+def _mesh_from_payload(p):
+    import trimesh
+
+    return trimesh.Trimesh(vertices=p["vertices"], faces=p["faces"],
+                           process=False, validate=False, metadata=p["metadata"])
+
+
+def _strip_ctx_mesh(ctx):
+    """The child's context carries its own trimesh (same pickle hazard). The
+    parent already holds the authoritative mesh and restores it on return."""
+    try:
+        object.__setattr__(ctx, "mesh", None)
+    except Exception:
+        pass
+    return ctx
+
+
 def _apply_rlimit(cap_mb: int) -> None:
     """Set RLIMIT_AS in the CALLING process (Linux). Factored out of the pool
     initializer so a submission can pin its own cap — the deterministic way
@@ -141,16 +173,19 @@ def _memory_bomb_worker(mb: int):
     return len(chunks)
 
 
-def _engine_worker(mesh, filename: str, orientation):
+def _engine_worker(mesh_payload, filename: str, orientation):
     """PURE, picklable worker entry: the full cost-engine analysis pass, run
-    in the child. Returns whatever ``routes._run_cost_engine_ctx`` returns so
-    the parent keeps its exact contract. Module-level for pickling."""
+    in the child. Takes mesh PRIMITIVES (trimesh objects pickle
+    unreliably — their cache can embed a lock) and returns the engine's
+    contract with the context's mesh stripped; the parent restores its own."""
     from src.api.routes import _run_cost_engine_ctx
 
-    return _run_cost_engine_ctx(mesh, filename, orientation=orientation)
+    mesh = _mesh_from_payload(mesh_payload)
+    result, m, ctx = _run_cost_engine_ctx(mesh, filename, orientation=orientation)
+    return result, _mesh_to_payload(m), _strip_ctx_mesh(ctx)
 
 
-def _analysis_core_worker(mesh, target_process_values, orientation, suffix,
+def _analysis_core_worker(mesh_payload, target_process_values, orientation, suffix,
                           filename, cost_cache_key):
     """PURE, picklable worker entry: the analysis-service synchronous core
     (``analysis_service._analysis_core``) run in the child. Single source of
@@ -160,7 +195,8 @@ def _analysis_core_worker(mesh, target_process_values, orientation, suffix,
     from src.analysis.models import ProcessType
     from src.services.analysis_service import _analysis_core
 
-    return _analysis_core(
+    mesh = _mesh_from_payload(mesh_payload)
+    out = _analysis_core(
         mesh,
         [ProcessType(v) for v in target_process_values],
         None,                      # bounded path is the no-rule-pack shape
@@ -169,6 +205,13 @@ def _analysis_core_worker(mesh, target_process_values, orientation, suffix,
         filename,
         cost_cache_key,
     )
+    # out = (geometry, ctx, features, universal, scores, signature, timings,
+    #        cost_entry, part_type): strip the ctx mesh (parent restores) —
+    #    via object.__setattr__ because the attribute is typed non-None.
+    import builtins
+
+    object.__setattr__(out[1], "mesh", None)
+    return out
 
 
 class _BoundedPool:
@@ -274,9 +317,15 @@ async def run_analysis_core(mesh, target_process_values, orientation, suffix,
 
     loop = asyncio.get_running_loop()
     job = functools.partial(_run_bounded, timeout_s=timeout_s)
-    return await loop.run_in_executor(
-        None, job, _analysis_core_worker, mesh, target_process_values,
-        orientation, suffix, filename, cost_cache_key)
+
+    def _restore(out):
+        out[1].mesh = mesh            # the parent's own authoritative mesh
+        return tuple(out)
+
+    fut = loop.run_in_executor(
+        None, job, _analysis_core_worker, _mesh_to_payload(mesh),
+        target_process_values, orientation, suffix, filename, cost_cache_key)
+    return _restore(await fut)
 
 
 def run_engine_ctx_sync(mesh, filename: str, orientation=None):
@@ -284,7 +333,10 @@ def run_engine_ctx_sync(mesh, filename: str, orientation=None):
     already run off the event loop (the cost path's executor thread). Same
     return contract; raises AnalysisBudgetExceeded instead of ever crashing the
     calling process."""
-    return _run_bounded(_engine_worker, mesh, filename, orientation)
+    result, m_payload, ctx = _run_bounded(
+        _engine_worker, _mesh_to_payload(mesh), filename, orientation)
+    ctx.mesh = _mesh_from_payload(m_payload)
+    return result, ctx.mesh, ctx
 
 
 async def run_engine_ctx(mesh, filename: str, orientation=None):
@@ -294,4 +346,12 @@ async def run_engine_ctx(mesh, filename: str, orientation=None):
 
     loop = asyncio.get_running_loop()
     job = functools.partial(_run_bounded)
-    return await loop.run_in_executor(None, job, _engine_worker, mesh, filename, orientation)
+
+    def _restore(out):
+        result, m_payload, ctx = out
+        ctx.mesh = _mesh_from_payload(m_payload)
+        return result, ctx.mesh, ctx
+
+    fut = loop.run_in_executor(None, job, _engine_worker,
+                               _mesh_to_payload(mesh), filename, orientation)
+    return _restore(await fut)
