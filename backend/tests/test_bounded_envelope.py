@@ -80,9 +80,11 @@ def test_memory_bomb_is_contained_not_fatal():
     the parent observes AnalysisBudgetExceeded and keeps running."""
     from src.analysis import bounded
 
-    # The RSS watchdog is the trip wire (kills the worker within ~1s of the
-    # bomb crossing it); VA stays generous so imports/threads never false-trip.
-    os.environ.update(_env(rss_mb="256"))
+    # Deterministic trip: the bomb worker imports nothing heavy (no embree
+    # thread stacks), so a low RLIMIT_AS turns its 1GB allocation into a
+    # catchable MemoryError inside the child — the exact mechanism that
+    # protects the instance from the audit's runaway-allocation class.
+    os.environ.update(_env(mem_mb="320"))
     try:
         with pytest.raises(bounded.AnalysisBudgetExceeded) as ei:
             bounded._run_bounded(bounded._memory_bomb_worker, 1024)
