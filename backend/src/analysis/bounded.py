@@ -206,12 +206,16 @@ def _analysis_core_worker(mesh_payload, target_process_values, orientation, suff
         cost_cache_key,
     )
     # out = (geometry, ctx, features, universal, scores, signature, timings,
-    #        cost_entry, part_type): strip the ctx mesh (parent restores) —
-    #    via object.__setattr__ because the attribute is typed non-None.
-    import builtins
-
-    object.__setattr__(out[1], "mesh", None)
-    return out
+    #        cost_entry, part_type). Two members cannot cross the process
+    # boundary: ctx.mesh and the cost entry (an AnalysedPart carrying a
+    # threading.Lock and the child's mesh). Strip both; the parent restores
+    # its own mesh and rebuilds the entry from the components.
+    geometry, ctx, features, universal, scores, signature, timings, cost_entry, part_type = out
+    object.__setattr__(ctx, "mesh", None)
+    entry_result = getattr(cost_entry, "result", None) if cost_entry is not None else None
+    entry_identity = getattr(cost_entry, "identity_vec", None) if cost_entry is not None else None
+    return (geometry, ctx, features, universal, scores, signature, timings,
+            (entry_result, entry_identity), part_type)
 
 
 class _BoundedPool:
@@ -319,8 +323,23 @@ async def run_analysis_core(mesh, target_process_values, orientation, suffix,
     job = functools.partial(_run_bounded, timeout_s=timeout_s)
 
     def _restore(out):
-        out[1].mesh = mesh            # the parent's own authoritative mesh
-        return tuple(out)
+        (geometry, ctx, features, universal, scores, signature, timings,
+         (entry_result, entry_identity), part_type) = out
+        object.__setattr__(ctx, "mesh", mesh)      # the parent's own mesh
+        cost_entry = None
+        if entry_result is not None and cost_cache_key is not None:
+            from src.services import part_geometry_cache
+
+            cost_entry = part_geometry_cache.AnalysedPart(
+                result=entry_result,
+                mesh=mesh,
+                features=features,
+                identity_vec=entry_identity,
+                suffix=suffix,
+                faces=int(len(mesh.faces)),
+            )
+        return (geometry, ctx, features, universal, scores, signature,
+                timings, cost_entry, part_type)
 
     fut = loop.run_in_executor(
         None, job, _analysis_core_worker, _mesh_to_payload(mesh),
