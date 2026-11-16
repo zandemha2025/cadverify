@@ -2309,24 +2309,28 @@ def check_undercuts_machining(
         return []
     try:
         from scipy.spatial import cKDTree  # pyright: ignore[reportAttributeAccessIssue]
-        from trimesh.proximity import ProximityQuery
 
         hull = ctx.mesh.convex_hull
-        # Unsigned distance from each face centroid to the nearest point on the
-        # hull's SURFACE: ~0 on the outer skin, growing under an overhang or
-        # inside a pocket. Cost stays bounded on 200k-face parts: the exact
-        # query runs on a strided sample (<= 8k centroids) and every other
-        # centroid reads its nearest sample's distance (faces within half the
-        # sample spacing of an outer surface read as outer — the conservative
-        # side: fewer flags, never a false one).
+        # Unsigned distance from each face centroid to the hull's surface: ~0
+        # on the outer skin, growing under an overhang or inside a pocket.
+        # Computed as the minimum SIGNED PLANE distance over the hull's faces
+        # — for a convex body that is a lower bound on the true surface
+        # distance (never overstates interiority, so no false flags) — in
+        # CHUNKS so a tessellated cylinder's 50k-triangle qhull hull cannot
+        # build pairwise (sample x hull) temporaries (the naive closest-point
+        # query peaked at 3.6 GB on exactly that shape and OOM-killed the
+        # 512MB API instance; chunks of 128x50k floats stay near 50 MB).
+        fn = np.asarray(hull.face_normals, dtype=np.float64)
+        fo = np.einsum("ij,ij->i", fn, np.asarray(hull.triangles, dtype=np.float64)[:, 0, :])
         n = len(centroids)
         step = max(1, n // 8000)
         sample = centroids[::step]
-        _pq = ProximityQuery(hull)
-        _pts, d_sample, _tid = _pq.on_surface(sample)
-        # Lipschitz lower bound: |d(x) − d(s)| ≤ |x − s|, so d(x) ≥ d(s) − |x−s|;
-        # never overstates interiority (a face can only read MORE interior with
-        # the exact query, so the check never false-flags).
+        d_sample = np.empty(len(sample), dtype=np.float64)
+        for i in range(0, len(sample), 128):
+            P = sample[i:i + 128]
+            d_sample[i:i + 128] = (fo[None, :] - P @ fn.T).min(axis=1)
+        # Lipschitz lower bound from the sample: |d(x) − d(s)| ≤ |x − s|, so
+        # d(x) ≥ d(s) − |x−s| — again never overstating interiority.
         _tree = cKDTree(sample)
         _dist_to_sample, _idx = _tree.query(centroids)
         d_hull = np.maximum(d_sample[_idx] - _dist_to_sample, 0.0)
