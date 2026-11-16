@@ -183,6 +183,20 @@ ENV PYTHONDONTWRITEBYTECODE=1
 # compute_budget's malloc_trim (docs/BIG_FILES.md). Override per service if needed.
 ENV MALLOC_ARENA_MAX=2
 
+# Containment envelope: untrusted-CAD analysis runs in a capped, killable
+# child process (RLIMIT_AS below the instance's memory so a runaway allocation
+# fails INSIDE the child as catchable MemoryError — or is watchdog-killed —
+# instead of the cgroup OOM killer taking the whole instance). The 512MB API
+# instance keeps ~200MB for the parent; the 4GB worker can afford more.
+# Override per service with ANALYSIS_POOL_MEM_MB / ANALYSIS_POOL_RSS_MB.
+# RSS watchdog (1100MB) is the real trip wire; RLIMIT_AS (3072) is a generous
+# backstop against the runaway-allocation class only — thread-stack VA on
+# Linux false-trips anything tighter (embree pthread_create EAGAIN on CI).
+ENV CADVERIFY_ANALYSIS_POOL=1 \
+    ANALYSIS_POOL_MEM_MB=3072 \
+    ANALYSIS_POOL_RSS_MB=1100 \
+    ANALYSIS_POOL_TIMEOUT_S=150
+
 # Copy pre-baked SAM-2 model weights from builder
 COPY --from=builder /build/models /app/models
 

@@ -48,7 +48,28 @@ def lead_time(process: ProcessType, drivers_or_cycle_hr, qty: int,
     n_machines = rates.machine_pool(process)
     hours = rates.machine_hours_per_day(process)
 
-    production = math.ceil(qty * cycle_hr / (n_machines * hours))
+    # Market scaling (issue #147): a real order larger than one shop's pool is
+    # spread across PARALLEL suppliers — the market absorbs it, it does not
+    # queue serially behind eight machines. The effective pool grows with the
+    # order (bounded: a real market, not infinity), and production days cap at
+    # a stated horizon; beyond it the order is multi-vendor and we say so
+    # instead of quoting 300-day serial calendars. Monotonic in qty (G5):
+    # the horizon fill keeps growing (slowly) with order size.
+    total_machine_hours = qty * cycle_hr
+    one_pool_day = n_machines * hours
+    HORIZON_DAYS = 30.0                    # a shop-month per wave of parallel lots
+    MARKET_POOL_CAP = 48                   # bounded market depth for one process
+    n_market = min(
+        MARKET_POOL_CAP,
+        max(n_machines, math.ceil(total_machine_hours / (HORIZON_DAYS * hours))),
+    )
+    market_scaled = n_market > n_machines
+    production = math.ceil(qty * cycle_hr / (n_market * hours))
+    horizon_waves = 0.0
+    if production > HORIZON_DAYS:
+        horizon_waves = math.ceil(production / HORIZON_DAYS) - 1
+        production = HORIZON_DAYS
+
     tooling_lead = rates.tooling_lead_days(process)
     queue = rates.p(process, "queue_days")
     post = rates.p(process, "post_days")
@@ -61,16 +82,36 @@ def lead_time(process: ProcessType, drivers_or_cycle_hr, qty: int,
         "post_process": float(post),
         "ship": float(ship),
     }
+    if horizon_waves:
+        # The order is bigger than one horizon even for the market pool: it
+        # ships in waves (each horizon-sized), and the wait between waves is
+        # real time. Said plainly — never a single 300-day serial calendar.
+        components["parallel_supply_waves"] = horizon_waves
     cap_user = (f"n_machines.{process.name}" in rates.user_keys
                 or f"machine_hours_per_day.{process.name}" in rates.user_keys)
+    if market_scaled:
+        basis = (f"market-scaled: {int(n_machines)}-machine pool grows to "
+                 f"{int(n_market)} parallel machines for an order of {qty} "
+                 f"({total_machine_hours:.1f} machine-hr; real buys this size "
+                 f"span shops, not one queue); production = ceil({qty}·"
+                 f"{cycle_hr:.3f}hr ÷ ({int(n_market)}×{hours:g}))"
+                 + (f", capped at {HORIZON_DAYS:g} d with {horizon_waves:g} "
+                    f"additional horizon wave(s) — timeline by quote for orders "
+                    f"past one market horizon" if horizon_waves else ""))
+    else:
+        basis = (f"capacity-bound: {int(n_machines)} machines × {hours:g} hr/day "
+                 f"parallel pool; production = ceil({qty}·{cycle_hr:.3f}hr ÷ "
+                 f"({int(n_machines)}×{hours:g})) = {production} d")
     capacity = {
         "n_machines": int(n_machines),
         "machine_hours_per_day": float(hours),
+        "market_n_machines": int(n_market) if market_scaled else None,
+        "market_horizon_days": HORIZON_DAYS if market_scaled else None,
         "provenance": "USER" if cap_user else "DEFAULT",
-        "basis": (f"capacity-bound: {int(n_machines)} machines × {hours:g} hr/day "
-                  f"parallel pool; production = ceil({qty}·{cycle_hr:.3f}hr ÷ "
-                  f"({int(n_machines)}×{hours:g})) = {production} d"),
+        "basis": basis,
     }
+    # Waves count once each toward the calendar (the next wave's production
+    # runs in parallel with the previous wave's post/ship, then lands).
     mid = sum(components.values())
     return LeadTime(
         process=process.value,

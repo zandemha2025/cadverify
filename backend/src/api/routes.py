@@ -28,6 +28,8 @@ from fastapi import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.analysis import bounded
+from src.analysis.bounded import AnalysisBudgetExceeded
 from src.analysis.models import AnalysisResult, Issue, ProcessType
 from src.analysis.rules import available_rule_packs, get_rule_pack
 from src.api.metrics_registry import observe_analysis_duration, record_cost_decision
@@ -565,11 +567,28 @@ def _run_cost_engine_ctx(mesh, filename: str, orientation=None):
     dec_issue = decimation_issue(ctx)
     if dec_issue is not None:
         universal.append(dec_issue)
-    scores = [
-        score_process(analyzer.analyze(ctx), geometry, p)
-        for p in pbase._REGISTRY
-        if (analyzer := get_analyzer(p))
-    ]
+    scores = []
+    for p in pbase._REGISTRY:
+        analyzer = get_analyzer(p)
+        if analyzer is None:
+            continue
+        try:
+            issues = analyzer.analyze(ctx)
+        except Exception as exc:  # containment envelope: one pathological check
+            # degrades to an honest ANALYSIS_PARTIAL finding — it never takes
+            # the whole decision (or, uncontained, the whole instance) down.
+            from src.analysis.models import Issue, Severity
+
+            logger.exception("Analyzer failed for %s", p.value)
+            issues = [Issue(
+                code="ANALYSIS_PARTIAL",
+                severity=Severity.INFO,
+                message=(f"Core feasibility check could not complete for "
+                         f"{p.value} ({type(exc).__name__})."),
+                process=p,
+                fix_suggestion="This check was skipped, not failed; other checks still ran.",
+            )]
+        scores.append(score_process(issues, geometry, p))
     if orientation is not None:
         # ``mesh`` is the turned part; report region centres in file coordinates.
         from src.analysis.orientation import all_issues, turn_points_to_file
@@ -2170,9 +2189,18 @@ async def _cost_decision(
             # Span 2/4 — DFM / geometry analysis (the cost engine's mesh pass).
             with tracing.span("cost.dfm_analysis") as _sp_dfm:
                 _t_geo = time.perf_counter()
-                result, m, ctx = _run_cost_engine_ctx(
-                    mesh, file.filename or "unknown", orientation=placed
-                )
+                if bounded.enabled():
+                    # containment envelope: the whole engine pass runs in a
+                    # capped, killable child — a pathological file costs one
+                    # recycled worker and an honest budget-exceeded answer,
+                    # never this instance. (This function is sync: it already
+                    # runs off the event loop inside the compute executor.)
+                    result, m, ctx = bounded.run_engine_ctx_sync(
+                        mesh, file.filename or "unknown", orientation=placed)
+                else:
+                    result, m, ctx = _run_cost_engine_ctx(
+                        mesh, file.filename or "unknown", orientation=placed
+                    )
                 features = ctx.features
                 geo = result.geometry if isinstance(result.geometry, dict) else {}
                 tracing.set_attr(_sp_dfm, "cadverify.face_count", geo.get("face_count"))
@@ -2267,6 +2295,25 @@ async def _cost_decision(
             raise HTTPException(
                 status_code=504,
                 detail=f"Cost analysis exceeded {timeout:.0f}s timeout.",
+            )
+        except AnalysisBudgetExceeded as exc:
+            # Containment envelope tripped (memory/time/worker death in the
+            # capped child). Honest structured refusal — the instance and every
+            # other tenant are untouched.
+            slog.warning(
+                "analysis_budget_exceeded",
+                file_sha8=hashlib.sha256(data).hexdigest()[:8],
+                suffix=suffix,
+                stage=exc.stage,
+            )
+            record_cost_decision("error")
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"This file needs more analysis capacity than a quick check "
+                    f"allows ({exc.stage}). It was not charged a check; try a "
+                    f"simplified export or contact the operator for a big-file check."
+                ),
             )
 
     # One structured outcome event per costed request. status carries OK vs
