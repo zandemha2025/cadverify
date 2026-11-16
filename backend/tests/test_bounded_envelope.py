@@ -30,6 +30,8 @@ def _env(mem_mb: str, timeout: str = "120"):
         "CADVERIFY_ANALYSIS_POOL": "1",
         "ANALYSIS_POOL_MEM_MB": mem_mb,
         "ANALYSIS_POOL_TIMEOUT_S": timeout,
+        # hermetic: never depends on the deployment-sized default RSS cap
+        "ANALYSIS_POOL_RSS_MB": "3072",
     }
 
 
@@ -77,6 +79,8 @@ def test_memory_bomb_is_contained_not_fatal():
     from src.analysis import bounded
 
     os.environ.update(_env("256", timeout="120"))   # room to import, not to bomb
+    os.environ["ANALYSIS_POOL_MEM_MB"] = "256"      # RLIMIT_AS: the trip wire here
+    os.environ["ANALYSIS_POOL_RSS_MB"] = "4096"     # watchdog OFF the critical path
     try:
         with pytest.raises(bounded.AnalysisBudgetExceeded) as ei:
             bounded._run_bounded(bounded._memory_bomb_worker, 1024)

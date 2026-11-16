@@ -190,8 +190,8 @@ ENV MALLOC_ARENA_MAX=2
 # instance keeps ~200MB for the parent; the 4GB worker can afford more.
 # Override per service with ANALYSIS_POOL_MEM_MB / ANALYSIS_POOL_RSS_MB.
 ENV CADVERIFY_ANALYSIS_POOL=1 \
-    ANALYSIS_POOL_MEM_MB=640 \
-    ANALYSIS_POOL_RSS_MB=340 \
+    ANALYSIS_POOL_MEM_MB=1536 \
+    ANALYSIS_POOL_RSS_MB=1100 \
     ANALYSIS_POOL_TIMEOUT_S=150
 
 # Copy pre-baked SAM-2 model weights from builder
