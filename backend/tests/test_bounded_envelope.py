@@ -25,13 +25,15 @@ def shaft_mesh():
     return mesh
 
 
-def _env(mem_mb: str, timeout: str = "120"):
+def _env(mem_mb: str = "4096", timeout: str = "120", rss_mb: str = "3072"):
+    """Hermetic envelope knobs. VA stays generous by default — embree's thread
+    stacks false-trip RLIMIT_AS below ~3GB on Linux (CI-proven); the RSS
+    watchdog is the mechanism under test when a trip is wanted."""
     return {
         "CADVERIFY_ANALYSIS_POOL": "1",
         "ANALYSIS_POOL_MEM_MB": mem_mb,
+        "ANALYSIS_POOL_RSS_MB": rss_mb,
         "ANALYSIS_POOL_TIMEOUT_S": timeout,
-        # hermetic: never depends on the deployment-sized default RSS cap
-        "ANALYSIS_POOL_RSS_MB": "3072",
     }
 
 
@@ -42,7 +44,7 @@ def test_bounded_engine_returns_the_same_contract(shaft_mesh):
 
     from src.analysis import bounded
 
-    os.environ.update(_env("2048"))
+    os.environ.update(_env())
     try:
         result, mesh, ctx = bounded.run_engine_ctx_sync(shaft_mesh, "s.stp", None)
     finally:
@@ -58,13 +60,13 @@ def test_time_bomb_is_contained_not_fatal(shaft_mesh):
     trip; the parent keeps running and the pool recovers for the next caller."""
     from src.analysis import bounded
 
-    os.environ.update(_env("2048", timeout="1"))
+    os.environ.update(_env(timeout="1"))
     try:
         with pytest.raises(bounded.AnalysisBudgetExceeded) as ei:
             bounded._run_bounded(bounded._sleep_worker, 30.0)
         assert ei.value.stage in ("time", "died")
         # recovery: a normal budget completes on the recycled pool
-        os.environ["ANALYSIS_POOL_TIMEOUT_S"] = "240"
+        os.environ.update(_env(timeout="240"))
         result, _m, _ctx = bounded.run_engine_ctx_sync(shaft_mesh, "s.stp", None)
         assert result.process_scores
     finally:
@@ -80,7 +82,7 @@ def test_memory_bomb_is_contained_not_fatal():
 
     # The RSS watchdog is the trip wire (kills the worker within ~1s of the
     # bomb crossing it); VA stays generous so imports/threads never false-trip.
-    os.environ.update(_env("4096", timeout="120", rss_mb="256"))
+    os.environ.update(_env(rss_mb="256"))
     try:
         with pytest.raises(bounded.AnalysisBudgetExceeded) as ei:
             bounded._run_bounded(bounded._memory_bomb_worker, 1024)
