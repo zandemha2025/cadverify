@@ -56,6 +56,99 @@ class AnalysisRun:
     stage_timings_ms: dict[str, float] | None = None
 
 
+def _analysis_core(mesh, target_processes, pack, orientation, suffix, filename,
+                    cost_cache_key):
+    """The pure synchronous analysis core: geometry → context → features →
+    universal checks → part type → analyzers → signature → cost-reuse entry.
+    Module-level and argument-only so the bounded runner can execute the whole
+    pass inside a capped child process; it owns no caches, DB or loop state.
+    """
+    sync_timings: dict[str, float] = {}
+    sync_started = time.perf_counter()
+    geometry = analyze_geometry(mesh)
+    sync_timings["geometry"] = _elapsed_ms(sync_started)
+    sync_started = time.perf_counter()
+    ctx = GeometryContext.build(mesh, geometry)
+    sync_timings["context"] = _elapsed_ms(sync_started)
+    # ctx.mesh == mesh unless build() decimated an oversize mesh; detect on
+    # ctx.mesh so feature indices align with the context per-face arrays.
+    sync_started = time.perf_counter()
+    features = detect_features(ctx.mesh)
+    sync_timings["features"] = _elapsed_ms(sync_started)
+    ctx.features = features
+    sync_started = time.perf_counter()
+    universal_issues = run_universal_checks(mesh)
+    sync_timings["universal_checks"] = _elapsed_ms(sync_started)
+    # Honestly surface to the user when the mesh was decimated for analysis.
+    dec_issue = decimation_issue(ctx)
+    if dec_issue is not None:
+        universal_issues.append(dec_issue)
+    # What the file holds (one solid, or several bodies and what kind of set),
+    # on the analysis mesh so body faces line up with the 3D view.
+    sync_started = time.perf_counter()
+    part_type = _part_type(ctx.mesh)
+    sync_timings["part_type"] = _elapsed_ms(sync_started)
+
+    process_scores = []
+    sync_started = time.perf_counter()
+    for proc in target_processes:
+        new_analyzer = get_analyzer(proc)
+        if new_analyzer is None:
+            logger.warning(
+                "No registered analyzer for process %s -- skipping",
+                proc.value,
+            )
+            continue
+        try:
+            proc_issues = new_analyzer.analyze(ctx)
+        except Exception:
+            logger.exception("Analyzer failed for %s", proc.value)
+            continue
+        if pack:
+            proc_issues = pack.apply(proc_issues, proc)
+        ps = score_process(proc_issues, geometry, proc)
+        process_scores.append(ps)
+    sync_timings["process_analyzers"] = _elapsed_ms(sync_started)
+    if orientation is not None:
+        from src.analysis.orientation import all_issues, turn_points_to_file
+
+        # Region centres in the file's coordinates, like its 3D view.
+        turn_points_to_file(orientation, all_issues(universal_issues, process_scores))
+
+    # Customer-context Slice 1: compute the 18-dim shape signature while the
+    # mesh + geometry + ctx are still alive (they are freed before persist).
+    # Best-effort / NON-FATAL — a signature failure must never affect analysis.
+    signature_vec = None
+    sync_started = time.perf_counter()
+    try:
+        from src.eval.similarity import feature_vector
+
+        # A turned check is the same part: the corpus keeps the file's own signature.
+        if orientation is None:
+            signature_vec = feature_vector(ctx.mesh, geometry, ctx).tolist()
+    except Exception:
+        logger.warning(
+            "shape-signature computation failed — corpus write-back skipped",
+            exc_info=True,
+        )
+    sync_timings["signature"] = _elapsed_ms(sync_started)
+    cost_entry = None
+    if cost_cache_key is not None:
+        try:
+            cost_entry = _cost_engine_entry(
+                mesh, geometry, ctx, universal_issues, process_scores,
+                suffix, filename,
+            )
+        except Exception:
+            logger.warning("analysed-part reuse skipped", exc_info=True)
+    return (
+        geometry, ctx, features, universal_issues, process_scores,
+        signature_vec, sync_timings, cost_entry, part_type,
+    )
+
+
+
+
 def _analysis_return(
     result: dict,
     analysis_id: int | None,
@@ -646,101 +739,44 @@ async def _run_analysis(
     )
 
     def _run_analysis_sync():
-        sync_timings: dict[str, float] = {}
-        sync_started = time.perf_counter()
-        geometry = analyze_geometry(mesh)
-        sync_timings["geometry"] = _elapsed_ms(sync_started)
-        sync_started = time.perf_counter()
-        ctx = GeometryContext.build(mesh, geometry)
-        sync_timings["context"] = _elapsed_ms(sync_started)
-        # ctx.mesh == mesh unless build() decimated an oversize mesh; detect on
-        # ctx.mesh so feature indices align with the context per-face arrays.
-        sync_started = time.perf_counter()
-        features = detect_features(ctx.mesh)
-        sync_timings["features"] = _elapsed_ms(sync_started)
-        ctx.features = features
-        sync_started = time.perf_counter()
-        universal_issues = run_universal_checks(mesh)
-        sync_timings["universal_checks"] = _elapsed_ms(sync_started)
-        # Honestly surface to the user when the mesh was decimated for analysis.
-        dec_issue = decimation_issue(ctx)
-        if dec_issue is not None:
-            universal_issues.append(dec_issue)
-        # What the file holds (one solid, or several bodies and what kind of set),
-        # on the analysis mesh so body faces line up with the 3D view.
-        sync_started = time.perf_counter()
-        part_type = _part_type(ctx.mesh)
-        sync_timings["part_type"] = _elapsed_ms(sync_started)
-
-        process_scores = []
-        sync_started = time.perf_counter()
-        for proc in target_processes:
-            new_analyzer = get_analyzer(proc)
-            if new_analyzer is None:
-                logger.warning(
-                    "No registered analyzer for process %s -- skipping",
-                    proc.value,
-                )
-                continue
-            try:
-                proc_issues = new_analyzer.analyze(ctx)
-            except Exception:
-                logger.exception("Analyzer failed for %s", proc.value)
-                continue
-            if pack:
-                proc_issues = pack.apply(proc_issues, proc)
-            ps = score_process(proc_issues, geometry, proc)
-            process_scores.append(ps)
-        sync_timings["process_analyzers"] = _elapsed_ms(sync_started)
-        if orientation is not None:
-            from src.analysis.orientation import all_issues, turn_points_to_file
-
-            # Region centres in the file's coordinates, like its 3D view.
-            turn_points_to_file(orientation, all_issues(universal_issues, process_scores))
-
-        # Customer-context Slice 1: compute the 18-dim shape signature while the
-        # mesh + geometry + ctx are still alive (they are freed before persist).
-        # Best-effort / NON-FATAL — a signature failure must never affect analysis.
-        signature_vec = None
-        sync_started = time.perf_counter()
-        try:
-            from src.eval.similarity import feature_vector
-
-            # A turned check is the same part: the corpus keeps the file's own signature.
-            if orientation is None:
-                signature_vec = feature_vector(ctx.mesh, geometry, ctx).tolist()
-        except Exception:
-            logger.warning(
-                "shape-signature computation failed — corpus write-back skipped",
-                exc_info=True,
-            )
-        sync_timings["signature"] = _elapsed_ms(sync_started)
-        cost_entry = None
-        if cost_cache_key is not None:
-            try:
-                cost_entry = _cost_engine_entry(
-                    mesh, geometry, ctx, universal_issues, process_scores,
-                    suffix, filename,
-                )
-            except Exception:
-                logger.warning("analysed-part reuse skipped", exc_info=True)
-        return (
-            geometry, ctx, features, universal_issues, process_scores,
-            signature_vec, sync_timings, cost_entry, part_type,
-        )
+        return _analysis_core(mesh, target_processes, pack, orientation, suffix,
+                              filename, cost_cache_key)
 
     timeout_sec = analysis_timeout_sec_fn()
     try:
-        # On a timeout the thread runs on; it keeps its room until it ends.
-        (
-            geometry, ctx, features, universal_issues, process_scores,
-            signature_vec, sync_timings, cost_entry, part_type,
-        ) = (
-            await compute_budget.run_within_budget(
-                _run_analysis_sync, timeout=timeout_sec, label="analysis",
-                need_bytes=compute_budget.need_for_data(file_bytes, filename),
+        # Containment envelope: on a deployment that enables it, the whole
+        # analysis core runs inside a capped, killable child process — a
+        # pathological file costs one recycled worker and an honest
+        # budget-exceeded answer, never the serving instance. The standard web
+        # journey (all processes, no rule pack) is exactly the shape the child
+        # runs; anything else (a rule pack, narrowed processes) stays in-thread
+        # with the per-analyzer containment the core already applies.
+        from src.analysis import bounded as _bounded
+
+        if _bounded.enabled() and pack is None:
+            (
+                geometry, ctx, features, universal_issues, process_scores,
+                signature_vec, sync_timings, cost_entry, part_type,
+            ) = await _bounded.run_analysis_core(
+                mesh,
+                [p.value for p in target_processes],
+                orientation,
+                suffix,
+                filename,
+                cost_cache_key,
+                timeout_s=min(timeout_sec, _bounded._timeout_s()),
             )
-        )
+        else:
+            # On a timeout the thread runs on; it keeps its room until it ends.
+            (
+                geometry, ctx, features, universal_issues, process_scores,
+                signature_vec, sync_timings, cost_entry, part_type,
+            ) = (
+                await compute_budget.run_within_budget(
+                    _run_analysis_sync, timeout=timeout_sec, label="analysis",
+                    need_bytes=compute_budget.need_for_data(file_bytes, filename),
+                )
+            )
     except asyncio.TimeoutError:
         from fastapi import HTTPException
 

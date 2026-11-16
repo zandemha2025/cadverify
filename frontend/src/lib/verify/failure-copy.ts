@@ -44,6 +44,17 @@ export function analysisFailureCopy(reason: string | null | undefined): Analysis
     };
   }
 
+  if (/analysis budget|needs more analysis capacity/i.test(value)) {
+    return {
+      kind: "capacity",
+      title: "This file needs more analysis capacity than a quick check allows.",
+      explanation:
+        "The part was too large or complex to analyze inside the safety envelope that protects every other user's checks.",
+      action: "Re-export a simplified version (fewer faces), or contact the operator for a big-file check. Nothing was charged.",
+      toast: "Could not analyze — this file exceeds the quick-check budget",
+    };
+  }
+
   if (/capacity|concurrent-analysis|rate limit|rate-limit|too many (?:verification )?requests|retry shortly/i.test(value)) {
     return {
       kind: "capacity",

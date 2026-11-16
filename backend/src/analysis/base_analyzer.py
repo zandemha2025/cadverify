@@ -19,8 +19,18 @@ def analyze_geometry(mesh: trimesh.Trimesh) -> GeometryInfo:
     """Extract basic geometry information from a mesh.
 
     Safely handles empty / degenerate meshes by returning a zero-valued
-    GeometryInfo rather than propagating a None bounds crash.
+    GeometryInfo rather than propagating a None bounds crash. Non-finite
+    vertex coordinates (NaN/±inf — a corrupt export) are a clean ValueError:
+    they poison every downstream normal/area computation, so the pipeline
+    refuses them at its front door instead of warning its way to garbage.
     """
+    import numpy as np
+
+    if len(mesh.vertices) and not np.isfinite(np.asarray(mesh.vertices)).all():
+        raise ValueError(
+            "Mesh contains non-finite vertex coordinates (NaN or infinite); "
+            "re-export the part from your CAD tool."
+        )
     bounds = mesh.bounds  # None for empty meshes
     if bounds is None or len(mesh.faces) == 0:
         bbox = BoundingBox(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
@@ -158,6 +168,14 @@ def check_normals(mesh: trimesh.Trimesh) -> list[Issue]:
 
 def check_degenerate_faces(mesh: trimesh.Trimesh) -> list[Issue]:
     """Check for zero-area or near-zero-area faces."""
+    # Non-finite coordinates make every cross-product a NaN warning; the
+    # front door (analyze_geometry) refuses them, but this check can be called
+    # directly — refuse quietly there too (an honest skip, not a warning storm).
+    import numpy as np
+
+    if len(mesh.vertices) and not np.isfinite(np.asarray(mesh.vertices)).all():
+        return []
+
     issues = []
     face_areas = mesh.area_faces
     degenerate_mask = face_areas < 1e-10
