@@ -131,7 +131,7 @@ def _strip_ctx_mesh(ctx):
     """The child's context carries its own trimesh (same pickle hazard). The
     parent already holds the authoritative mesh and restores it on return."""
     try:
-        ctx.mesh = None
+        object.__setattr__(ctx, "mesh", None)
     except Exception:
         pass
     return ctx
@@ -185,7 +185,7 @@ def _engine_worker(mesh_payload, filename: str, orientation):
     return result, _mesh_to_payload(m), _strip_ctx_mesh(ctx)
 
 
-def _analysis_core_worker(mesh, target_process_values, orientation, suffix,
+def _analysis_core_worker(mesh_payload, target_process_values, orientation, suffix,
                           filename, cost_cache_key):
     """PURE, picklable worker entry: the analysis-service synchronous core
     (``analysis_service._analysis_core``) run in the child. Single source of
@@ -206,8 +206,11 @@ def _analysis_core_worker(mesh, target_process_values, orientation, suffix,
         cost_cache_key,
     )
     # out = (geometry, ctx, features, universal, scores, signature, timings,
-    #        cost_entry, part_type): strip the ctx mesh (parent restores).
-    out[1].mesh = None
+    #        cost_entry, part_type): strip the ctx mesh (parent restores) —
+    #    via object.__setattr__ because the attribute is typed non-None.
+    import builtins
+
+    object.__setattr__(out[1], "mesh", None)
     return out
 
 
