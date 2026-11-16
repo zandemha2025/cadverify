@@ -35,8 +35,12 @@ from pathlib import Path
 
 logger = logging.getLogger("cadverify.bounded_analysis")
 
-DEFAULT_MEM_MB = 1536         # VA cap; generous vs RSS so numpy doesn't false-trip
-DEFAULT_RSS_MB = 1100         # the real limiter: sampled watchdog kill level
+DEFAULT_MEM_MB = 3072         # RLIMIT_AS backstop ONLY: generous enough that
+                              # thread stacks / BLAS VA reservations never false-trip
+                              # a legitimate run (embree's pool hit pthread_create
+                              # EAGAIN at 2GB on CI), low enough that the pairwise
+                              # runaway class (3.6GB in the audit) still dies here.
+DEFAULT_RSS_MB = 1100         # THE real limiter: sampled watchdog kill level
                               # (sized for a 2GB instance: parent ~400MB + child ~1.1GB;
                               # a legit whole analysis peaks well under, a runaway dies here)
 DEFAULT_TIMEOUT_S = 180.0     # wall clock for one whole analysis

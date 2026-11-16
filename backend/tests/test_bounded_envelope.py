@@ -71,16 +71,16 @@ def test_time_bomb_is_contained_not_fatal(shaft_mesh):
         os.environ.pop("CADVERIFY_ANALYSIS_POOL", None)
 
 
-@pytest.mark.skipif(os.uname().sysname != "Linux",
-                    reason="RLIMIT_AS is only enforced on Linux (the deployed runtime)")
+@pytest.mark.skipif(not pathlib.Path("/proc").exists(),
+                    reason="the RSS watchdog reads /proc (the deployed runtime)")
 def test_memory_bomb_is_contained_not_fatal():
-    """A worker allocating past the child's RLIMIT_AS fails INSIDE the pool;
+    """A worker whose RSS crosses the watchdog cap is killed INSIDE the pool;
     the parent observes AnalysisBudgetExceeded and keeps running."""
     from src.analysis import bounded
 
-    os.environ.update(_env("256", timeout="120"))   # room to import, not to bomb
-    os.environ["ANALYSIS_POOL_MEM_MB"] = "256"      # RLIMIT_AS: the trip wire here
-    os.environ["ANALYSIS_POOL_RSS_MB"] = "4096"     # watchdog OFF the critical path
+    # The RSS watchdog is the trip wire (kills the worker within ~1s of the
+    # bomb crossing it); VA stays generous so imports/threads never false-trip.
+    os.environ.update(_env("4096", timeout="120", rss_mb="256"))
     try:
         with pytest.raises(bounded.AnalysisBudgetExceeded) as ei:
             bounded._run_bounded(bounded._memory_bomb_worker, 1024)
