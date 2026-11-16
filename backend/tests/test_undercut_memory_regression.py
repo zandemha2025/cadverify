@@ -77,7 +77,7 @@ def test_analysis_service_path_on_the_fixture_shaft(shaft_bytes):
         async with AsyncSession(eng) as session:
             return await analysis_service.run_analysis(
                 file_bytes=shaft_bytes, filename="stepped_shaft.stp",
-                processes=None, rule_pack=None, user=_U(), session=session,
+                processes=None, rule_pack=None, user=_U, session=session,
                 include_thickness=False,
             )
 
