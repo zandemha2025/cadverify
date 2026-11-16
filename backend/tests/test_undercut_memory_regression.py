@@ -67,9 +67,9 @@ def test_analysis_service_path_on_the_fixture_shaft(shaft_bytes):
     async def run():
         from src.services import analysis_service
 
-        class _U:
-            user_id = 1
-            role = "user"
+        from src.auth.require_api_key import AuthedUser
+
+        _U = AuthedUser(user_id=1, api_key_id=0, key_prefix="", role="analyst")
 
         from src.db.engine import get_engine
         eng = get_engine()
