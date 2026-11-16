@@ -106,12 +106,17 @@ def _sleep_worker(seconds: float):
 
 
 def _memory_bomb_worker(mb: int):
-    """Test-only worker: allocate ~mb megabytes, so the envelope's memory cap
-    can be exercised deterministically on Linux (where RLIMIT_AS turns this
-    into a catchable failure inside the child)."""
+    """Test-only worker: allocate ~mb megabytes and HOLD them, so the RSS
+    watchdog has sampling windows to observe the breach (a bare allocation
+    loop finishes in ~200ms — faster than the first 0.5s sample)."""
+    import time
+
     chunks = []
     for _ in range(mb):
         chunks.append(bytearray(1024 * 1024))
+        if len(chunks) % 64 == 0:
+            time.sleep(0.05)          # pace: let RSS build inside the window
+    time.sleep(30.0)                  # hold: the watchdog kills us here
     return len(chunks)
 
 
