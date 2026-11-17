@@ -56,6 +56,8 @@ async def submit_quote_back(
     d = share_links.public_or_raise(d, "Shared cost decision not found")
 
     raw_cost = payload.get("unit_cost_usd")
+    if isinstance(raw_cost, bool) or not isinstance(raw_cost, (int, float, str)):
+        raise ValueError("unit_cost_usd must be a number (dollars per part)")
     try:
         unit_cost = float(raw_cost)
     except (TypeError, ValueError):
@@ -65,7 +67,6 @@ async def submit_quote_back(
 
     quantity = payload.get("quantity")
     if quantity is None:
-        opt = share_links.shows(d) if hasattr(share_links, "shows") else None
         from src.services import supplier_links
 
         quantity = supplier_links.shows(d)["quantity"] or 100
