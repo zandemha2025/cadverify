@@ -316,7 +316,16 @@ def test_public_docs_use_live_urls_and_route_shims_exist():
     assert "backendOrigin()" in developers
     assert "{apiOrigin}/api/v1/validate" in developers
     assert "cadvrfy-api.fly.dev" not in developers
-    assert "https://github.com/zandemha2025/cadverify" not in developers
+    # The repo URL policy: no hardcoded repo links EXCEPT the Fusion add-in's
+    # release download (deliberate: the add-in's direct-distribution channel
+    # IS the repository's releases page; every other use of the repo URL stays
+    # forbidden).
+    import re as _re
+
+    _repo_uses = _re.findall(r"https://github\.com/zandemha2025/cadverify[^\s\"']*",
+                             developers)
+    assert all(u.startswith("https://github.com/zandemha2025/cadverify/releases")
+               for u in _repo_uses), _repo_uses
     assert "https://api.cadverify.com" not in developers
     assert "https://github.com/cadverify/cadverify" not in developers
     # /scalar sends people to the API's own interactive docs at the deployment's
