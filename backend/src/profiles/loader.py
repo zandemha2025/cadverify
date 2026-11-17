@@ -64,6 +64,7 @@ def _parse_yaml_material(data: dict) -> MaterialProfile:
         min_wall_thickness=dfm.get("min_wall_mm", 1.0),
         max_temperature=mech.get("max_temperature_c"),
         tensile_strength=mech.get("tensile_mpa"),
+        yield_strength=mech.get("yield_mpa"),
         elongation=mech.get("elongation_pct"),
         density=mech.get("density_g_cm3"),
         cost_per_kg=cost_per_kg,
