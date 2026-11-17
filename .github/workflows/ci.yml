@@ -309,7 +309,7 @@ jobs:
         run: npm ci
 
       - name: Audit production dependency graph
-        run: npm audit --audit-level=moderate
+        run: ../scripts/ci/npm_audit_with_exceptions.sh
 
       - name: Typecheck
         run: npx tsc --noEmit

@@ -57,11 +57,15 @@ class AnalysisRun:
 
 
 def _analysis_core(mesh, target_processes, pack, orientation, suffix, filename,
-                    cost_cache_key):
+                    cost_cache_key, pressure_in=None):
     """The pure synchronous analysis core: geometry → context → features →
     universal checks → part type → analyzers → signature → cost-reuse entry.
     Module-level and argument-only so the bounded runner can execute the whole
     pass inside a capped child process; it owns no caches, DB or loop state.
+
+    ``pressure_in`` (``analysis.pressure_screen.PressureScreenInput``) runs the
+    clause-anchored UG-27 wall screen when the caller declared a rated
+    pressure; None skips it entirely (the default, unchanged behavior).
     """
     sync_timings: dict[str, float] = {}
     sync_started = time.perf_counter()
@@ -83,6 +87,27 @@ def _analysis_core(mesh, target_processes, pack, orientation, suffix, filename,
     dec_issue = decimation_issue(ctx)
     if dec_issue is not None:
         universal_issues.append(dec_issue)
+    # The clause-anchored pressure screen runs only when the caller declared a
+    # rated pressure; it declines loudly (WARNING) rather than silently when
+    # geometry or material data cannot support it.
+    if pressure_in is not None:
+        sync_started = time.perf_counter()
+        try:
+            from src.analysis.pressure_screen import run_pressure_screen
+
+            universal_issues.extend(run_pressure_screen(ctx, pressure_in))
+        except Exception:
+            logger.exception("pressure screen failed — reported as unavailable")
+            from src.analysis.models import Issue, Severity
+
+            universal_issues.append(Issue(
+                code="PRESSURE_SCREEN_UNAVAILABLE",
+                severity=Severity.WARNING,
+                message="Pressure screen could not run: an internal error occurred. "
+                        "This is a screen, not a certification.",
+                process=None,
+            ))
+        sync_timings["pressure_screen"] = _elapsed_ms(sync_started)
     # What the file holds (one solid, or several bodies and what kind of set),
     # on the analysis mesh so body faces line up with the 3D view.
     sync_started = time.perf_counter()
@@ -176,6 +201,7 @@ _PERF_STAGE_ORDER = (
     "context",
     "features",
     "universal_checks",
+    "pressure_screen",
     "process_analyzers",
     "signature",
     "serialize",
@@ -496,6 +522,40 @@ def _get_route_helpers():
 # ---------------------------------------------------------------------------
 
 
+def _resolve_pressure_material(rated_pressure_bar: float, grade: str):
+    """Build the screen's input from the caller's declared pressure + grade.
+
+    The grade resolves against the engine's own material files (the parts-list
+    vocabulary, ``src.costing.material_grades``); an unresolvable grade is NOT
+    rejected — the screen itself declines loudly with the reason, which keeps
+    the honesty in one place.
+    """
+    from src.analysis.pressure_screen import PressureScreenInput
+
+    yield_mpa: float | None = None
+    tensile_mpa: float | None = None
+    if grade.strip():
+        try:
+            from src.costing.material_grades import engine_names_for
+            from src.profiles.loader import MATERIALS_STRUCTURED
+
+            wanted = {n.lower() for n in engine_names_for(grade.strip())}
+            for m in MATERIALS_STRUCTURED:
+                if m.name.lower() in wanted:
+                    if m.yield_strength is not None or m.tensile_strength is not None:
+                        yield_mpa = m.yield_strength
+                        tensile_mpa = m.tensile_strength
+                        break
+        except Exception:
+            logger.warning("pressure material resolution failed", exc_info=True)
+    return PressureScreenInput(
+        rated_pressure_bar=float(rated_pressure_bar),
+        material_grade=grade.strip(),
+        yield_mpa=yield_mpa,
+        tensile_mpa=tensile_mpa,
+    )
+
+
 async def run_analysis(
     file_bytes: bytes,
     filename: str,
@@ -508,6 +568,8 @@ async def run_analysis(
     source_units: str | None = None,
     return_persisted_id: bool = False,
     orientation=None,
+    rated_pressure_bar: float | None = None,
+    material_grade: str | None = None,
 ) -> dict | AnalysisRun:
     """Full analysis pipeline (see ``_run_analysis``), within the compute budget.
 
@@ -522,6 +584,7 @@ async def run_analysis(
             file_bytes, filename, processes, rule_pack, user, session,
             include_thickness=include_thickness, org_id=org_id, source_units=source_units,
             return_persisted_id=return_persisted_id, orientation=orientation, room=room,
+            rated_pressure_bar=rated_pressure_bar, material_grade=material_grade,
         )
 
 
@@ -538,6 +601,8 @@ async def _run_analysis(
     return_persisted_id: bool = False,
     orientation=None,
     room: "compute_budget.DeferredHold | None" = None,
+    rated_pressure_bar: float | None = None,
+    material_grade: str | None = None,
 ) -> dict | AnalysisRun:
     """Full analysis pipeline: hash -> dedup check -> analyze -> persist -> track.
 
@@ -629,6 +694,17 @@ async def _run_analysis(
     if orientation is not None:
         # A turned check answers a different question about the same bytes.
         process_fingerprint.append(f"orientation={orientation.key}")
+    # The pressure screen's verdict depends on the declared pressure and
+    # material, not just the bytes: keep both in the cache identity so a
+    # 40-bar answer can never be served for a 150-bar question.
+    pressure_in = None
+    if rated_pressure_bar is not None:
+        from src.analysis.pressure_screen import PressureScreenInput
+
+        pressure_in = _resolve_pressure_material(rated_pressure_bar, material_grade or "")
+        process_fingerprint.append(
+            f"pressure={rated_pressure_bar:g}bar@{pressure_in.material_grade or 'undeclared'}"
+        )
     process_set_hash = compute_process_set_hash(
         process_fingerprint
     )
@@ -740,7 +816,7 @@ async def _run_analysis(
 
     def _run_analysis_sync():
         return _analysis_core(mesh, target_processes, pack, orientation, suffix,
-                              filename, cost_cache_key)
+                              filename, cost_cache_key, pressure_in=pressure_in)
 
     timeout_sec = analysis_timeout_sec_fn()
     try:
@@ -765,6 +841,7 @@ async def _run_analysis(
                 filename,
                 cost_cache_key,
                 timeout_s=min(timeout_sec, _bounded._timeout_s()),
+                pressure_in=pressure_in,
             )
         else:
             # On a timeout the thread runs on; it keeps its room until it ends.

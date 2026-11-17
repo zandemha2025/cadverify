@@ -182,3 +182,24 @@ def turning_dimensions(
     spans = np.ptp(vertices @ np.column_stack((basis, np.cross(axis, basis))), axis=0)
     roundness = float(np.min(spans) / np.max(spans)) if np.max(spans) > 0 else 0.0
     return length, diameter, roundness
+
+
+def verified_revolution_axis(
+    mesh: trimesh.Trimesh, features: Optional[list[Feature]],
+) -> Optional[np.ndarray]:
+    """The same axis ``turning_dimensions`` measures along, for checks that
+    need bore and outer diameter to agree on ONE axis: the largest outer
+    rotational surface's axis, else the curved-profile verified axis. None
+    when the part shows no verified revolution."""
+    if not mesh.is_volume or not has_rotational_surface_evidence(features, mesh.area, mesh=mesh):
+        return None
+    candidates = [f for f in _outer_rotational_features(features) if f.axis is not None]
+    if candidates:
+        axis = np.asarray(max(candidates, key=lambda f: f.area or 0.0).axis, dtype=float)
+    else:
+        axis = _curved_rotational_axis(mesh)
+        if axis is None:
+            return None
+    if not np.all(np.isfinite(axis)) or np.linalg.norm(axis) == 0:
+        return None
+    return axis / np.linalg.norm(axis)

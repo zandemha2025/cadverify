@@ -898,6 +898,28 @@ async def validate_file(
             "says which orientation it used."
         ),
     ),
+    rated_pressure_bar: Optional[float] = Query(
+        None,
+        gt=0.0,
+        le=1000.0,
+        description=(
+            "Opt-in: run the ASME VIII-1 UG-27 pressure wall screen at this "
+            "rated pressure (bar). Requires material_grade. The answer is a "
+            "geometry SCREEN (E=0.70 assumed per UW-12, Section II-D basis "
+            "allowables) — never a certification."
+        ),
+    ),
+    material_grade: Optional[str] = Query(
+        None,
+        max_length=64,
+        description=(
+            "Declared material grade for the pressure screen (e.g. '316L', "
+            "'4140', 'super duplex 2507') — resolved against the same parts-"
+            "list vocabulary as the cost engine. Required with "
+            "rated_pressure_bar; a grade with no declared strength on file "
+            "makes the screen decline honestly."
+        ),
+    ),
     user: AuthedUser = Depends(require_org_checker),
     session: AsyncSession = Depends(get_db_session),
     _org_limit: None = Depends(enforce_org_limits),
@@ -913,6 +935,14 @@ async def validate_file(
                 status_code=400,
                 detail=f"Unknown rule pack '{rule_pack}'. Available: {available_rule_packs()}",
             )
+    if (rated_pressure_bar is None) != (material_grade is None):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "rated_pressure_bar and material_grade are used together — "
+                "supply both to run the pressure screen, or neither."
+            ),
+        )
     if units is not None and units not in _SOURCE_UNITS:
         raise HTTPException(
             status_code=400,
@@ -934,6 +964,8 @@ async def validate_file(
         source_units=units,
         return_persisted_id=True,
         orientation=placed,
+        rated_pressure_bar=rated_pressure_bar,
+        material_grade=material_grade,
     )
     # The authenticated public path exposes only fixed stage names + durations.
     # This is response metadata, not persisted analysis evidence, and contains no
@@ -2822,6 +2854,7 @@ async def list_materials(
                 "processes": [p.value for p in m.process_types],
                 "min_wall_mm": m.min_wall_thickness,
                 "tensile_mpa": m.tensile_strength,
+                "yield_mpa": m.yield_strength,
                 "cost_per_kg_usd": m.cost_per_kg,
                 "notes": m.notes,
             }

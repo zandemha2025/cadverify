@@ -1,0 +1,4 @@
+# Documented npm-audit exceptions — format: GHSA-id | package | reason | revisit
+# Every line is a deliberate, visible risk decision. Remove the line the day
+# a fixed release ships and the gate re-arms itself.
+GHSA-fc5q-39xc-vjpf | picomatch | ReDoS in a glob matcher used only by @sentry/nextjs's BUILD-TIME tooling (@rollup/pluginutils, fdir): no attacker-controlled patterns reach it in production, and no patched picomatch release exists yet (advisory covers *). | when picomatch ships a fix or @sentry/nextjs drops the dependency
