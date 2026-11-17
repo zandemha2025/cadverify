@@ -97,7 +97,8 @@ def test_public_share_proxy_has_a_narrow_get_only_allowlist():
     # own route-auth guard entry).
     assert "export async function POST" in public_route
     assert 'path[3] === "quote"' in public_route
-    assert "publicSharePath" not in open("frontend/src/app/api/public-share/[...path]/route.ts").read().split("export async function POST")[1].split("export async function GET")[0]
+    post_body = public_route.split("export async function POST")[1].split("export async function GET")[0]
+    assert "publicSharePath" not in post_body  # the POST path is hand-scoped to the quote shape
     assert 'redirect: "error"' in public_route
     assert 'cache: "no-store"' in public_route
     assert 'headers.set("cache-control", "private, no-store")' in public_route

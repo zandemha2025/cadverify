@@ -73,7 +73,7 @@ async def test_quote_back_lands_as_quote_typed_ground_truth_plus_notification():
         await s.execute(text(
             "INSERT INTO cost_decisions (ulid, user_id, org_id, mesh_hash, params_hash,"
             " engine_version, filename, file_type, quantities, make_now_process,"
-            " result_json, share_short_id, is_public, share_shows, created_at)"
+            " result_json, share_short_id, is_public, share_options, created_at)"
             " VALUES (:u, :uid, :o, :m, :p, 't', :f, 'stp', '[1,100]', 'cnc_turning',"
             " CAST(:r AS jsonb), :sid, true,"
             " CAST(:opt AS jsonb), now())").bindparams(
@@ -150,7 +150,7 @@ async def test_quote_back_row_shape():
         await s.execute(text(
             "INSERT INTO cost_decisions (ulid, user_id, org_id, mesh_hash, params_hash,"
             " engine_version, filename, file_type, quantities, make_now_process,"
-            " result_json, share_short_id, is_public, share_shows, created_at)"
+            " result_json, share_short_id, is_public, share_options, created_at)"
             " VALUES (:u, :uid, :o, :m, :p, 't', :f, 'stp', '[50]', 'sheet_metal',"
             " CAST(:r AS jsonb), :sid, true, CAST(:opt AS jsonb), now())").bindparams(
             u=str(ULID()), uid=uid, o=org, m=mesh, p=f"p{tag}", f=f"plate_{tag}.stp",
