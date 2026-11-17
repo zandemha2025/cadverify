@@ -16,6 +16,7 @@ Skipped unless DATABASE_URL is Postgres at schema head. Run:
 """
 from __future__ import annotations
 
+import json
 import os
 import uuid
 
@@ -72,16 +73,15 @@ async def test_quote_back_lands_as_quote_typed_ground_truth_plus_notification():
         await s.execute(text(
             "INSERT INTO cost_decisions (ulid, user_id, org_id, mesh_hash, params_hash,"
             " engine_version, filename, file_type, quantities, make_now_process,"
-            " result_json, share_short_id, share_status, share_shows, created_at)"
+            " result_json, share_short_id, is_public, share_shows, created_at)"
             " VALUES (:u, :uid, :o, :m, :p, 't', :f, 'stp', '[1,100]', 'cnc_turning',"
-            " CAST(:r AS jsonb), :sid, 'active',"
+            " CAST(:r AS jsonb), :sid, true,"
             " CAST(:opt AS jsonb), now())").bindparams(
             u=str(ULID()), uid=uid, o=org, m=mesh, p=f"p{tag}", f=f"shaft_{tag}.stp",
             r=json.dumps(result_json), sid=short_id,
             opt=json.dumps({"quantity": 100})))
         await s.commit()
 
-    import json
     app = _build_app()
     try:
         transport = ASGITransport(app=app)
@@ -150,9 +150,9 @@ async def test_quote_back_row_shape():
         await s.execute(text(
             "INSERT INTO cost_decisions (ulid, user_id, org_id, mesh_hash, params_hash,"
             " engine_version, filename, file_type, quantities, make_now_process,"
-            " result_json, share_short_id, share_status, share_shows, created_at)"
+            " result_json, share_short_id, is_public, share_shows, created_at)"
             " VALUES (:u, :uid, :o, :m, :p, 't', :f, 'stp', '[50]', 'sheet_metal',"
-            " CAST(:r AS jsonb), :sid, 'active', CAST(:opt AS jsonb), now())").bindparams(
+            " CAST(:r AS jsonb), :sid, true, CAST(:opt AS jsonb), now())").bindparams(
             u=str(ULID()), uid=uid, o=org, m=mesh, p=f"p{tag}", f=f"plate_{tag}.stp",
             r=_json.dumps(result_json), sid=short_id, opt=_json.dumps({"quantity": 50})))
         await s.commit()
