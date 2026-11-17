@@ -22,6 +22,6 @@ export default async function SharedPartPage({ params }: { params: Promise<{ sho
   const { shortId } = await params;
   // 410 when the link ended or was switched off (no record data), 404 when unknown.
   const res = await readPublicShare<SupplierPart>(`/s/cost/${shortId}`);
-  if (res.ok) return <SharedCost data={res.data} />;
+  if (res.ok) return <SharedCost data={res.data} shortId={shortId} />;
   return <SharedOff reason={res.reason} endedOn={day(res.endedAt)} />;
 }

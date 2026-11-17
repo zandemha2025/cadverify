@@ -88,11 +88,17 @@ def test_public_share_proxy_has_a_narrow_get_only_allowlist():
     assert 'if (path[0] !== "s") return false;' in paths
     assert 'path[3] === "download.zip"' in paths
     assert '/^[1-9]\\d{0,2}$/.test(path[4])' in paths
-    assert 'import { publicSharePath } from "@/lib/public-share-paths"' in public_route
+    assert 'import { BASE62, publicSharePath } from "@/lib/public-share-paths"' in public_route
     assert 'if (!publicSharePath(path)) {\n    return Response.json({ detail: "Not found" }, { status: 404 });' in public_route
     assert "export async function GET" in public_route
-    assert "export const POST" not in public_route
-    assert "export async function POST" not in public_route
+    # The ONE write the share surface accepts: a vendor's quote-back on a
+    # part's link — method-scoped to that exact path shape, same IP signing,
+    # everything else still read-only (tests/test_quote_back.py + the API's
+    # own route-auth guard entry).
+    assert "export async function POST" in public_route
+    assert 'path[3] === "quote"' in public_route
+    post_body = public_route.split("export async function POST")[1].split("export async function GET")[0]
+    assert "publicSharePath" not in post_body  # the POST path is hand-scoped to the quote shape
     assert 'redirect: "error"' in public_route
     assert 'cache: "no-store"' in public_route
     assert 'headers.set("cache-control", "private, no-store")' in public_route

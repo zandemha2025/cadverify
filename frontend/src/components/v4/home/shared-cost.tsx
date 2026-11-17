@@ -8,12 +8,13 @@
  */
 import * as React from "react";
 import { Fig, Figs, Src } from "../ui";
+import { QuoteBack } from "./quote-back";
 import { SharedFrame, SharedStage } from "./shared-frame";
 import { assumptionName, assumptionSource, assumptionValue, crossoverLine, listQty, pickRange, wayRows } from "./shared-derive";
 import { bytesText, dayOf, downloadHref, partFigs, type SupplierPart } from "./supplier-view";
 import { sizeText } from "./words";
 
-export function SharedCost({ data }: { data: SupplierPart }) {
+export function SharedCost({ data, shortId }: { data: SupplierPart; shortId: string }) {
   const title = data.label || data.name || data.filename;
   const size = sizeText(data.bbox_mm);
   const facts = [size, data.material, data.quantity != null ? `quantity ${data.quantity.toLocaleString("en-US")}` : ""].filter(Boolean).join(" · ");
@@ -75,6 +76,7 @@ export function SharedCost({ data }: { data: SupplierPart }) {
               <p className="sp-line">Not included with this link. Ask the buyer for it.</p>
             )}
             {data.cost ? <CostEstimate cost={data.cost} quantity={data.quantity} /> : null}
+            <QuoteBack shortId={shortId} quantity={data.quantity} />
           </div>
         </aside>
       </main>

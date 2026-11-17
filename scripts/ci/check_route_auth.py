@@ -69,6 +69,11 @@ PUBLIC_ALLOWLIST: dict[str, set[tuple[str, str]]] = {
         # unknown / 410 expired or switched off, and only when its sharer ticked
         # "include CAD" (tests/test_supplier_links_pg.py).
         ("get", "/cost/{short_id}/cad"),
+        # Vendor quote-back: the one write the public share surface takes. The
+        # 12-char short id is the capability; rate-limited 10/h; the answer
+        # lands as quote-typed ground truth on the SHARER's org (never exposes
+        # anything the share didn't show; dead links 404/410).
+        ("post", "/cost/{short_id}/quote"),
     },
     "rfq_packages.py": {
         # A package's share link (/s/pkg): the supplier copy, its ZIP and each

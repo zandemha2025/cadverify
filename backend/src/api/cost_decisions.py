@@ -476,6 +476,35 @@ async def get_shared_cost_cad(
         "X-Robots-Tag": "noindex", "Cache-Control": "private, no-store"})
 
 
+@public_cost_share_router.post("/cost/{short_id}/quote")
+@limiter.limit("10/hour")
+async def submit_shared_quote_back(
+    short_id: str,
+    request: Request,
+    response: Response,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Vendor quote-back: a supplier answers the share link with their actual
+    price (and optional lead time). Lands as a quote-typed ground-truth record
+    on the sharer's org + a notification. No auth: the short id IS the
+    capability; rate-limited so a link can't be spammed."""
+    import json as _json
+
+    from src.services import quote_back
+
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=422, detail="Body must be JSON") from None
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=422, detail="Body must be a JSON object")
+    response.headers["X-Robots-Tag"] = "noindex"
+    try:
+        return await quote_back.submit_quote_back(session, short_id, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+
+
 @public_cost_share_router.get("/cost/{short_id}")
 @limiter.limit("120/hour")
 async def get_shared_cost_decision(

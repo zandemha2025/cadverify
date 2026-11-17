@@ -14,8 +14,13 @@ test("the public share proxy forwards the signed client IP", () => {
   assert.match(source, /fetch\(backendUrl\(backendPath\), \{[\s\S]*headers: signedAuthProxyHeaders\(request, backendPath\)/);
 });
 
-test("the request is still a cache-less GET that never follows redirects", () => {
+test("requests stay cache-less and never follow redirects (the one write is the quote-back POST)", () => {
   assert.match(source, /cache: "no-store"/);
   assert.match(source, /redirect: "error"/);
-  assert.doesNotMatch(source, /method:\s*"(?!GET)/);
+  // The ONLY non-GET upstream call the proxy may make is the vendor
+  // quote-back on a part's share link (hand-scoped path shape, same IP
+  // signing; tests/test_quote_back.py + the API's route-auth guard entry).
+  const methods = [...source.matchAll(/method:\s*"(\w+)"/g)].map((m) => m[1]);
+  assert.deepEqual(methods.filter((m) => m !== "GET"), ["POST"]);
+  assert.match(source, /path\[3\] === "quote"/);
 });

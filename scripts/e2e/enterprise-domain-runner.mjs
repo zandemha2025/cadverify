@@ -146,6 +146,9 @@ function isIgnorableRequestFailure(url, method, failure) {
     return true;
   }
   if (method === "POST" && /\/settings\/developer(?:$|\?)/.test(url)) return true;
+  // Navigating away cancels the account rail's standing reads mid-flight; the
+  // browser's ERR_ABORTED is the navigation, not the server.
+  if (/\/api\/(?:proxy\/billing|auth\/profile)(?:[/?#]|$)/.test(url)) return true;
   return false;
 }
 

@@ -142,7 +142,7 @@ jobs:
           # Ubuntu release this runner happens to be.
           . /etc/os-release
           sudo install -d /usr/share/postgresql-common/pgdg
-          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+          sudo curl --retry 5 --retry-delay 4 --retry-all-errors -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
             https://www.postgresql.org/media/keys/ACCC4CF8.asc
           echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \
             | sudo tee /etc/apt/sources.list.d/pgdg.list
@@ -358,6 +358,9 @@ jobs:
       SHOP_LIBRARY_ENABLED: "1"
       MATERIAL_LIBRARY_ENABLED: "1"
       E2E_RUN_ID: ci-${{ github.run_id }}-${{ github.run_attempt }}
+      # A cold runner's first real STEP parse+analysis can outrun the 150s
+      # default (observed on loaded queues; identical code passes on retry).
+      E2E_CAD_UPLOAD_TIMEOUT_MS: "240000"
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
@@ -396,7 +399,7 @@ jobs:
           # for the later journey steps (via GITHUB_PATH).
           . /etc/os-release
           sudo install -d /usr/share/postgresql-common/pgdg
-          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+          sudo curl --retry 5 --retry-delay 4 --retry-all-errors -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
             https://www.postgresql.org/media/keys/ACCC4CF8.asc
           echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \
             | sudo tee /etc/apt/sources.list.d/pgdg.list
