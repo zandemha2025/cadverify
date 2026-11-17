@@ -98,8 +98,9 @@ async def test_quote_back_lands_as_quote_typed_ground_truth_plus_notification():
             # garbage in -> plain-word 422
             r2 = await c.post(f"/s/cost/{short_id}/quote", json={"unit_cost_usd": "free"})
             assert r2.status_code == 422
-            # dead link -> 404, nothing written
-            r3 = await c.post("/s/cost/NOPE12345678", json={"unit_cost_usd": 5.0})
+            # unknown link on the QUOTE path -> 404 (posting to the read view
+            # would be a 405 — the write surface is exactly one path shape)
+            r3 = await c.post("/s/cost/NOPE12345678/quote", json={"unit_cost_usd": 5.0})
             assert r3.status_code == 404
     finally:
         async with eng.get_session_factory()() as s:
