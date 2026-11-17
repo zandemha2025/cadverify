@@ -358,6 +358,9 @@ jobs:
       SHOP_LIBRARY_ENABLED: "1"
       MATERIAL_LIBRARY_ENABLED: "1"
       E2E_RUN_ID: ci-${{ github.run_id }}-${{ github.run_attempt }}
+      # A cold runner's first real STEP parse+analysis can outrun the 150s
+      # default (observed on loaded queues; identical code passes on retry).
+      E2E_CAD_UPLOAD_TIMEOUT_MS: "240000"
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
