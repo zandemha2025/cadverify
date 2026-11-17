@@ -1,0 +1,44 @@
+[
+ {
+  "label": "thin",
+  "a_mm": 40.0,
+  "b_mm": 42.0,
+  "t_mm": 2.0,
+  "fea_inner_hoop_mpa": 205.09263435957405,
+  "fea_membrane_hoop_mpa": 199.99876886965143,
+  "lame_inner_mpa": 205.1219512195122,
+  "lame_membrane_mpa": 200.0,
+  "ug27_working_mpa": 208.0,
+  "fea_vs_lame_inner_pct": -0.014292404963901321,
+  "fea_vs_lame_membrane_pct": -0.0006155651742858481,
+  "ug27_vs_fea_membrane_pct": 4.000640191722055
+ },
+ {
+  "label": "at_010",
+  "a_mm": 40.0,
+  "b_mm": 44.0,
+  "t_mm": 4.0,
+  "fea_inner_hoop_mpa": 105.20669950046718,
+  "fea_membrane_hoop_mpa": 99.99760080002994,
+  "lame_inner_mpa": 105.23809523809524,
+  "lame_membrane_mpa": 100.0,
+  "ug27_working_mpa": 108.0,
+  "fea_vs_lame_inner_pct": -0.029833053854717462,
+  "fea_vs_lame_membrane_pct": -0.0023991999700569977,
+  "ug27_vs_fea_membrane_pct": 8.002591198135686
+ },
+ {
+  "label": "thick",
+  "a_mm": 40.0,
+  "b_mm": 50.0,
+  "t_mm": 10.0,
+  "fea_inner_hoop_mpa": 45.517750085713935,
+  "fea_membrane_hoop_mpa": 39.994404702140855,
+  "lame_inner_mpa": 45.55555555555556,
+  "lame_membrane_mpa": 40.0,
+  "ug27_working_mpa": 48.0,
+  "fea_vs_lame_inner_pct": -0.08298761672551201,
+  "fea_vs_lame_membrane_pct": -0.013988244647862302,
+  "ug27_vs_fea_membrane_pct": 20.01678824195779
+ }
+]

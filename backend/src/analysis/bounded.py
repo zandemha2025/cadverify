@@ -186,7 +186,7 @@ def _engine_worker(mesh_payload, filename: str, orientation):
 
 
 def _analysis_core_worker(mesh_payload, target_process_values, orientation, suffix,
-                          filename, cost_cache_key):
+                          filename, cost_cache_key, pressure_in=None):
     """PURE, picklable worker entry: the analysis-service synchronous core
     (``analysis_service._analysis_core``) run in the child. Single source of
     truth — the parent and the child call the same function, so the envelope
@@ -204,6 +204,7 @@ def _analysis_core_worker(mesh_payload, target_process_values, orientation, suff
         suffix,
         filename,
         cost_cache_key,
+        pressure_in=pressure_in,
     )
     # out = (geometry, ctx, features, universal, scores, signature, timings,
     #        cost_entry, part_type). Two members cannot cross the process
@@ -315,7 +316,8 @@ def _run_bounded(fn, /, *args, timeout_s: float | None = None):
 
 
 async def run_analysis_core(mesh, target_process_values, orientation, suffix,
-                            filename, cost_cache_key, timeout_s: float | None = None):
+                            filename, cost_cache_key, timeout_s: float | None = None,
+                            pressure_in=None):
     """Bounded analysis-service core: returns the core's 9-tuple."""
     import functools
 
@@ -343,7 +345,8 @@ async def run_analysis_core(mesh, target_process_values, orientation, suffix,
 
     fut = loop.run_in_executor(
         None, job, _analysis_core_worker, _mesh_to_payload(mesh),
-        target_process_values, orientation, suffix, filename, cost_cache_key)
+        target_process_values, orientation, suffix, filename, cost_cache_key,
+        pressure_in)
     return _restore(await fut)
 
 

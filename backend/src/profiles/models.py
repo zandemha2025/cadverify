@@ -25,6 +25,9 @@ class MaterialProfile:
     compliance: dict[str, bool] = field(default_factory=dict)
     min_wall_by_process: dict[str, float] = field(default_factory=dict)
     machinability_index: Optional[float] = None
+    # Declared room-temperature yield strength (MPa) — the pressure screen's
+    # Section II-D basis consumes it with the declared tensile strength.
+    yield_strength: Optional[float] = None
     thermal_conductivity: Optional[float] = None  # W/m·K
     hardness_hrc: Optional[float] = None
     # USD/kg by the form the alloy or polymer is bought in ("wrought", "powder",
