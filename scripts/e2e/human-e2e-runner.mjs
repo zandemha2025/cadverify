@@ -146,6 +146,10 @@ function isIgnorableRequestFailure(url, method, failure) {
   ) {
     return true;
   }
+  // Navigating away cancels the account rail's own standing reads (billing,
+  // profile) mid-flight: the browser's ERR_ABORTED on those GETs/POSTs is the
+  // navigation, not the server (HTTP errors still surface as status failures).
+  if (/\/api\/(?:proxy\/billing|auth\/profile)(?:[/?#]|$)/.test(url)) return true;
   return method === "GET" && /\/_next\/static\/chunks\/[^/?]+\.js(?:\?|$)/.test(url);
 }
 

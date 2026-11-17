@@ -1,6 +1,8 @@
 /** Which public share routes the same-origin proxy may reach (app/api/public-share). */
 const BASE62_ID = /^[A-Za-z0-9]{12}$/;
 
+export const BASE62 = BASE62_ID;
+
 /**
  * The public routes a share link may reach: a check (/s/{id}); a part's link
  * (/s/cost/{id}) and its CAD when the sharer included it (/s/cost/{id}/cad);
@@ -10,7 +12,11 @@ const BASE62_ID = /^[A-Za-z0-9]{12}$/;
 export function publicSharePath(path: string[]): boolean {
   if (path[0] !== "s") return false;
   if (path.length === 2) return BASE62_ID.test(path[1]);
-  if (path[1] === "cost" && BASE62_ID.test(path[2] ?? "")) return path.length === 3 || (path.length === 4 && path[3] === "cad");
+  if (path[1] === "cost" && BASE62_ID.test(path[2] ?? "")) {
+    if (path.length === 3) return true;
+    if (path.length === 4) return path[3] === "cad" || path[3] === "quote";
+    return false;
+  }
   if (path[1] === "pkg" && BASE62_ID.test(path[2] ?? "")) {
     if (path.length === 3) return true;
     if (path.length === 4) return path[3] === "download.zip";
