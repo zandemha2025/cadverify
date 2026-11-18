@@ -185,6 +185,9 @@ jobs:
       - name: Run tests
         run: pytest -v
 
+      - name: Fusion add-in contract tests
+        run: pytest ../integrations/fusion360/tests/ -q
+
       - name: Alembic migration check
         run: |
           alembic heads

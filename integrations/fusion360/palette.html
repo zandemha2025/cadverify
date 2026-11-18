@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root { color-scheme: light; }
+  body { font: 13px/1.45 -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 12px; color: #1a1a1a; }
+  h2 { font-size: 14px; margin: 0 0 8px; }
+  .verdict { font-weight: 600; margin-bottom: 6px; }
+  .verdict.pass { color: #1b7f3b; } .verdict.issues { color: #a15c00; }
+  .verdict.fail, .error { color: #b3261e; }
+  .muted { color: #666; font-size: 12px; }
+  .issue { border-left: 3px solid #ddd; padding: 4px 8px; margin: 6px 0; }
+  .issue.ERROR { border-color: #b3261e; } .issue.WARNING { border-color: #a15c00; }
+  .issue .where { color: #888; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0; }
+  th, td { text-align: left; padding: 3px 6px; border-bottom: 1px solid #eee; font-size: 12px; }
+  th { color: #666; font-weight: 500; }
+  .band { color: #666; }
+  .unvalidated { border-bottom: 1px dotted #999; cursor: help; }
+  label { display: block; margin: 8px 0 2px; font-size: 12px; color: #444; }
+  input { width: 100%; box-sizing: border-box; padding: 5px; border: 1px solid #ccc; border-radius: 4px; }
+  button { margin-top: 10px; padding: 6px 14px; border: 0; border-radius: 4px;
+           background: #1a1a1a; color: #fff; cursor: pointer; }
+  .advice { background: #fdeceA; border-radius: 4px; padding: 6px 8px; margin-top: 6px; }
+  a { color: #0b57d0; }
+  .spinner { display: inline-block; animation: pulse 1.2s infinite; }
+  @keyframes pulse { 50% { opacity: .35; } }
+</style>
+</head>
+<body>
+<div id="app"><p class="spinner">Working…</p></div>
+<script>
+function render(msg) {
+  const app = document.getElementById("app");
+  if (msg.view === "busy") {
+    app.innerHTML = `<p><span class="spinner">${esc(msg.message)}</span></p>`; return;
+  }
+  if (msg.view === "error") {
+    app.innerHTML = `<p class="error">${esc(msg.message)}</p>` +
+      (msg.advice ? `<p class="advice">${esc(msg.advice)}</p>` : "");
+    return;
+  }
+  if (msg.view === "settings" || msg.view === "settings-saved") {
+    app.innerHTML = `<h2>Connect ScaleCAD</h2>` +
+      (msg.message ? `<p class="muted">${esc(msg.message)}</p>` : "") +
+      `<label>API origin <input id="origin" placeholder="https://scalecad-api.onrender.com"></label>` +
+      `<label>API key (read+write) <input id="key" placeholder="cv_live_…"></label>` +
+      `<label>Quantities <input id="qty" value="50,5000"></label>` +
+      `<p class="muted">The key comes from the web app: Settings → Developer → New key (read+write).
+         It is stored only on this machine.</p>` +
+      `<button id="save">Save</button>`;
+    document.getElementById("save").onclick = () => send({
+      event: "save-settings",
+      origin: document.getElementById("origin").value,
+      api_key: document.getElementById("key").value,
+      quantities: document.getElementById("qty").value,
+    });
+    return;
+  }
+  if (msg.view === "result") {
+    const m = msg.model;
+    const cls = {"pass": "pass", "issues": "issues", "fail": "fail"}[
+      (m.verdict || "").split(" —")[0]] || "";
+    app.innerHTML =
+      `<div class="verdict ${cls}">${esc(m.verdict)}</div>` +
+      `<div class="muted">${esc(m.geometry)}</div>` +
+      (m.issues.length ? `<h2>What to fix</h2>${m.issues.map(i =>
+        `<div class="issue ${i.severity}"><div class="where">${esc(i.where)}</div>` +
+        `<div>${esc(i.message)}</div>` +
+        (i.fix ? `<div class="muted">Fix: ${esc(i.fix)}</div>` : "") +
+        `</div>`).join("")}` : "") +
+      `<h2>Should-cost</h2><table><tr><th>Process</th><th>Qty</th><th>$/unit</th><th>Band</th></tr>` +
+      m.costs.map(c =>
+        `<tr><td>${esc(c.process)}</td><td>${c.qty ?? ""}</td>` +
+        `<td>${c.unit_cost_usd == null ? "—" : "$" + c.unit_cost_usd.toFixed(2)}${c.validated ? "" :
+          '<span class="unvalidated" title="assumption band, not yet validated"> *</span>'}</td>` +
+        `<td class="band">${c.band_low == null ? "" :
+          "$" + c.band_low.toFixed(2) + "–" + "$" + c.band_high.toFixed(2)}</td></tr>`).join("") +
+      `</table>` +
+      (m.costs.some(c => !c.validated) ?
+        `<p class="muted">* assumption band — not yet validated against real quotes.</p>` : "") +
+      (m.recommendation ? `<p>${esc(m.recommendation)}</p>` : "") +
+      `<p><a href="#" id="link">Open the full report in ScaleCAD</a></p>`;
+    document.getElementById("link").onclick = (e) => {
+      e.preventDefault(); send({event: "open-link", url: m.deep_link});
+    };
+    return;
+  }
+  app.innerHTML = `<p class="muted">Unexpected message.</p>`;
+}
+function esc(s) { return String(s ?? "").replace(/[&<>"]/g,
+  c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c])); }
+function send(msg) {
+  // Fusion's palette bridge: adsk.core sends custom events back to the add-in.
+  if (window.fusionJavaScriptHost) {
+    window.fusionJavaScriptHost.send("ScaleCADPaletteEvent", JSON.stringify(msg));
+  } else {
+    render({view: "error", message: "Not running inside Fusion (palette bridge absent).",
+            advice: ""});
+  }
+}
+if (window.fusionJavaScriptHost) {
+  window.fusionJavaScriptHost.addEventListener("scalecad", (_, data) => {
+    try { render(JSON.parse(data)); } catch (e) { console.error(e); }
+  });
+  send({event: "hello"});
+}
+</script>
+</body>
+</html>

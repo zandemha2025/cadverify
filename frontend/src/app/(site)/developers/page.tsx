@@ -33,6 +33,13 @@ Content-Type: multipart/form-data`
     "link": "Inspect the example record"
   },
   {
+    "id": "fusion",
+    "title": "Check parts inside Fusion 360.",
+    "body": "The ScaleCAD add-in adds one command to Fusion: it exports your active design as STEP, runs the same check as the web app (DFM verdict, should-cost with honest bands, deep link to the full report) and shows it in a task pane. Direct download, your API key, your origin; nothing else leaves your machine.",
+    "href": "https://github.com/zandemha2025/cadverify/releases",
+    "link": "Download the add-in"
+  },
+  {
     "id": "integrate",
     "title": "Start with the current API contract.",
     "body": "The OpenAPI console is the reference for your deployed backend. For self-hosted installations, check the configuration and deployment requirements with your team.",

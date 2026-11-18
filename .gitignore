@@ -113,3 +113,4 @@ outputs/human-sim/assembly-real/extract/
 # Human-sim live-stack server logs (transient, never evidence)
 outputs/human-sim/**/*.log
 dump.rdb
+integrations/fusion360/dist/
