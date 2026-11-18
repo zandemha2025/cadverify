@@ -264,8 +264,13 @@ def check_bodies_sync(
     names: Optional[dict[int, str]] = None,
     product_tree: Optional[dict] = None,
     time_budget_sec: float = 50.0,
+    weldment_quotes: Optional[int] = None,
 ) -> dict:
-    """Every body of the file checked as its own part, plus the file's total."""
+    """Every body of the file checked as its own part, plus the file's total.
+
+    ``weldment_quotes`` (from the async caller, which owns the session) is the
+    org's count of quote-typed ground-truth rows for process ``weldment_fab``;
+    it feeds the weldment block's calibration state honestly."""
     from src.costing.rates import build_rate_card
 
     started = time.monotonic()
@@ -343,7 +348,45 @@ def check_bodies_sync(
             vals = [d["cut_blank"][str(q)]["unit_cost_usd"] * d["copies"]
                     for d in designs if d.get("cut_blank") and (d["cut_blank"].get(str(q)) or {}).get("unit_cost_usd") is not None]
             cut_usd[str(q)] = round(sum(vals), 2) if vals else None
-        not_priced = ([f"cutting {part_types._count_words(uncut)}"] if uncut else []) + ["edge prep", "welding", "finishing"]
+        # ── weldment fabrication economics (src.costing.weldment) ──────────
+        # Member cutting + weld deposition priced with every constant either
+        # cited (AWS D1.1 Table 5.7 fillet sizing) or labeled UNCALIBRATED;
+        # the confidence is the wide assumption band until real quotes exist.
+        from src.costing import weldment as weld_cost
+
+        max_member_mm = 0.0
+        cut_members: list[weld_cost.MemberCut] = []
+        priced_cut_copies = 0
+        for d in designs:
+            stock = d.get("stock") or {}
+            area = stock.get("section_area_mm2")
+            copies = int(d.get("copies") or 1)
+            thickness = stock.get("thickness_mm")
+            if isinstance(thickness, (int, float)) and thickness > max_member_mm:
+                max_member_mm = float(thickness)
+            if isinstance(area, (int, float)) and area > 0 and not d.get("cut_blank"):
+                cut_members.append(weld_cost.MemberCut(section_area_mm2=float(area), copies=copies))
+                priced_cut_copies += copies
+        weld_len = joints.get("weld_length_mm_estimate")
+        breakdown = None
+        if material is not None and weld_len and max_member_mm > 0:
+            try:
+                breakdown = weld_cost.weldment_breakdown(
+                    weld_length_mm=float(weld_len),
+                    thicker_member_mm=max_member_mm,
+                    members=cut_members,
+                    material_usd=float(material),
+                    cut_blanks_usd=float(sum(v or 0.0 for v in cut_usd.values()) / max(1, len(cut_usd)))
+                    if cut_usd else 0.0,
+                    quantities=quantities,
+                )
+            except Exception:
+                logger.warning("weldment breakdown failed", exc_info=True)
+        # What remains honestly unpriced: members the breakdown couldn't cut-
+        # price (no section area read), plus finishing (surface treatment).
+        uncut_copies = sum(uncut.values())
+        uncut_residual = uncut_copies - priced_cut_copies if breakdown is not None else uncut_copies
+        not_priced = (["cutting some members (no section read)"] if uncut_residual > 0 else []) + ["finishing"]
         out["weldment"] = {
             "route": ["cut", "prep", "weld", "finish"],
             "members": len(bodies),
@@ -356,14 +399,44 @@ def check_bodies_sync(
             "weld_length_mm_estimate": joints.get("weld_length_mm_estimate"),
             "not_priced": not_priced,
             "words": (
-                "ScaleCAD doesn't price welding yet. The members' material is at list price per kg"
+                "The frame is priced as member stock at list $/kg"
+                + ("" if complete else " (for the members read as stock)")
+                + (f"; {cut_n} plate{'s' if cut_n != 1 else ''} as laser-cut blanks on the sheet-metal route"
+                   if cut_n else "")
+                + ", plus member cutting and weld deposition on UNCALIBRATED "
+                  "reference rates (AWS D1.1 Table 5.7 fillet sizing) — the "
+                  "band is the wide assumption tier until real quotes accrue; "
+                  + (", ".join(not_priced[:-1]) + " and " + not_priced[-1] if len(not_priced) > 1
+                     else not_priced[0]) + " isn't priced."
+            ),
+        }
+        if breakdown is not None:
+            out["weldment"]["breakdown"] = breakdown
+            if weldment_quotes is not None:
+                out["weldment"]["calibration"] = weld_cost.calibration_summary(
+                    quote_rows=int(weldment_quotes)
+                )
+            out["total"] = {
+                "per_file_usd": {q: v["unit_cost_usd"] for q, v in breakdown["totals"].items()},
+                "basis": "weldment fabrication: member stock + cutting + weld deposition "
+                         "(uncalibrated reference rates, assumption band)",
+                "confidence": {q: v["confidence"] for q, v in breakdown["totals"].items()},
+            }
+        else:
+            why = ("no weld length estimate" if not weld_len
+                   else "no member thickness" if max_member_mm <= 0 else "no material price")
+            out["weldment"]["not_priced"] = (
+                ([f"cutting {part_types._count_words(uncut)}"] if uncut else [])
+                + ["edge prep", "welding", "finishing"]
+            )
+            out["weldment"]["words"] = (
+                "The members' material is at list price per kg"
                 + ("" if complete else " (for the members read as stock)")
                 + (f"; {cut_n} plate{'s' if cut_n != 1 else ''} priced as laser-cut blanks on the sheet-metal route"
                    if cut_n else "")
-                + "; " + (", ".join(not_priced[:-1]) + " and " + not_priced[-1]) + " aren't priced."
-            ),
-        }
-        out["total"] = None
+                + f"; welding couldn't be priced for this frame ({why}) — see not_priced."
+            )
+            out["total"] = None
     else:
         per_file, floored = _totals(designs, quantities)
         out["total"] = {

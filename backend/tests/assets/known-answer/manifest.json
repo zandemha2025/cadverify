@@ -1,0 +1,121 @@
+{
+  "schema": 1,
+  "purpose": "Known-answer corpus: every entry is measured by the engine in CI and asserted against either an exact-by-construction value, a published value, or a dated engine baseline (regression, never truth). No entry without provenance.",
+  "band_policy": "Cost-level coverage gates activate when >=3 REAL paired quotes exist for a family; until then the gates enforce the UNCALIBRATED label and the wide assumption band (tests/test_weldment_costing.py, tests/test_pressure_screen.py).",
+  "pending_contributions": [
+    {
+      "slot": "fusion360_export.step",
+      "needed": "one STEP AP242 (or AP214) export from Fusion 360, any recent version; a second with alternative export settings (units/structure) if convenient",
+      "why": "gate: the ingestion path must regress against files written by the actual CAD tools our ICP uses, not only synthetic/NIST fixtures",
+      "how": "open any part in Fusion 360 -> File -> Export -> STEP; commit under backend/tests/assets/known-answer/ with a README line recording the Fusion version and settings"
+    },
+    {
+      "slot": "solidworks_export.step",
+      "needed": "one STEP AP242 export from SolidWorks (any 2020+ version); a second with 'Export as external references'/unit variations if convenient",
+      "why": "same gate, second tool",
+      "how": "SolidWorks -> File -> Save As -> .STEP AP242; commit with a README line recording the SolidWorks version and options"
+    },
+    {
+      "slot": "weldment_cut_lists_with_invoices",
+      "needed": "real weldment jobs: the CAD file plus its cut list and the paid invoice",
+      "why": "cost-level band coverage for the weldment model starts only when real $ exist to cover; until then the model ships labeled uncalibrated",
+      "how": "attach to a share link, or hand to the team out-of-band; ingested as ground truth (process weldment_fab)"
+    }
+  ],
+  "entries": [
+    {
+      "file": "../nist_ctc_01_asme1_ap242-e1.stp.gz",
+      "provenance": {
+        "source": "NIST MBE PMI Validation and Conformance Testing project",
+        "url": "https://www.nist.gov/document/nist-pmi-step-files",
+        "member_sha256": "85a5752da05f53c456ca3a9e038c90358e1d5a3141d1f0d6e5f0970f2356e821",
+        "license": "public test evidence (US government work); NIST notes the files carry known conformance errors",
+        "readme": "nist_ctc_01_asme1_ap242-e1.README.md"
+      },
+      "known": {
+        "type": "published_pmi_plus_baseline",
+        "published": "drawing pin ⌀35 +0/-0.2 (asserted in tests/test_gdt_extractor.py against the NIST drawing)",
+        "baseline_date": "2026-11-17",
+        "baseline_engine": "main@4bda8d2b",
+        "asserts": {
+          "bbox_mm": [800.0, 450.0, 150.0],
+          "volume_mm3": 14653193.9,
+          "faces": 101416,
+          "watertight": true,
+          "has_pmi": true
+        },
+        "tolerance": {"bbox_pct": 0.5, "volume_pct": 1.0, "faces_pct": 2.0}
+      }
+    },
+    {
+      "file": "../bushing-1mm-wall.step",
+      "provenance": {
+        "source": "in-repo fixture added in PR #107; upstream origin unrecorded",
+        "license": "used as regression evidence only — its name's 1mm-wall claim is a soft check, not a certified dimension"
+      },
+      "known": {
+        "type": "baseline",
+        "baseline_date": "2026-11-17",
+        "baseline_engine": "main@4bda8d2b",
+        "asserts": {
+          "bbox_mm": [20.0, 20.0, 30.0],
+          "volume_mm3": 1790.71,
+          "faces": 202786,
+          "watertight": true
+        },
+        "tolerance": {"bbox_pct": 0.5, "volume_pct": 1.0, "faces_pct": 2.0}
+      }
+    },
+    {
+      "file": "../plate-with-boss.step",
+      "provenance": {
+        "source": "in-repo fixture (long-standing); upstream origin unrecorded",
+        "license": "regression evidence only"
+      },
+      "known": {
+        "type": "baseline",
+        "baseline_date": "2026-11-17",
+        "baseline_engine": "main@4bda8d2b",
+        "asserts": {
+          "bbox_mm": [300.0, 200.0, 10.81],
+          "volume_mm3": 49600.0,
+          "faces": 90808,
+          "watertight": true
+        },
+        "tolerance": {"bbox_pct": 0.5, "volume_pct": 1.0, "faces_pct": 2.0}
+      }
+    },
+    {
+      "file": "generated:welded_frame_40x40x3",
+      "provenance": {
+        "source": "backend/tests/part_type_cases.py welded_frame() — exact by construction (600x400 frame of 40x40x3 square tube)",
+        "license": "ours"
+      },
+      "known": {
+        "type": "exact_by_construction",
+        "asserts": {
+          "kind": "weldment",
+          "joints": 4,
+          "member_copies_per_design": 2,
+          "tube_wall_mm": 3.0,
+          "weld_length_mm_band": [560.0, 680.0]
+        }
+      }
+    },
+    {
+      "file": "generated:pressure_tube_od100_id80",
+      "provenance": {
+        "source": "backend/tests/test_pressure_screen.py _tube_mesh — exact boolean difference of cylinders",
+        "license": "ours"
+      },
+      "known": {
+        "type": "exact_by_construction",
+        "asserts": {
+          "outer_diameter_mm": 100.0,
+          "bore_diameter_mm": 80.0,
+          "nominal_wall_mm": 10.0
+        }
+      }
+    }
+  ]
+}

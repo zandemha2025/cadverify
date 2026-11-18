@@ -384,6 +384,17 @@ async def check_stored_bodies(
             basis["material_class"] = "saved_cost_check" if saved_basis == "saved_cost_check" else "default"
             material_is_user = material_class != "polymer"
     name = await _kept_name(session, org_id, digest, suffix)
+    # The org's vendor-quote count for weldments (quote-back flywheel): the
+    # weldment block's calibration state reports it honestly.
+    from sqlalchemy import text as _sql_text
+
+    try:
+        weldment_quotes = int((await session.execute(_sql_text(
+            "SELECT count(*) FROM ground_truth_records "
+            "WHERE org_id = :org AND process = 'weldment_fab' AND source_type = 'quote'"
+        ), {"org": org_id})).scalar() or 0)
+    except Exception:
+        weldment_quotes = None
     from src.services import compute_budget
 
     # The parse, the product tree and every body's check hold room in the compute budget.
@@ -396,7 +407,7 @@ async def check_stored_bodies(
             result = await compute_budget.run_within_budget(lambda: check_bodies_sync(
                 mesh, filename=name, model=model, quantities=quantities, material_class=material_class,
                 material_class_is_user=material_is_user, region=region or "US", owned_processes=owned,
-                time_budget_sec=max(3.0, remaining - 3.0),
+                time_budget_sec=max(3.0, remaining - 3.0), weldment_quotes=weldment_quotes,
             ), timeout=remaining, label="bodies")
         except asyncio.TimeoutError:
             raise HTTPException(status_code=504, detail=f"Checking the bodies took longer than {budget:.0f} s.")
