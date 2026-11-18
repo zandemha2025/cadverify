@@ -200,21 +200,33 @@ def test_separate_bodies_are_priced_body_by_body_never_as_one_block():
     assert design["processes"]["can_make"] >= 1
 
 
-def test_a_weldment_shows_members_and_says_welding_isnt_priced():
+def test_a_weldment_prices_members_cutting_and_weld_with_honest_labels():
     from src.services.body_check_service import check_bodies_sync
 
     r = check_bodies_sync(_mesh(cases.welded_frame()), filename="frame.stl", quantities=[1, 10])
     json.dumps(r)
     assert r["part_type"]["kind"] == "weldment"
     assert r["material_class"] == "steel" and r["material_basis"] == "weldment_default"
-    assert r["total"] is None, "no total that pretends welding is in it"
     w = r["weldment"]
     assert w["joints"] == 4 and w["material_complete"] is True
-    assert "welding" in w["not_priced"] and w["not_priced"][0] == "cutting 4 tubes"
-    assert w["words"].startswith("ScaleCAD doesn't price welding yet.")
+    # Welding is NOW priced (AWS D1.1 Table 5.7 sizing, uncalibrated rates);
+    # only finishing stays out, and the words say exactly that.
+    assert w["not_priced"] == ["finishing"]
+    assert "UNCALIBRATED" in w["words"] and "AWS D1.1 Table 5.7" in w["words"]
     # 4 tubes of 40 x 40 x 3: 0.000816 m^3 of steel, about 6.4 kg
     assert w["material_kg"] == pytest.approx(0.81696 * 7.85, rel=0.05)
     assert {d["copies"] for d in r["designs"]} == {2}
+    # The breakdown + total, with the honesty rails pinned:
+    bd = w["breakdown"]
+    assert bd["fillet_leg_mm"] == 3.0
+    assert bd["basis"] == "uncalibrated_reference_rates"
+    assert bd["review"] == "unreviewed_by_practitioner"
+    assert r["total"] is not None
+    assert r["total"]["basis"].startswith("weldment fabrication")
+    ci = r["total"]["confidence"]["1"]
+    assert ci["validated"] is False and ci["method"] == "assumption-band"
+    # The total is at least the material in it — never below its own content.
+    assert r["total"]["per_file_usd"]["1"] >= w["material_usd"]
 
 
 def test_a_declared_material_is_kept_for_a_weldment():

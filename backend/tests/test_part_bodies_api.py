@@ -97,7 +97,12 @@ def test_a_weldment_kept_file_reads_as_members(store):
     body = TestClient(_app(1)).post(f"/api/v1/parts/{digest}/bodies?qty=1").json()
     assert body["part_type"]["kind"] == "weldment"
     assert body["material_class"] == "steel" and body["material_basis"] == "weldment_default"
-    assert body["weldment"]["joints"] == 4 and "welding" in body["weldment"]["not_priced"]
+    assert body["weldment"]["joints"] == 4
+    # Welding is priced now (uncalibrated reference rates); only finishing
+    # stays out, and the breakdown carries its honesty rails.
+    assert body["weldment"]["not_priced"] == ["finishing"]
+    assert body["weldment"]["breakdown"]["basis"] == "uncalibrated_reference_rates"
+    assert body["total"]["per_file_usd"]["1"] > body["weldment"]["material_usd"]
     assert body["source"]["basis"]["material_class"] == "default"
 
 
