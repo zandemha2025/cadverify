@@ -1,0 +1,19 @@
+priority,cluster,query,buyer,intent_score_1_to_5,product_fit_1_to_5,confidence,target_url,page_format,status,evidence
+1,DFM software,dfm software,Manufacturing engineer,5,5,Medium,/solutions/dfm-software,Product page,Implemented,Autocomplete plus sampled product results; PCB ambiguity
+1,DFM software,manufacturability analysis software,Manufacturing engineer,5,5,Medium,/solutions/dfm-software,Product page,Implemented,Sampled aPriori and DFM product results
+1,DFM software,design for manufacturing software,Design engineer,5,5,Medium,/solutions/dfm-software,Product page,Implemented,Same buyer answer as DFM software
+2,STEP review,STEP file manufacturability check,Design engineer,4,5,Medium,/guides/step-file-manufacturability-check,Practical guide with sample,Implemented,NIST and online STEP-check results
+2,STEP review,check STEP file for manufacturing,Design engineer,4,5,Low,/guides/step-file-manufacturability-check,Practical guide with sample,Implemented,Semantic variant; volume unmeasured
+2,CNC review,cnc dfm checklist,Design engineer,3,5,Medium,/guides/cnc-dfm-checklist,Checklist,Implemented,Protolabs primary guidance; demand unmeasured
+2,CNC review,cnc design for manufacturability,Design engineer,3,5,Medium,/guides/cnc-dfm-checklist,Checklist,Implemented,Same CNC review workflow
+2,Make or buy,make vs buy calculator,Manufacturing manager,4,5,Medium,/tools/make-vs-buy-calculator,Interactive tool,Implemented,Sampled calculator results
+2,Make or buy,make or buy break even calculator,Manufacturing manager,4,5,Medium,/tools/make-vs-buy-calculator,Interactive tool,Implemented,Same numerical answer
+2,Make or buy,make vs buy analysis manufacturing,Sourcing manager,4,5,Medium,/guides/make-vs-buy-analysis,Guide and worked example,Implemented,Google autocomplete
+2,Make or buy,make or buy decision manufacturing,Sourcing manager,4,5,Medium,/guides/make-vs-buy-analysis,Guide and worked example,Implemented,Google autocomplete
+3,Competitor evaluation,ScaleCAD vs aPriori,Cost engineer,5,4,Low,/compare/scalecad-vs-apriori,Sourced comparison,Implemented,Brand query is a hypothesis; vendor facts checked
+3,Competitor evaluation,aPriori alternative,Cost engineer,5,4,Medium,/compare/scalecad-vs-apriori,Sourced comparison,Implemented,Observed alternatives format; no performance benchmark
+3,Pricing,ScaleCAD pricing,Buyer evaluating ScaleCAD,5,5,High,/pricing,Existing pricing page,Improved,Existing product commercial terms and backend plan API
+4,Machine fit,can my CNC machine make this part,In-house manufacturing,4,5,Low,/teams/in-house-manufacturing,Existing workflow page,Validate query before editing,Founder/product-fit hypothesis
+4,CNC costing,cnc machining cost calculator,Estimator,4,4,Medium,/tools/cnc-machining-cost-calculator,Future distinct tool,Backlog,Autocomplete and calculator results; requires scoped time/rate inputs
+4,CNC costing,cnc machining cost calculation,Estimator,3,4,Medium,/tools/cnc-machining-cost-calculator,Future tool with explanation,Backlog,Google autocomplete; avoid separate duplicate article
+5,Migration,aPriori migration,Cost engineering lead,5,3,Low,/compare/scalecad-vs-apriori,Evaluation guidance only,Needs real migration evidence,No native migration importer verified

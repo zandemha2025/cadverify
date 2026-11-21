@@ -1,0 +1,58 @@
+{
+  "date": "2026-11-03T00:07:31.332Z",
+  "pages": [
+    {
+      "path": "/resources",
+      "status": 200,
+      "title": "Manufacturing guides and free tools | ScaleCAD",
+      "schemaCount": 0
+    },
+    {
+      "path": "/solutions/dfm-software",
+      "status": 200,
+      "title": "DFM software for the machines you actually own | ScaleCAD",
+      "schemaCount": 1
+    },
+    {
+      "path": "/guides/step-file-manufacturability-check",
+      "status": 200,
+      "title": "How to check a STEP file for manufacturability | ScaleCAD",
+      "schemaCount": 1
+    },
+    {
+      "path": "/guides/cnc-dfm-checklist",
+      "status": 200,
+      "title": "CNC DFM checklist: what to review before an RFQ | ScaleCAD",
+      "schemaCount": 1
+    },
+    {
+      "path": "/guides/make-vs-buy-analysis",
+      "status": 200,
+      "title": "Make vs buy analysis for a manufactured part | ScaleCAD",
+      "schemaCount": 1
+    },
+    {
+      "path": "/compare/scalecad-vs-apriori",
+      "status": 200,
+      "title": "ScaleCAD vs aPriori: what to compare on your parts | ScaleCAD",
+      "schemaCount": 1
+    },
+    {
+      "path": "/tools/make-vs-buy-calculator",
+      "status": 200,
+      "title": "Free make vs buy calculator | ScaleCAD",
+      "schemaCount": 0
+    },
+    {
+      "path": "/pricing",
+      "status": 200,
+      "title": "Pricing — ScaleCAD",
+      "schemaCount": 0
+    }
+  ],
+  "calculator": "example, buy, equal, empty, reset passed",
+  "responsive": "1440px and 390px; no document overflow",
+  "mobileNavigation": "passed",
+  "unknownGuide": "noindex",
+  "errors": []
+}

@@ -1,6 +1,8 @@
 import type { MetadataRoute } from "next";
+import { GROWTH_ROUTES, SITE_ORIGIN } from "@/lib/site/growth-routes";
+import { growthResources } from "@/lib/site/growth-content";
 
-const SITE = process.env.NEXT_PUBLIC_SITE_URL || "https://scalecad.ai";
+const SITE = SITE_ORIGIN;
 
 const PUBLIC_ROUTES = [
   "",
@@ -28,11 +30,12 @@ const PUBLIC_ROUTES = [
 ];
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const now = new Date();
-  return PUBLIC_ROUTES.map((route) => ({
-    url: `${SITE}${route}`,
-    lastModified: now,
-    changeFrequency: "weekly",
-    priority: route === "" ? 1 : 0.7,
-  }));
+  return [
+    ...PUBLIC_ROUTES.map((route) => ({ url: `${SITE}${route}` })),
+    ...GROWTH_ROUTES.map((route) => ({
+      url: `${SITE}${route}`,
+      // Use known editorial dates, not the time the sitemap was fetched.
+      lastModified: growthResources.find(resource => resource.path === route)?.updated,
+    })),
+  ];
 }

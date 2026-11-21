@@ -1,7 +1,18 @@
+import { GROWTH_ROUTES } from "./site/growth-routes.ts";
+
 const PUBLIC_PAGES = new Set(["/", "/pricing", "/pilot", "/contact", "/company", "/about", "/method", "/platform", "/security", "/privacy", "/terms", "/developers", "/teams", "/for-in-house-manufacturing", "/for-shop-owners", "/for-sourcing", "/for-design-engineering", "/for-cost-engineering"]);
 const ROUTES = new Set([...PUBLIC_PAGES].flatMap(p => p.split("/")) .concat(["api", "proxy", "auth", "login", "signup", "forgot-password", "reset-password", "verify", "analyze", "analyses", "cost", "cost-decisions", "catalog", "capability-investment", "batch", "history", "onboarding", "settings", "integrations", "notifications", "rfq-packages", "designs", "keys", "reconstruct", "s", "processes", "materials", "machines", "shops", "validate", "validate-quick", "me", "usage", "logout", "pilot-request"]));
 
+// These exact editorial routes are public; this does not enable session replay.
+const GROWTH_PATHS: ReadonlySet<string> = new Set(GROWTH_ROUTES);
+
+export function publicAnalyticsPage(path: string): boolean {
+  return PUBLIC_PAGES.has(path) || GROWTH_PATHS.has(path);
+}
+
 export function routeLabel(path: string): string {
+  const pathname = path.split("?")[0].split("#")[0];
+  if (GROWTH_PATHS.has(pathname)) return pathname;
   return path.split("?")[0].split("#")[0].split("/").map(p => ROUTES.has(p) ? p : ":id").join("/");
 }
 

@@ -5,7 +5,7 @@ import Script from "next/script";
 import { usePathname } from "next/navigation";
 import posthog from "posthog-js";
 import { ANALYTICS_PREFERENCES_EVENT, track } from "@/lib/analytics";
-import { cleanAnalyticsEvent, publicReplayAllowed, routeLabel } from "@/lib/analytics-privacy";
+import { cleanAnalyticsEvent, publicAnalyticsPage, publicReplayAllowed, routeLabel } from "@/lib/analytics-privacy";
 import {
   CHOICES_EVENT,
   CHOICES_KEY,
@@ -98,10 +98,10 @@ export function Analytics({ token, nonce }: { token: string; nonce?: string }) {
     const replay = publicReplayAllowed(path, location.search, location.hash);
     posthog.set_config({ capture_heatmaps: replay && ["/", "/pricing", "/pilot"].includes(path) });
     if (replay && on.recordings) posthog.startSessionRecording(); else posthog.stopSessionRecording();
-    posthog.register({ surface: publicReplayAllowed(path, "", "") ? "site" : "app" });
-    track("$pageview", { $current_url: `${location.origin}${routeLabel(path)}`, $pathname: routeLabel(path), surface: publicReplayAllowed(path, "", "") ? "site" : "app" });
+    posthog.register({ surface: publicAnalyticsPage(path) ? "site" : "app" });
+    track("$pageview", { $current_url: `${location.origin}${routeLabel(path)}`, $pathname: routeLabel(path), surface: publicAnalyticsPage(path) ? "site" : "app" });
     return () => {
-      track("$pageleave", { $current_url: `${location.origin}${routeLabel(path)}`, $pathname: routeLabel(path), surface: publicReplayAllowed(path, "", "") ? "site" : "app" });
+      track("$pageleave", { $current_url: `${location.origin}${routeLabel(path)}`, $pathname: routeLabel(path), surface: publicAnalyticsPage(path) ? "site" : "app" });
       posthog.stopSessionRecording();
     };
   }, [path, on.analytics, on.recordings, ready]);
